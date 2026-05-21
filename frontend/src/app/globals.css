@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme — soft slate + brand teal accents */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Primary = brand teal 600 */
+    --primary: 174 84% 32%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 174 70% 96%;
+    --accent-foreground: 174 84% 24%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 174 84% 38%;
+
+    --radius: 0.625rem;
+
+    /* Sidebar */
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 174 84% 32%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 174 70% 96%;
+    --sidebar-accent-foreground: 174 84% 24%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 174 84% 38%;
+  }
+
+  /* Role-themed primary palettes. Override only --primary, --ring, --accent.
+     Applied via data-role on the shell root. Variables stay in HSL so dark mode
+     inherits cleanly via the same overrides. */
+  [data-role="super_admin"] {
+    --primary: 262 83% 58%;            /* violet-600 */
+    --primary-foreground: 0 0% 100%;
+    --ring: 262 83% 58%;
+    --accent: 262 70% 96%;
+    --accent-foreground: 262 83% 32%;
+    --sidebar-primary: 262 83% 58%;
+    --sidebar-accent: 262 70% 96%;
+    --sidebar-accent-foreground: 262 83% 32%;
+    --sidebar-ring: 262 83% 58%;
+  }
+  [data-role="groupement_admin"] {
+    --primary: 199 89% 48%;            /* sky-500 */
+    --primary-foreground: 0 0% 100%;
+    --ring: 199 89% 48%;
+    --accent: 199 80% 96%;
+    --accent-foreground: 199 89% 24%;
+    --sidebar-primary: 199 89% 48%;
+    --sidebar-accent: 199 80% 96%;
+    --sidebar-accent-foreground: 199 89% 24%;
+    --sidebar-ring: 199 89% 48%;
+  }
+  [data-role="association_admin"] {
+    --primary: 160 84% 32%;            /* emerald-700 */
+    --primary-foreground: 0 0% 100%;
+    --ring: 160 84% 39%;
+    --accent: 160 70% 96%;
+    --accent-foreground: 160 84% 24%;
+    --sidebar-primary: 160 84% 32%;
+    --sidebar-accent: 160 70% 96%;
+    --sidebar-accent-foreground: 160 84% 24%;
+    --sidebar-ring: 160 84% 39%;
+  }
+  /* member uses the default teal primary — no override needed */
+
+  .dark [data-role="super_admin"] {
+    --primary: 262 70% 65%;
+    --primary-foreground: 222 47% 8%;
+    --accent: 262 50% 22%;
+    --accent-foreground: 262 70% 85%;
+    --sidebar-primary: 262 70% 65%;
+    --sidebar-accent: 262 50% 22%;
+    --sidebar-accent-foreground: 262 70% 85%;
+  }
+  .dark [data-role="groupement_admin"] {
+    --primary: 199 80% 55%;
+    --primary-foreground: 222 47% 8%;
+    --accent: 199 60% 22%;
+    --accent-foreground: 199 80% 85%;
+    --sidebar-primary: 199 80% 55%;
+    --sidebar-accent: 199 60% 22%;
+    --sidebar-accent-foreground: 199 80% 85%;
+  }
+  .dark [data-role="association_admin"] {
+    --primary: 160 70% 45%;
+    --primary-foreground: 222 47% 8%;
+    --accent: 160 50% 18%;
+    --accent-foreground: 160 70% 85%;
+    --sidebar-primary: 160 70% 45%;
+    --sidebar-accent: 160 50% 18%;
+    --sidebar-accent-foreground: 160 70% 85%;
+  }
+
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 174 70% 50%;
+    --primary-foreground: 222 47% 8%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 174 50% 18%;
+    --accent-foreground: 174 70% 80%;
+
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 174 70% 45%;
+
+    --sidebar: 222 47% 10%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 174 70% 50%;
+    --sidebar-primary-foreground: 222 47% 8%;
+    --sidebar-accent: 174 50% 18%;
+    --sidebar-accent-foreground: 174 70% 80%;
+    --sidebar-border: 217 33% 20%;
+    --sidebar-ring: 174 70% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  /* Smooth scroll, nice focus ring */
+  html {
+    scroll-behavior: smooth;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  /* Subtle brand gradient text (legacy — kept for the public landing). */
+  .text-gradient-brand {
+    @apply bg-gradient-to-r from-brand-600 to-brand-400 bg-clip-text text-transparent;
+  }
+  /* Role-aware gradient — follows --primary; used inside the Shell. */
+  .text-gradient-primary {
+    background-image: linear-gradient(
+      to right,
+      hsl(var(--primary)),
+      hsl(var(--primary) / 0.65)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Glass effect */
+  .glass {
+    @apply bg-background/70 backdrop-blur-md;
+  }
+}

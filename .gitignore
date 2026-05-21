@@ -1,0 +1,55 @@
+# Env
+.env
+.env.local
+.env.production
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes (si bind-mount)
+postgres_data/
+redis_data/
+minio_data/
+
+# Backups
+backups/
+
+# Misc
+.cache/
+coverage/
+.coverage
+htmlcov/

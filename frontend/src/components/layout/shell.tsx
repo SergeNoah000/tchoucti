@@ -1,0 +1,406 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
+import { useTranslations } from "next-intl";
+import {
+  LayoutDashboard,
+  Users,
+  Calendar,
+  Wallet,
+  Banknote,
+  Repeat,
+  HeartHandshake,
+  FolderKanban,
+  FileText,
+  BarChart3,
+  Settings,
+  LogOut,
+  Menu,
+  Building2,
+  CreditCard,
+  ShieldCheck,
+  ScrollText,
+  type LucideIcon,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { BrandMark } from "@/components/common/brand-mark";
+import { ThemeToggle } from "@/components/common/theme-toggle";
+import { LanguageToggle } from "@/components/common/language-toggle";
+import { useAuthStore, usePermissionStore } from "@/lib/store";
+import { authApi } from "@/lib/api";
+import { cn, initials } from "@/lib/utils";
+import { detectRole, ROLE_THEMES, ROLE_CLASSES, type AppRole } from "@/lib/roles";
+import { useRoleFavicon } from "@/lib/use-role-favicon";
+
+interface NavItem {
+  href: string;
+  icon: LucideIcon;
+  key: string; // i18n key under "nav.*"
+}
+
+interface NavSection {
+  /** i18n key under `nav.sections.*`, or `null` to render items without a heading */
+  label: string | null;
+  items: NavItem[];
+}
+
+const PLATFORM_NAV: NavSection[] = [
+  {
+    label: null,
+    items: [
+      { href: "/admin", icon: LayoutDashboard, key: "dashboard" },
+      { href: "/admin/groupements", icon: Building2, key: "groupements" },
+      { href: "/admin/associations", icon: FolderKanban, key: "associations" },
+      { href: "/admin/users", icon: Users, key: "users" },
+    ],
+  },
+  {
+    label: "operations",
+    items: [
+      { href: "/admin/billing", icon: CreditCard, key: "billing" },
+      { href: "/admin/audit", icon: ScrollText, key: "audit" },
+      { href: "/admin/settings", icon: Settings, key: "settings" },
+    ],
+  },
+];
+
+const GROUPEMENT_NAV: NavSection[] = [
+  {
+    label: null,
+    items: [
+      { href: "/dashboard", icon: LayoutDashboard, key: "dashboard" },
+      { href: "/dashboard/groupement", icon: Building2, key: "myGroupement" },
+      { href: "/dashboard/associations", icon: FolderKanban, key: "associations" },
+      { href: "/dashboard/meetings", icon: Calendar, key: "meetings" },
+      { href: "/dashboard/members", icon: Users, key: "members" },
+    ],
+  },
+  {
+    label: "finance",
+    items: [
+      { href: "/dashboard/finance", icon: Wallet, key: "finance" },
+      { href: "/dashboard/loans", icon: Banknote, key: "loans" },
+      { href: "/dashboard/tontines", icon: Repeat, key: "tontines" },
+    ],
+  },
+  {
+    label: "programs",
+    items: [
+      { href: "/dashboard/social-aid", icon: HeartHandshake, key: "socialAid" },
+      { href: "/dashboard/projects", icon: FolderKanban, key: "projects" },
+    ],
+  },
+  {
+    label: "tools",
+    items: [
+      { href: "/dashboard/documents", icon: FileText, key: "documents" },
+      { href: "/dashboard/reports", icon: BarChart3, key: "reports" },
+      { href: "/dashboard/settings", icon: Settings, key: "settings" },
+    ],
+  },
+];
+
+const ASSOCIATION_NAV: NavSection[] = [
+  {
+    label: null,
+    items: [
+      { href: "/dashboard", icon: LayoutDashboard, key: "dashboard" },
+      { href: "/dashboard/associations", icon: FolderKanban, key: "associations" },
+      { href: "/dashboard/meetings", icon: Calendar, key: "meetings" },
+      { href: "/dashboard/members", icon: Users, key: "members" },
+    ],
+  },
+  {
+    label: "finance",
+    items: [
+      { href: "/dashboard/finance", icon: Wallet, key: "finance" },
+      { href: "/dashboard/loans", icon: Banknote, key: "loans" },
+      { href: "/dashboard/tontines", icon: Repeat, key: "tontines" },
+      { href: "/dashboard/social-aid", icon: HeartHandshake, key: "socialAid" },
+    ],
+  },
+  {
+    label: "tools",
+    items: [
+      { href: "/dashboard/documents", icon: FileText, key: "documents" },
+      { href: "/dashboard/settings", icon: Settings, key: "settings" },
+    ],
+  },
+];
+
+const MEMBER_NAV: NavSection[] = [
+  {
+    label: null,
+    items: [
+      { href: "/dashboard", icon: LayoutDashboard, key: "dashboard" },
+      { href: "/dashboard/meetings", icon: Calendar, key: "meetings" },
+    ],
+  },
+  {
+    label: "personal",
+    items: [
+      { href: "/dashboard/finance", icon: Wallet, key: "myContributions" },
+      { href: "/dashboard/loans", icon: Banknote, key: "myLoans" },
+      { href: "/dashboard/documents", icon: FileText, key: "documents" },
+      { href: "/dashboard/settings", icon: Settings, key: "settings" },
+    ],
+  },
+];
+
+function navForRole(role: AppRole): NavSection[] {
+  switch (role) {
+    case "super_admin":
+      return PLATFORM_NAV;
+    case "groupement_admin":
+      return GROUPEMENT_NAV;
+    case "association_admin":
+      return ASSOCIATION_NAV;
+    case "member":
+      return MEMBER_NAV;
+  }
+}
+
+interface ShellProps {
+  children: React.ReactNode;
+  /** Force a specific role context (e.g. "/admin" pages should always use platform nav) */
+  forceRole?: AppRole;
+  /** Where the logo links to */
+  homeHref?: string;
+}
+
+export function Shell({ children, forceRole, homeHref }: ShellProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const tNav = useTranslations("nav");
+  const tShell = useTranslations("shell");
+  const tCommon = useTranslations("common");
+  const tRoles = useTranslations("roles");
+  const { user, hasHydrated, isAuthenticated, logout, setUser } = useAuthStore();
+  const { clear: clearPerms } = usePermissionStore();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const detectedRole = detectRole(user);
+  const role: AppRole = forceRole ?? detectedRole;
+  const theme = ROLE_THEMES[role];
+  const classes = ROLE_CLASSES[role];
+
+  const nav = useMemo(() => navForRole(role), [role]);
+
+  useRoleFavicon(role);
+
+  useEffect(() => {
+    if (hasHydrated && !isAuthenticated) router.replace("/login");
+  }, [hasHydrated, isAuthenticated, router]);
+
+  // Refresh the persisted user once on mount — keeps role flags in sync after
+  // backend schema changes (a stale localStorage user would mis-route the UI).
+  useEffect(() => {
+    if (!hasHydrated || !isAuthenticated) return;
+    authApi
+      .getMe()
+      .then((fresh) => setUser(fresh))
+      .catch(() => {
+        /* 401 handled by the axios interceptor */
+      });
+  }, [hasHydrated, isAuthenticated, setUser]);
+
+  // Block /admin to non-platform admins
+  useEffect(() => {
+    if (!hasHydrated || !user) return;
+    if (forceRole === "super_admin" && !user.is_platform_admin) {
+      router.replace("/dashboard");
+    }
+  }, [hasHydrated, user, forceRole, router]);
+
+  if (!hasHydrated || !user) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // ignore — clear local state regardless
+    }
+    logout();
+    clearPerms();
+    router.push("/login");
+  };
+
+  const resolvedHome = homeHref ?? (role === "super_admin" ? "/admin" : "/dashboard");
+
+  return (
+    <div data-role={theme.dataRole} className="flex h-screen overflow-hidden bg-muted/30">
+      {/* Sidebar */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-sidebar text-sidebar-foreground transition-transform lg:relative lg:translate-x-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <div className="flex h-16 items-center border-b border-sidebar-border px-6">
+          <Link href={resolvedHome} className="flex items-center">
+            <BrandMark size="sm" variant="primary" />
+          </Link>
+        </div>
+
+        {/* Role context banner */}
+        <div className="px-3 pt-3">
+          <div
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wider ring-1",
+              classes.pillBg,
+              classes.pillText,
+              classes.pillRing
+            )}
+          >
+            <span className={cn("h-1.5 w-1.5 rounded-full", classes.dotBg)} />
+            {tShell(`contexts.${theme.contextKey}`)}
+          </div>
+        </div>
+
+        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-3">
+          {nav.map((section, idx) => (
+            <div key={section.label ?? `s-${idx}`} className="space-y-0.5">
+              {section.label && (
+                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {tShell(`sections.${section.label}`)}
+                </p>
+              )}
+              {section.items.map(({ href, icon: Icon, key }) => {
+                const active = pathname === href || pathname.startsWith(href + "/");
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setSidebarOpen(false)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      active
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{tNav(key)}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+        <Separator />
+        <div className="p-3">
+          <div className="flex items-center gap-3 rounded-lg px-3 py-2">
+            <Avatar className="h-9 w-9">
+              <AvatarFallback className={cn("text-xs font-semibold", classes.iconBg, classes.iconText)}>
+                {initials(user.full_name)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{user.full_name}</p>
+              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Overlay (mobile) */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Main */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Topbar */}
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur lg:px-6">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              onClick={() => setSidebarOpen((v) => !v)}
+              aria-label="Toggle menu"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            {/* Role pill */}
+            <div
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                classes.pillBg,
+                classes.pillText,
+                classes.pillRing
+              )}
+            >
+              {role === "super_admin" && <ShieldCheck className="h-3.5 w-3.5" />}
+              {role !== "super_admin" && <span className={cn("h-1.5 w-1.5 rounded-full", classes.dotBg)} />}
+              {tRoles(theme.i18nKey)}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <LanguageToggle />
+            <ThemeToggle />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className={cn("text-xs font-semibold", classes.iconBg, classes.iconText)}>
+                      {initials(user.full_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">{user.full_name}</span>
+                    <span className="text-xs text-muted-foreground">{user.email}</span>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href={role === "super_admin" ? "/admin/settings" : "/dashboard/settings"}>
+                    <Settings className="h-4 w-4" />
+                    {tNav("settings")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                  <LogOut className="h-4 w-4" />
+                  {tCommon("logout")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </header>
+
+        {/* Content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="container mx-auto px-4 py-6 lg:px-6 lg:py-8">{children}</div>
+        </main>
+      </div>
+    </div>
+  );
+}

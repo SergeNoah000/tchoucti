@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm exec *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(pnpm lint *)",
+      "Bash(pnpm build *)",
+      "Bash(python3 -c \"from app.schemas.auth import UserPublic; from app.api.v1.auth import _public_user; print\\('schemas OK'\\)\")",
+      "Bash(python3 -m py_compile /home/sergeo/orgs/langeao-sarl/dengoh/backend/app/schemas/auth.py /home/sergeo/orgs/langeao-sarl/dengoh/backend/app/api/v1/auth.py)",
+      "Bash(python3 -c ' *)",
+      "Bash(docker compose *)",
+      "Bash(curl -s -X POST http://localhost:18000/api/auth/login -H \"Content-Type: application/x-www-form-urlencoded\" -d \"username=secretaire@demo.tchoucti.cm&password=assoc123\")",
+      "Bash(python3 -c \"import sys, json; d = json.load\\(sys.stdin\\); print\\('access:', d['access_token'][:40], '...'\\)\")",
+      "Bash(curl -s -X POST http://localhost:18000/api/auth/login -H \"Content-Type: application/x-www-form-urlencoded\" -d \"username=admin@tchoucti.cm&password=admin123\")",
+      "Bash(python3 -c \"import sys, json; d = json.load\\(sys.stdin\\); print\\(f'OK — {len\\(d\\)} users'\\); [print\\(f'  - {u[\\\\\"email\\\\\"]} platform={u[\\\\\"is_platform_admin\\\\\"]} grp={u[\\\\\"is_groupement_admin\\\\\"]} assoc={u[\\\\\"is_association_admin\\\\\"]}'\\) for u in d]\")",
+      "Bash(docker exec *)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:13000__TRACKED_VAR__)"
+    ]
+  }
+}
