@@ -3,7 +3,7 @@ from app.models.base import BaseModel, TimestampMixin, UUIDMixin  # noqa: F401
 
 # Tenant & identity
 from app.models.groupement import Groupement  # noqa: F401
-from app.models.association import Association  # noqa: F401
+from app.models.association import Association, AssociationType  # noqa: F401
 from app.models.user import User, UserType, InviteStatus  # noqa: F401
 from app.models.role import (  # noqa: F401
     Role,
@@ -14,6 +14,7 @@ from app.models.role import (  # noqa: F401
     UserPermission,
     RoleScope,
     MembershipStatus,
+    MemberCategory,
 )
 
 # Finance — core
@@ -36,6 +37,7 @@ from app.models.meeting import (  # noqa: F401
     Activity,
     MeetingActivityEntry,
     EntryStatus,
+    MeetingReminder,
 )
 
 # Tontine
@@ -43,6 +45,7 @@ from app.models.tontine import (  # noqa: F401
     TontineCycle,
     TontineCycleStatus,
     TontineRound,
+    TontineRoundBeneficiary,
     TontineRoundStatus,
     TontineContribution,
 )

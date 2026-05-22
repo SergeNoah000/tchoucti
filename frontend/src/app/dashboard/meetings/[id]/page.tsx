@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -13,23 +13,21 @@ import {
   MapPin,
   Users,
   ClipboardList,
-  Plus,
-  Trash2,
+  TrendingUp,
   Loader2,
   AlertCircle,
-  TrendingUp,
+  ChevronDown,
+  Search,
+  Save,
+  ArrowRight,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,15 +39,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
-import { meetingsApi, activitiesApi, membersApi } from "@/lib/api";
+import { toast } from "sonner";
+
+import { activitiesApi, associationsApi, meetingsApi, membersApi } from "@/lib/api";
 import type {
-  MeetingDetail,
-  MeetingAttendance,
-  MeetingActivityEntry,
   Activity,
-  Membership,
+  Association,
   AttendanceStatus,
+  MeetingDetail,
+  Membership,
 } from "@/lib/types";
 import { useFormatters } from "@/lib/format";
 import { cn, initials } from "@/lib/utils";
@@ -61,246 +59,37 @@ const ATTENDANCE_PILLS: Record<AttendanceStatus, string> = {
   late: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
 };
 
-const STATUS_OPTIONS: AttendanceStatus[] = ["present", "absent", "excused", "late"];
+const ATTENDANCES: AttendanceStatus[] = ["present", "absent", "excused", "late"];
 
-// ── Attendance row ────────────────────────────────────────────────────────
-
-function AttendanceRow({
-  membership,
-  attendance,
-  canEdit,
-  onStatusChange,
-}: {
-  membership: Membership;
-  attendance?: MeetingAttendance;
-  canEdit: boolean;
-  onStatusChange: (membershipId: string, status: AttendanceStatus) => void;
-}) {
-  const t = useTranslations("meeting");
-  const status = attendance?.status ?? "absent";
-
-  return (
-    <div className="flex items-center justify-between py-2.5">
-      <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
-          {initials(membership.user?.full_name)}
-        </div>
-        <span className="text-sm font-medium">{membership.user?.full_name ?? "—"}</span>
-      </div>
-      {canEdit ? (
-        <div className="flex gap-1">
-          {STATUS_OPTIONS.map((s) => (
-            <button
-              key={s}
-              onClick={() => onStatusChange(membership.id, s)}
-              className={cn(
-                "rounded-full px-2.5 py-0.5 text-xs font-medium transition-all",
-                status === s
-                  ? ATTENDANCE_PILLS[s] + " ring-2 ring-offset-1 ring-current"
-                  : "bg-muted text-muted-foreground hover:bg-accent"
-              )}
-            >
-              {t(s)}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", ATTENDANCE_PILLS[status])}>
-          {t(status)}
-        </span>
-      )}
-    </div>
-  );
+interface MemberLocalState {
+  attendance: AttendanceStatus | null;
+  amounts: Record<string, string>; // activity_id → amount string
 }
 
-// ── Entry row ─────────────────────────────────────────────────────────────
-
-function EntryRow({
-  entry,
-  activities,
-  memberships,
-  canEdit,
-  onVoid,
-}: {
-  entry: MeetingActivityEntry;
-  activities: Activity[];
-  memberships: Membership[];
-  canEdit: boolean;
-  onVoid: (entryId: string) => void;
-}) {
-  const t = useTranslations("meeting");
-  const fmt = useFormatters();
-  const activity = activities.find((a) => a.id === entry.activity_id);
-  const membership = memberships.find((m) => m.id === entry.membership_id);
-
-  return (
-    <div className="flex items-center justify-between py-2.5">
-      <div className="flex items-center gap-3">
-        <div
-          className="h-3 w-3 rounded-full flex-shrink-0"
-          style={{ backgroundColor: activity?.color ?? "var(--primary)" }}
-        />
-        <div>
-          <p className="text-sm font-medium">{membership?.user?.full_name ?? "—"}</p>
-          <p className="text-xs text-muted-foreground">{activity?.name ?? entry.activity_id}</p>
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-semibold tabular-nums">{fmt.currency(entry.amount)}</span>
-        {entry.status === "draft" && (
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-            {t("entryDraft")}
-          </span>
-        )}
-        {entry.status === "recorded" && (
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-            {t("entryRecorded")}
-          </span>
-        )}
-        {canEdit && entry.status === "draft" && (
-          <button
-            onClick={() => onVoid(entry.id)}
-            className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-            aria-label={t("entryVoided")}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Add entry form ────────────────────────────────────────────────────────
-
-function AddEntryForm({
-  meetingId,
-  activities,
-  memberships,
-  onAdded,
-}: {
-  meetingId: string;
-  activities: Activity[];
-  memberships: Membership[];
-  onAdded: () => void;
-}) {
-  const t = useTranslations("meeting");
-  const [membershipId, setMembershipId] = useState("");
-  const [activityId, setActivityId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [error, setError] = useState("");
-
-  const visibleActivities = activities.filter((a) => a.is_visible_in_meeting && a.is_active);
-
-  const addMutation = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => meetingsApi.addEntry(meetingId, payload),
-    onSuccess: () => {
-      setMembershipId("");
-      setActivityId("");
-      setAmount("");
-      setError("");
-      onAdded();
-    },
-    onError: (err) => {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg ?? t("addEntryError"));
-    },
-  });
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!membershipId || !activityId || !amount) {
-      setError(t("requiredFields"));
-      return;
-    }
-    addMutation.mutate({
-      meeting_id: meetingId,
-      membership_id: membershipId,
-      activity_id: activityId,
-      amount: parseInt(amount, 10),
-    });
-  }
-
-  function handleActivityChange(id: string) {
-    setActivityId(id);
-    const act = visibleActivities.find((a) => a.id === id);
-    const cfgAmount = (act?.config as { amount?: number } | undefined)?.amount;
-    if (cfgAmount) setAmount(String(cfgAmount));
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="rounded-xl border border-dashed border-border bg-muted/30 p-4 space-y-3">
-      <p className="text-sm font-medium text-muted-foreground">{t("newEntry")}</p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Select value={membershipId} onValueChange={setMembershipId}>
-          <SelectTrigger className="bg-background">
-            <SelectValue placeholder={t("selectMember")} />
-          </SelectTrigger>
-          <SelectContent>
-            {memberships.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
-                {m.user?.full_name ?? m.id}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={activityId} onValueChange={handleActivityChange}>
-          <SelectTrigger className="bg-background">
-            <SelectValue placeholder={t("selectActivity")} />
-          </SelectTrigger>
-          <SelectContent>
-            {visibleActivities.map((a) => (
-              <SelectItem key={a.id} value={a.id}>
-                {a.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Input
-          type="number"
-          inputMode="numeric"
-          min={1}
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder={t("amountPlaceholder")}
-          aria-label={t("amountAria")}
-        />
-      </div>
-
-      {error && (
-        <p className="flex items-center gap-1.5 text-xs text-destructive">
-          <AlertCircle className="h-3.5 w-3.5" />
-          {error}
-        </p>
-      )}
-
-      <Button type="submit" size="sm" disabled={addMutation.isPending} className="gap-2">
-        {addMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-        {t("addEntry")}
-      </Button>
-    </form>
-  );
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MeetingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const t = useTranslations("meeting");
   const tCommon = useTranslations("common");
-  const fmt = useFormatters();
   const queryClient = useQueryClient();
 
-  const meetingQuery = useQuery<MeetingDetail>({
-    queryKey: ["meeting", id],
+  const meetingKey = ["meeting", id];
+
+  const { data: meeting, isLoading } = useQuery<MeetingDetail>({
+    queryKey: meetingKey,
     queryFn: () => meetingsApi.get(id),
     enabled: !!id,
   });
 
-  const meeting = meetingQuery.data;
   const associationId = meeting?.association_id;
+
+  const { data: association } = useQuery<Association>({
+    queryKey: ["association", associationId],
+    queryFn: () => associationsApi.get(associationId!),
+    enabled: !!associationId,
+  });
+  const fmt = useFormatters(association?.currency);
 
   const { data: activities = [] } = useQuery<Activity[]>({
     queryKey: ["activities", associationId],
@@ -316,37 +105,57 @@ export default function MeetingDetailPage() {
 
   const canEdit = meeting?.status === "ongoing";
 
-  const reload = () => queryClient.invalidateQueries({ queryKey: ["meeting", id] });
-
   const openMutation = useMutation({
     mutationFn: () => meetingsApi.open(meeting!.id),
-    onSuccess: reload,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: meetingKey }),
   });
 
   const closeMutation = useMutation({
     mutationFn: () => meetingsApi.close(meeting!.id),
-    onSuccess: reload,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: meetingKey });
+      queryClient.invalidateQueries({ queryKey: ["treasury", associationId] });
+      queryClient.invalidateQueries({ queryKey: ["movements", associationId] });
+    },
   });
 
-  const attendanceMutation = useMutation({
-    mutationFn: ({ membershipId, status }: { membershipId: string; status: AttendanceStatus }) =>
-      meetingsApi.upsertAttendances(meeting!.id, [{ membership_id: membershipId, status }]),
-    onSuccess: reload,
-  });
+  // ── Stats (live from server snapshot) ─────────────────────────────────────
+  const presentCount = useMemo(
+    () =>
+      meeting?.attendances.filter((a) => a.status === "present" || a.status === "late").length ?? 0,
+    [meeting?.attendances],
+  );
+  const totalEntries = useMemo(
+    () => meeting?.entries.filter((e) => e.status !== "voided").length ?? 0,
+    [meeting?.entries],
+  );
+  const totalAmount = useMemo(
+    () =>
+      meeting?.entries
+        .filter((e) => e.status !== "voided")
+        .reduce((s, e) => s + e.amount, 0) ?? 0,
+    [meeting?.entries],
+  );
 
-  const voidEntryMutation = useMutation({
-    mutationFn: (entryId: string) => meetingsApi.voidEntry(meeting!.id, entryId),
-    onSuccess: reload,
-  });
+  // ── Member search ────────────────────────────────────────────────────────
+  const [search, setSearch] = useState("");
+  const filteredMembers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return memberships;
+    return memberships.filter((m) => m.user.full_name.toLowerCase().includes(q));
+  }, [memberships, search]);
 
-  // ── Stats ────────────────────────────────────────────────────────────
-  const presentCount = meeting?.attendances.filter((a) => a.status === "present" || a.status === "late").length ?? 0;
-  const totalEntries = meeting?.entries.filter((e) => e.status !== "voided").length ?? 0;
-  const totalAmount = meeting?.entries
-    .filter((e) => e.status !== "voided")
-    .reduce((s, e) => s + e.amount, 0) ?? 0;
+  // ── Open/closed collapse tracking ────────────────────────────────────────
+  const [openMembers, setOpenMembers] = useState<Set<string>>(new Set());
+  const toggleMember = (id: string, open: boolean) =>
+    setOpenMembers((s) => {
+      const next = new Set(s);
+      if (open) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
-  if (meetingQuery.isLoading) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-8 w-48" />
@@ -368,10 +177,20 @@ export default function MeetingDetailPage() {
     );
   }
 
+  const visibleActivities = activities.filter((a) => a.is_visible_in_meeting && a.is_active);
+
+  // Open the next un-opened member in the filtered list.
+  const advanceTo = (currentMembershipId: string) => {
+    const idx = filteredMembers.findIndex((m) => m.id === currentMembershipId);
+    const next = filteredMembers[idx + 1];
+    toggleMember(currentMembershipId, false);
+    if (next) toggleMember(next.id, true);
+  };
+
   return (
     <div className="space-y-6">
-      {/* Back + header */}
-      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-start">
+      {/* Header */}
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
         <div className="min-w-0 space-y-1">
           <Button asChild variant="ghost" size="sm" className="-ml-2 gap-1.5 text-muted-foreground">
             <Link href="/dashboard/meetings">
@@ -394,10 +213,15 @@ export default function MeetingDetailPage() {
           </div>
         </div>
 
+        {/* Lifecycle actions */}
         <div className="flex shrink-0 items-center gap-2">
           {meeting.status === "planned" && (
             <Button onClick={() => openMutation.mutate()} disabled={openMutation.isPending} className="gap-2">
-              {openMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+              {openMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <PlayCircle className="h-4 w-4" />
+              )}
               {t("start")}
             </Button>
           )}
@@ -432,142 +256,385 @@ export default function MeetingDetailPage() {
 
       {/* Status banner */}
       {meeting.status === "ongoing" && (
-        <div className="flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
           <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           {t("bannerOngoing")}
         </div>
       )}
       {meeting.status === "closed" && (
-        <div className="flex items-center gap-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-4 py-3 text-sm text-blue-700 dark:text-blue-300">
+        <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
           <CheckCircle2 className="h-4 w-4" />
           {t("bannerClosed", { date: meeting.closed_at ? fmt.date(meeting.closed_at) : "—" })}
         </div>
       )}
 
-      {/* Stats */}
+      {/* Live stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-primary/10 p-2">
-                <Users className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("statPresent")}</p>
-                <p className="text-xl font-bold">{presentCount}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-primary/10 p-2">
-                <ClipboardList className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("statEntries")}</p>
-                <p className="text-xl font-bold">{totalEntries}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-emerald-100 dark:bg-emerald-900/30 p-2">
-                <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("statCollected")}</p>
-                <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                  {fmt.currency(meeting.status === "closed" ? meeting.total_in : totalAmount)}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard icon={Users} label={t("statPresent")} value={`${presentCount} / ${memberships.length}`} />
+        <StatCard icon={ClipboardList} label={t("statEntries")} value={String(totalEntries)} />
+        <StatCard
+          icon={TrendingUp}
+          label={t("statCollected")}
+          value={fmt.currency(meeting.status === "closed" ? meeting.total_in : totalAmount)}
+          accent="emerald"
+        />
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="entries">
-        <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="entries" className="gap-2">
-            <ClipboardList className="h-4 w-4" />
-            {t("tabEntries")} ({totalEntries})
-          </TabsTrigger>
-          <TabsTrigger value="attendance" className="gap-2">
-            <Users className="h-4 w-4" />
-            {t("tabAttendance")} ({meeting.attendances.length})
-          </TabsTrigger>
-        </TabsList>
+      {/* Search */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t("searchMembers")}
+          className="pl-9"
+        />
+      </div>
 
-        <TabsContent value="entries" className="mt-4 space-y-4">
-          {canEdit && (
-            <AddEntryForm
-              meetingId={meeting.id}
-              activities={activities}
-              memberships={memberships}
-              onAdded={reload}
+      {/* Member list */}
+      {memberships.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            {t("noMembers")}
+          </CardContent>
+        </Card>
+      ) : filteredMembers.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            {t("noMatchingMembers")}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {filteredMembers.map((m) => (
+            <MemberRow
+              key={m.id}
+              meeting={meeting}
+              member={m}
+              activities={visibleActivities}
+              canEdit={canEdit}
+              isOpen={openMembers.has(m.id)}
+              setOpen={(open) => toggleMember(m.id, open)}
+              onSavedAdvance={() => advanceTo(m.id)}
+              currency={association?.currency}
             />
-          )}
-
-          <Card>
-            <CardContent className="p-0">
-              {meeting.entries.filter((e) => e.status !== "voided").length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-                  <ClipboardList className="h-8 w-8 mb-2 opacity-40" />
-                  <p className="text-sm">{t("noEntries")}</p>
-                  {canEdit && <p className="text-xs mt-1">{t("noEntriesHint")}</p>}
-                </div>
-              ) : (
-                <div className="divide-y divide-border px-4">
-                  {meeting.entries
-                    .filter((e) => e.status !== "voided")
-                    .map((entry) => (
-                      <EntryRow
-                        key={entry.id}
-                        entry={entry}
-                        activities={activities}
-                        memberships={memberships}
-                        canEdit={canEdit}
-                        onVoid={(eid) => voidEntryMutation.mutate(eid)}
-                      />
-                    ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="attendance" className="mt-4">
-          <Card>
-            <CardContent className="p-0">
-              {memberships.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-                  <Users className="h-8 w-8 mb-2 opacity-40" />
-                  <p className="text-sm">{t("noMembers")}</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-border px-4">
-                  {memberships.map((m) => {
-                    const att = meeting.attendances.find((a) => a.membership_id === m.id);
-                    return (
-                      <AttendanceRow
-                        key={m.id}
-                        membership={m}
-                        attendance={att}
-                        canEdit={canEdit}
-                        onStatusChange={(mid, s) => attendanceMutation.mutate({ membershipId: mid, status: s })}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+// ── Stat card ────────────────────────────────────────────────────────────────
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  accent,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  accent?: "emerald";
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <div
+            className={cn(
+              "rounded-lg p-2",
+              accent === "emerald"
+                ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+                : "bg-primary/10 text-primary",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p
+              className={cn(
+                "truncate tabular-nums",
+                accent === "emerald"
+                  ? "text-lg font-bold text-emerald-600 dark:text-emerald-400"
+                  : "text-xl font-bold",
+              )}
+            >
+              {value}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Member row (collapsible) ─────────────────────────────────────────────────
+
+function MemberRow({
+  meeting,
+  member,
+  activities,
+  canEdit,
+  isOpen,
+  setOpen,
+  onSavedAdvance,
+  currency,
+}: {
+  meeting: MeetingDetail;
+  member: Membership;
+  activities: Activity[];
+  canEdit: boolean;
+  isOpen: boolean;
+  setOpen: (open: boolean) => void;
+  onSavedAdvance: () => void;
+  currency?: string;
+}) {
+  const t = useTranslations("meeting");
+  const fmt = useFormatters(currency);
+  const queryClient = useQueryClient();
+
+  // ── Initialise local state from server snapshot ──
+  const serverAttendance = useMemo(
+    () => meeting.attendances.find((a) => a.membership_id === member.id)?.status ?? null,
+    [meeting.attendances, member.id],
+  );
+  const serverEntries = useMemo(
+    () => meeting.entries.filter((e) => e.membership_id === member.id && e.status !== "voided"),
+    [meeting.entries, member.id],
+  );
+  const serverAmounts: Record<string, string> = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const e of serverEntries) out[e.activity_id] = String(e.amount);
+    return out;
+  }, [serverEntries]);
+
+  const [local, setLocal] = useState<MemberLocalState>({
+    attendance: serverAttendance as AttendanceStatus | null,
+    amounts: serverAmounts,
+  });
+
+  // Re-sync when the meeting snapshot changes (e.g. after a save).
+  useEffect(() => {
+    setLocal({
+      attendance: serverAttendance as AttendanceStatus | null,
+      amounts: serverAmounts,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverAttendance, JSON.stringify(serverAmounts)]);
+
+  const dirty = useMemo(() => {
+    if (local.attendance !== serverAttendance) return true;
+    const keys = new Set([...Object.keys(local.amounts), ...Object.keys(serverAmounts)]);
+    for (const k of keys) {
+      const lv = (local.amounts[k] ?? "").trim();
+      const sv = serverAmounts[k] ?? "";
+      const lvN = parseInt(lv, 10);
+      if (lv === "" && sv === "") continue;
+      if (lv === "" && sv !== "") return true;
+      if (sv === "" && lv !== "" && !Number.isNaN(lvN) && lvN > 0) return true;
+      if (sv !== "" && lv !== "" && lv !== sv) return true;
+    }
+    return false;
+  }, [local, serverAttendance, serverAmounts]);
+
+  // Sum of locally-edited (or saved) amounts for this member.
+  const memberTotal = useMemo(() => {
+    return Object.values(local.amounts).reduce((s, v) => {
+      const n = parseInt(v, 10);
+      return s + (Number.isNaN(n) ? 0 : Math.max(0, n));
+    }, 0);
+  }, [local.amounts]);
+
+  // ── Save ──
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      meetingsApi.saveMember(meeting.id, {
+        membership_id: member.id,
+        attendance: local.attendance ?? undefined,
+        entries: Object.entries(local.amounts)
+          .map(([activity_id, raw]) => {
+            const amount = parseInt(raw, 10);
+            return Number.isNaN(amount) || amount <= 0 ? null : { activity_id, amount };
+          })
+          .filter((x): x is { activity_id: string; amount: number } => x !== null),
+      }),
+    onSuccess: () => {
+      toast.success(t("memberSaved"));
+      queryClient.invalidateQueries({ queryKey: ["meeting", meeting.id] });
+    },
+  });
+
+  const setAmount = (activityId: string, value: string) =>
+    setLocal((s) => ({ ...s, amounts: { ...s.amounts, [activityId]: value } }));
+  const setAttendance = (a: AttendanceStatus) => setLocal((s) => ({ ...s, attendance: a }));
+
+  const handleSave = async (andNext: boolean) => {
+    await saveMutation.mutateAsync();
+    if (andNext) onSavedAdvance();
+  };
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setOpen} asChild>
+      <div
+        className={cn(
+          "rounded-xl border bg-card transition-all",
+          isOpen ? "border-primary/30 shadow-sm" : "border-border hover:border-primary/20",
+        )}
+      >
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold">
+                {initials(member.user.full_name)}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{member.user.full_name}</p>
+                <p className="truncate text-xs text-muted-foreground">{member.user.email}</p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {local.attendance && (
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                    ATTENDANCE_PILLS[local.attendance],
+                  )}
+                >
+                  {t(local.attendance)}
+                </span>
+              )}
+              {memberTotal > 0 && (
+                <span className="text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                  +{fmt.currency(memberTotal)}
+                </span>
+              )}
+              {dirty && canEdit && (
+                <Badge variant="warning" className="text-[10px]">
+                  {t("unsaved")}
+                </Badge>
+              )}
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 text-muted-foreground transition-transform",
+                  isOpen && "rotate-180",
+                )}
+              />
+            </div>
+          </button>
+        </CollapsibleTrigger>
+
+        <CollapsibleContent className="space-y-4 border-t border-border/60 px-4 py-4">
+          {/* Attendance */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("attendance")}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {ATTENDANCES.map((a) => {
+                const active = local.attendance === a;
+                return (
+                  <button
+                    key={a}
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() => setAttendance(a)}
+                    className={cn(
+                      "rounded-full px-3 py-1 text-xs font-medium transition-all",
+                      active
+                        ? ATTENDANCE_PILLS[a] + " ring-2 ring-offset-1 ring-current"
+                        : "bg-muted text-muted-foreground hover:bg-accent",
+                      !canEdit && "cursor-not-allowed opacity-60",
+                    )}
+                  >
+                    {t(a)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Activities */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("activities")}
+            </p>
+            {activities.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border px-3 py-3 text-center text-sm text-muted-foreground">
+                {t("noActivities")}
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {activities.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: a.color || "var(--primary)" }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm">{a.name}</span>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      disabled={!canEdit}
+                      value={local.amounts[a.id] ?? ""}
+                      onChange={(e) => setAmount(a.id, e.target.value)}
+                      placeholder="0"
+                      className="h-8 w-28 text-right text-sm"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer actions */}
+          {canEdit && (
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <p className="text-xs text-muted-foreground">
+                {t("memberTotal")}:{" "}
+                <span className="font-semibold tabular-nums text-foreground">
+                  {fmt.currency(memberTotal)}
+                </span>
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={saveMutation.isPending || !dirty}
+                  onClick={() => handleSave(false)}
+                  className="gap-1.5"
+                >
+                  {saveMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Save className="h-3.5 w-3.5" />
+                  )}
+                  {dirty ? t("addEntry") : t("saved")}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={saveMutation.isPending}
+                  onClick={() => handleSave(true)}
+                  className="gap-1.5"
+                >
+                  {saveMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {t("saveAndNext")}
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
   );
 }

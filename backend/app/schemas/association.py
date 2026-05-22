@@ -1,15 +1,35 @@
-"""Pydantic schemas for Association."""
+"""Pydantic schemas for Association.
+
+`config` (JSONB) holds the operational settings the admin tunes. Expected shape
+(all keys optional — the settings UI patches per section):
+
+    {
+      "tontine":       {contribution_amount, frequency, cycle_duration_months,
+                        participants_count, allocation_method},
+      "social_fund":   {contribution_amount, conditions,
+                        events: {death, illness, marriage, birth}},
+      "payments":      {cash, mtn_momo, orange_money, bank_transfer},   # bool
+      "meetings":      {frequency, mode, quorum, auto_notify},
+      "notifications": {contribution_reminder, meeting, penalty,
+                        tour_allocation, birthday, loan_due},           # bool
+    }
+"""
 from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from app.models.association import AssociationType
 
 
 class AssociationBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=255)
     slug: str = Field(..., min_length=2, max_length=100, pattern=r"^[a-z0-9-]+$")
     description: Optional[str] = Field(None, max_length=1000)
+    type: AssociationType = AssociationType.ASSOCIATION
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(None, max_length=30)
     currency: str = Field("XAF", max_length=3)
     timezone: str = Field("Africa/Douala", max_length=50)
     address: Optional[str] = Field(None, max_length=500)
@@ -25,6 +45,9 @@ class AssociationCreate(AssociationBase):
 class AssociationUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
+    type: Optional[AssociationType] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(None, max_length=30)
     currency: Optional[str] = Field(None, max_length=3)
     timezone: Optional[str] = Field(None, max_length=50)
     address: Optional[str] = Field(None, max_length=500)
@@ -41,6 +64,9 @@ class AssociationOut(BaseModel):
     name: str
     slug: str
     description: Optional[str]
+    type: AssociationType
+    email: Optional[str]
+    phone: Optional[str]
     logo_url: Optional[str]
     primary_color: str
     currency: str

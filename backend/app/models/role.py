@@ -31,9 +31,20 @@ class RoleScope(str, Enum):
 
 
 class MembershipStatus(str, Enum):
+    """Cycle de vie technique de l'adhésion."""
+
     ACTIVE = "active"
     SUSPENDED = "suspended"
     RESIGNED = "resigned"
+
+
+class MemberCategory(str, Enum):
+    """Catégorie d'adhérent — paramétrable par l'admin d'association."""
+
+    ACTIVE = "active"        # membre actif
+    HONORARY = "honorary"    # membre d'honneur
+    FOUNDER = "founder"      # membre fondateur
+    SUSPENDED = "suspended"  # membre suspendu
 
 
 # ───────────────────────────────────────────────────
@@ -175,6 +186,13 @@ class Membership(BaseModel):
     status: Mapped[MembershipStatus] = mapped_column(
         SQLEnum(MembershipStatus, name="membership_status"),
         default=MembershipStatus.ACTIVE,
+        nullable=False,
+    )
+
+    # Catégorie d'adhérent (actif / honneur / fondateur / suspendu)
+    category: Mapped[MemberCategory] = mapped_column(
+        SQLEnum(MemberCategory, name="member_category"),
+        default=MemberCategory.ACTIVE,
         nullable=False,
     )
 

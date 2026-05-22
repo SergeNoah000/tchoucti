@@ -183,6 +183,20 @@ export const meetingsApi = {
     (await api.patch(`/meetings/${id}/entries/${entryId}`, payload)).data,
   voidEntry: async (id: string, entryId: string) =>
     (await api.delete(`/meetings/${id}/entries/${entryId}`)).data,
+  /** Bulk-save one member's whole meeting record (collapse-close flow). */
+  saveMember: async (
+    id: string,
+    payload: {
+      membership_id: string;
+      attendance?: string;
+      attendance_notes?: string;
+      excuse_reason?: string;
+      entries: Array<{ activity_id: string; amount: number; notes?: string }>;
+    },
+  ) => (await api.post(`/meetings/${id}/member-save`, payload)).data,
+  /** Pre-generate N future PLANNED meetings from the association cadence. */
+  generate: async (payload: { association_id: string; count?: number; start_from?: string }) =>
+    (await api.post("/meetings/generate", payload)).data,
 };
 
 export const activitiesApi = {
@@ -209,4 +223,87 @@ export const membersApi = {
   update: async (id: string, payload: Record<string, unknown>) =>
     (await api.patch(`/memberships/${id}`, payload)).data,
   remove: async (id: string) => (await api.delete(`/memberships/${id}`)).data,
+};
+
+export const tontinesApi = {
+  list: async (associationId: string) =>
+    (await api.get("/tontines", { params: { association_id: associationId } })).data,
+  get: async (id: string) => (await api.get(`/tontines/${id}`)).data,
+  create: async (payload: {
+    association_id: string;
+    name: string;
+    description?: string;
+    round_amount: number;
+    start_date: string;
+    /** Each round = a list of beneficiaries who share that round's pot. */
+    rounds: Array<{
+      beneficiaries: Array<{ membership_id: string; share_parts?: number }>;
+    }>;
+    shuffle?: boolean;
+  }) => (await api.post("/tontines", payload)).data,
+  payout: async (cycleId: string, roundId: string) =>
+    (await api.post(`/tontines/${cycleId}/rounds/${roundId}/payout`, {})).data,
+  cancel: async (cycleId: string) => (await api.post(`/tontines/${cycleId}/cancel`, {})).data,
+};
+
+export const financeApi = {
+  treasury: async (associationId: string) =>
+    (await api.get("/finance/treasury", { params: { association_id: associationId } })).data,
+  movements: async (
+    associationId: string,
+    params?: { fund_id?: string; direction?: string },
+  ) =>
+    (await api.get("/finance/movements", { params: { association_id: associationId, ...params } }))
+      .data,
+  createMovement: async (payload: {
+    association_id: string;
+    direction: string;
+    amount: number;
+    fund_id: string;
+    to_fund_id?: string;
+    occurred_on: string;
+    description?: string;
+  }) => (await api.post("/finance/movements", payload)).data,
+  voidMovement: async (id: string, reason: string) =>
+    (await api.post(`/finance/movements/${id}/void`, { reason })).data,
+};
+
+export const socialAidApi = {
+  list: async (associationId: string, status?: string) =>
+    (await api.get("/social-aid", { params: { association_id: associationId, status } })).data,
+  get: async (id: string) => (await api.get(`/social-aid/${id}`)).data,
+  declare: async (payload: {
+    association_id: string;
+    beneficiary_membership_id: string;
+    kind: string;
+    title: string;
+    description?: string;
+    event_date?: string;
+  }) => (await api.post("/social-aid", payload)).data,
+  approve: async (id: string, approvedAmount?: number) =>
+    (await api.post(`/social-aid/${id}/approve`, { approved_amount: approvedAmount })).data,
+  reject: async (id: string, reason: string) =>
+    (await api.post(`/social-aid/${id}/reject`, { reason })).data,
+  payout: async (id: string) => (await api.post(`/social-aid/${id}/payout`, {})).data,
+};
+
+export const loansApi = {
+  list: async (associationId: string, status?: string) =>
+    (await api.get("/loans", { params: { association_id: associationId, status } })).data,
+  get: async (id: string) => (await api.get(`/loans/${id}`)).data,
+  request: async (payload: {
+    association_id: string;
+    borrower_membership_id: string;
+    principal: number;
+    duration_months: number;
+    interest_rate_pct: number;
+    late_fee_pct?: number;
+    purpose?: string;
+  }) => (await api.post("/loans", payload)).data,
+  approve: async (id: string) => (await api.post(`/loans/${id}/approve`, {})).data,
+  reject: async (id: string, reason: string) =>
+    (await api.post(`/loans/${id}/reject`, { reason })).data,
+  disburse: async (id: string) => (await api.post(`/loans/${id}/disburse`, {})).data,
+  repay: async (id: string, amount: number) =>
+    (await api.post(`/loans/${id}/repay`, { amount })).data,
 };

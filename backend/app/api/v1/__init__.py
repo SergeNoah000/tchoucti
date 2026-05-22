@@ -11,6 +11,10 @@ from app.api.v1 import (
     activities,
     users,
     invitations,
+    tontines,
+    finance,
+    social_aid,
+    loans,
 )
 
 api_router = APIRouter()
@@ -33,4 +37,16 @@ api_router.include_router(roles.router, tags=["roles"])
 # Phase 2 — Meetings & Activities
 api_router.include_router(meetings.router, prefix="/meetings", tags=["meetings"])
 api_router.include_router(activities.router, prefix="/activities", tags=["activities"])
+
+# Tontine
+api_router.include_router(tontines.router, prefix="/tontines", tags=["tontines"])
+
+# Finance
+api_router.include_router(finance.router, prefix="/finance", tags=["finance"])
+
+# Social aid
+api_router.include_router(social_aid.router, prefix="/social-aid", tags=["social-aid"])
+
+# Loans
+api_router.include_router(loans.router, prefix="/loans", tags=["loans"])
 

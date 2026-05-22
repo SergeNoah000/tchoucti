@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python3 -c ' *)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(curl -s -o /dev/null -w \"/dashboard/social-aid: %{http_code}\\\\n\" http://localhost:13000/dashboard/social-aid)",
+      "Bash(git add *)"
     ]
   }
 }

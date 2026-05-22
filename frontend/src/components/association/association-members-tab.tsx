@@ -41,6 +41,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -55,7 +57,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { membersApi } from "@/lib/api";
-import type { Membership } from "@/lib/types";
+import type { MemberCategory, Membership } from "@/lib/types";
 import { useFormatters } from "@/lib/format";
 import { initials } from "@/lib/utils";
 
@@ -67,6 +69,9 @@ const ASSIGNABLE_ROLES = [
   "treasurer",
   "censor",
 ] as const;
+
+/** Member categories, in display order. */
+const MEMBER_CATEGORIES: MemberCategory[] = ["active", "honorary", "founder", "suspended"];
 
 function extractError(err: unknown): string | undefined {
   if (err && typeof err === "object" && "response" in err) {
@@ -84,6 +89,7 @@ export function AssociationMembersTab({ associationId, canManage }: AssociationM
   const t = useTranslations("member");
   const tCommon = useTranslations("common");
   const tRoles = useTranslations("roles");
+  const tCat = useTranslations("memberCategory");
   const fmt = useFormatters();
   const queryClient = useQueryClient();
 
@@ -106,6 +112,16 @@ export function AssociationMembersTab({ associationId, canManage }: AssociationM
     onSuccess: (_d, vars) => {
       toast.success(vars.status === "active" ? t("reactivated") : t("suspended"));
       setSuspendTarget(null);
+      refresh();
+    },
+    onError: (err) => toast.error(extractError(err) ?? tCommon("noData")),
+  });
+
+  const categoryMutation = useMutation({
+    mutationFn: ({ id, category }: { id: string; category: MemberCategory }) =>
+      membersApi.update(id, { category }),
+    onSuccess: () => {
+      toast.success(t("categoryUpdated"));
       refresh();
     },
     onError: (err) => toast.error(extractError(err) ?? tCommon("noData")),
@@ -181,6 +197,11 @@ export function AssociationMembersTab({ associationId, canManage }: AssociationM
                           {tRolesSafe(tRoles, r.code)}
                         </Badge>
                       ))}
+                      {!pending && (
+                        <Badge variant="brand" className="hidden sm:inline-flex text-[10px]">
+                          {tCat(m.category)}
+                        </Badge>
+                      )}
                       {pending ? (
                         <Badge variant="warning" className="gap-1">
                           <Clock className="h-3 w-3" />
@@ -217,6 +238,22 @@ export function AssociationMembersTab({ associationId, canManage }: AssociationM
                                 {t("reactivate")}
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel className="text-xs text-muted-foreground">
+                              {t("category")}
+                            </DropdownMenuLabel>
+                            {MEMBER_CATEGORIES.map((cat) => (
+                              <DropdownMenuItem
+                                key={cat}
+                                disabled={m.category === cat}
+                                onClick={() => categoryMutation.mutate({ id: m.id, category: cat })}
+                              >
+                                <Check
+                                  className={`mr-2 h-4 w-4 ${m.category === cat ? "opacity-100" : "opacity-0"}`}
+                                />
+                                {tCat(cat)}
+                              </DropdownMenuItem>
+                            ))}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       )}

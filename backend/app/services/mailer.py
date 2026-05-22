@@ -96,6 +96,78 @@ def _wrap_html(body_html: str) -> str:
 </body></html>"""
 
 
+async def send_meeting_reminder_email(
+    *,
+    to: str,
+    member_name: Optional[str],
+    association_name: str,
+    meeting_title: str,
+    meeting_date: str,
+    location: Optional[str],
+    days_before: int,
+    lang: str = "fr",
+) -> None:
+    """Reminder for an upcoming meeting. `days_before` shapes the salutation.
+
+    Templates are inline / language-keyed (no Jinja). Tone differs slightly
+    between the day-of nudge (urgent) and the week-before heads-up (calm).
+    """
+    greet_name = member_name or ("Bonjour" if lang == "fr" else "Hello")
+
+    if lang == "en":
+        if days_before <= 0:
+            subject = f"Today: {meeting_title} — {association_name}"
+            lead = f"Reminder — today's meeting is <strong>{meeting_title}</strong> at <strong>{meeting_date}</strong>."
+        elif days_before == 1:
+            subject = f"Tomorrow: {meeting_title} — {association_name}"
+            lead = f"See you tomorrow for <strong>{meeting_title}</strong> on <strong>{meeting_date}</strong>."
+        else:
+            subject = f"In {days_before} days: {meeting_title} — {association_name}"
+            lead = f"Heads-up: <strong>{meeting_title}</strong> is scheduled in {days_before} days, on <strong>{meeting_date}</strong>."
+        where = f"<p style='margin:0 0 8px;'>📍 {location}</p>" if location else ""
+        signoff = "See you there."
+    elif lang == "de":
+        if days_before <= 0:
+            subject = f"Heute: {meeting_title} — {association_name}"
+            lead = f"Erinnerung — heute findet <strong>{meeting_title}</strong> am <strong>{meeting_date}</strong> statt."
+        elif days_before == 1:
+            subject = f"Morgen: {meeting_title} — {association_name}"
+            lead = f"Bis morgen zu <strong>{meeting_title}</strong> am <strong>{meeting_date}</strong>."
+        else:
+            subject = f"In {days_before} Tagen: {meeting_title} — {association_name}"
+            lead = f"Hinweis: <strong>{meeting_title}</strong> ist in {days_before} Tagen, am <strong>{meeting_date}</strong>."
+        where = f"<p style='margin:0 0 8px;'>📍 {location}</p>" if location else ""
+        signoff = "Bis bald."
+    else:  # fr (default)
+        if days_before <= 0:
+            subject = f"Aujourd'hui : {meeting_title} — {association_name}"
+            lead = f"Rappel — la séance <strong>{meeting_title}</strong> a lieu aujourd'hui, le <strong>{meeting_date}</strong>."
+        elif days_before == 1:
+            subject = f"Demain : {meeting_title} — {association_name}"
+            lead = f"À demain pour <strong>{meeting_title}</strong>, le <strong>{meeting_date}</strong>."
+        else:
+            subject = f"Dans {days_before} jours : {meeting_title} — {association_name}"
+            lead = f"Pour information, <strong>{meeting_title}</strong> est prévue dans {days_before} jours, le <strong>{meeting_date}</strong>."
+        where = f"<p style='margin:0 0 8px;'>📍 {location}</p>" if location else ""
+        signoff = "À très vite."
+
+    text_body = (
+        f"{greet_name},\n\n"
+        f"{meeting_title} — {association_name}\n"
+        f"{meeting_date}\n"
+        + (f"Lieu : {location}\n" if location else "")
+        + f"\n{signoff}\n"
+    )
+    html_body = _wrap_html(f"""
+      <p style="margin:0 0 12px;font-size:18px;font-weight:600;">{greet_name},</p>
+      <p style="margin:0 0 12px;">{lead}</p>
+      {where}
+      <p style="margin:16px 0 0;color:#64748b;">— {association_name}</p>
+    """)
+
+    await send_email(to=to, subject=subject, text_body=text_body, html_body=html_body)
+
+
 async def send_invitation_email(
     *,
     to: str,

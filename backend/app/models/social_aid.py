@@ -28,16 +28,13 @@ if TYPE_CHECKING:
 
 
 class SocialAidCaseKind(str, Enum):
-    """Catégories pré-définies (barème dans association.config.social_aid_amounts)."""
+    """Catégories d'événements — barème dans `association.config.social_fund.events`."""
 
-    DEATH_PARENT = "death_parent"
-    DEATH_SPOUSE = "death_spouse"
-    DEATH_CHILD = "death_child"
-    DEATH_MEMBER = "death_member"           # décès du membre lui-même → aide à la famille
-    HOSPITALISATION = "hospitalisation"
-    ILLNESS = "illness"
-    SINISTER = "sinister"                    # vol / incendie / accident matériel
-    OTHER = "other"
+    DEATH = "death"        # décès
+    ILLNESS = "illness"    # maladie
+    MARRIAGE = "marriage"  # mariage
+    BIRTH = "birth"        # naissance
+    OTHER = "other"        # autre (montant fixé manuellement)
 
 
 class SocialAidCaseStatus(str, Enum):

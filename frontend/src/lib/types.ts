@@ -29,19 +29,74 @@ export interface Groupement {
   updated_at: string;
 }
 
+export type AssociationType = "tontine" | "mutuelle" | "cooperative" | "association" | "autre";
+
+export type SettingsFrequency = "weekly" | "biweekly" | "monthly" | "quarterly";
+export type TontineAllocation =
+  | "fixed_order"
+  | "random_draw"
+  | "auction"
+  | "urgency_priority"
+  | "member_vote";
+export type MeetingMode = "physical" | "virtual" | "hybrid";
+
+/** Operational settings stored in `Association.config` (JSONB). All optional. */
+export interface AssociationConfig {
+  tontine?: {
+    contribution_amount?: number;
+    frequency?: SettingsFrequency;
+    cycle_duration_months?: number;
+    participants_count?: number;
+    allocation_method?: TontineAllocation;
+  };
+  social_fund?: {
+    contribution_amount?: number;
+    conditions?: string;
+    events?: {
+      death?: number;
+      illness?: number;
+      marriage?: number;
+      birth?: number;
+    };
+  };
+  payments?: {
+    cash?: boolean;
+    mtn_momo?: boolean;
+    orange_money?: boolean;
+    bank_transfer?: boolean;
+  };
+  meetings?: {
+    frequency?: SettingsFrequency;
+    mode?: MeetingMode;
+    quorum?: number;
+    auto_notify?: boolean;
+  };
+  notifications?: {
+    contribution_reminder?: boolean;
+    meeting?: boolean;
+    penalty?: boolean;
+    tour_allocation?: boolean;
+    birthday?: boolean;
+    loan_due?: boolean;
+  };
+}
+
 export interface Association {
   id: UUID;
   groupement_id: UUID;
   name: string;
   slug: string;
   description?: string | null;
+  type: AssociationType;
+  email?: string | null;
+  phone?: string | null;
   logo_url?: string | null;
   primary_color: string;
   currency: string;
   timezone: string;
   address?: string | null;
   city?: string | null;
-  config: Record<string, unknown>;
+  config: AssociationConfig;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -76,6 +131,9 @@ export type RoleCode =
 
 export type MembershipStatus = "active" | "suspended" | "resigned";
 
+/** Member category — tunable by the association admin. */
+export type MemberCategory = "active" | "honorary" | "founder" | "suspended";
+
 /** Brief user shape nested in a membership (backend UserBrief). */
 export interface UserBrief {
   id: UUID;
@@ -103,6 +161,7 @@ export interface Membership {
   association_id: UUID;
   member_number?: string | null;
   status: MembershipStatus;
+  category: MemberCategory;
   joined_at: string;
   left_at?: string | null;
   cumulative_contributions: number;
@@ -115,6 +174,51 @@ export interface Membership {
   activation_url?: string | null;
   /** Populated only by the groupement-wide members roll-up. */
   association_name?: string | null;
+}
+
+// ── Tontine ──────────────────────────────────────────────────────────────
+
+export type TontineCycleStatus = "draft" | "active" | "completed" | "cancelled";
+export type TontineRoundStatus = "pending" | "collecting" | "paid_out" | "skipped";
+
+export interface TontineBeneficiary {
+  membership_id: UUID;
+  name?: string | null;
+  share_amount: number;
+  share_parts: number;
+}
+
+export interface TontineRound {
+  id: UUID;
+  round_number: number;
+  scheduled_date?: string | null;
+  paid_out_date?: string | null;
+  /** A round can be split among multiple beneficiaries (shared pot). */
+  beneficiaries: TontineBeneficiary[];
+  expected_amount: number;
+  collected_amount: number;
+  paid_out_amount: number;
+  status: TontineRoundStatus;
+}
+
+export interface TontineCycle {
+  id: UUID;
+  association_id: UUID;
+  name: string;
+  description?: string | null;
+  round_amount: number;
+  rounds_count: number;
+  current_round_number: number;
+  start_date: string;
+  end_date?: string | null;
+  order_strategy: string;
+  status: TontineCycleStatus;
+  created_at: string;
+}
+
+export interface TontineCycleDetail extends TontineCycle {
+  rounds: TontineRound[];
+  pot_amount: number;
 }
 
 export type PermissionCode =
@@ -167,13 +271,43 @@ export interface Activity {
   updated_at: string;
 }
 
+// ── Finance ──────────────────────────────────────────────────────────────
+
+export type FundKind = "general" | "tontine" | "insurance" | "savings" | "project" | "external";
+export type MovementDirection = "in" | "out" | "xfer";
+
 export interface Fund {
   id: UUID;
-  treasury_id: UUID;
-  code: string;
+  kind: FundKind;
+  ref_key: string;
   name: string;
+  description?: string | null;
   balance: number;
+  is_locked: boolean;
   is_system: boolean;
+}
+
+export interface Treasury {
+  id: UUID;
+  association_id: UUID;
+  balance: number;
+  currency: string;
+  is_locked: boolean;
+  funds: Fund[];
+}
+
+export interface TreasuryMovement {
+  id: UUID;
+  direction: MovementDirection;
+  amount: number;
+  balance_after: number;
+  occurred_on: string;
+  source_type: string;
+  source_id?: UUID | null;
+  related_membership_id?: UUID | null;
+  description?: string | null;
+  is_voided: boolean;
+  created_at: string;
 }
 
 export interface Meeting {
@@ -284,4 +418,118 @@ export interface InvitationPeek {
   groupement_name?: string | null;
   expires_at: string;
   invited_by_name?: string | null;
+}
+
+// ── Social aid ───────────────────────────────────────────────────────────
+
+export type SocialAidKind = "death" | "illness" | "marriage" | "birth" | "other";
+export type SocialAidStatus =
+  | "requested"
+  | "reviewing"
+  | "approved"
+  | "paid"
+  | "rejected"
+  | "cancelled";
+
+export interface SocialAidPayout {
+  id: UUID;
+  paid_on: string;
+  amount: number;
+  movement_id?: UUID | null;
+  notes?: string | null;
+}
+
+export interface SocialAidCase {
+  id: UUID;
+  association_id: UUID;
+  beneficiary_membership_id: UUID;
+  beneficiary_name?: string | null;
+  reference: string;
+  kind: SocialAidKind;
+  status: SocialAidStatus;
+  title: string;
+  description?: string | null;
+  event_date?: string | null;
+  requested_on: string;
+  decided_on?: string | null;
+  requested_amount?: number | null;
+  approved_amount: number;
+  paid_amount: number;
+  rejection_reason?: string | null;
+  created_at: string;
+}
+
+export interface SocialAidCaseDetail extends SocialAidCase {
+  payouts: SocialAidPayout[];
+}
+
+// ── Loans ────────────────────────────────────────────────────────────────
+
+export type LoanStatus =
+  | "requested"
+  | "approved"
+  | "disbursed"
+  | "repaying"
+  | "paid"
+  | "rejected"
+  | "defaulted"
+  | "cancelled";
+
+export type LoanInstallmentStatus = "pending" | "partially_paid" | "paid" | "late" | "waived";
+
+export interface LoanInstallment {
+  id: UUID;
+  number: number;
+  due_on: string;
+  principal_part: number;
+  interest_part: number;
+  expected_amount: number;
+  paid_principal: number;
+  paid_interest: number;
+  paid_late_fee: number;
+  paid_on?: string | null;
+  status: LoanInstallmentStatus;
+}
+
+export interface LoanRepayment {
+  id: UUID;
+  paid_on: string;
+  total_paid: number;
+  principal: number;
+  interest: number;
+  late_fee: number;
+  movement_id?: UUID | null;
+}
+
+export interface Loan {
+  id: UUID;
+  association_id: UUID;
+  borrower_membership_id: UUID;
+  borrower_name?: string | null;
+  reference: string;
+  principal: number;
+  /** Decimal — serialised as a string by the backend. */
+  interest_rate_pct: string;
+  late_fee_pct: string;
+  duration_months: number;
+  total_interest: number;
+  total_due: number;
+  installment_amount: number;
+  paid_principal: number;
+  paid_interest: number;
+  paid_late_fees: number;
+  remaining_balance: number;
+  requested_on: string;
+  approved_on?: string | null;
+  disbursed_on?: string | null;
+  first_due_on?: string | null;
+  last_due_on?: string | null;
+  status: LoanStatus;
+  purpose?: string | null;
+  created_at: string;
+}
+
+export interface LoanDetail extends Loan {
+  installments: LoanInstallment[];
+  repayments: LoanRepayment[];
 }

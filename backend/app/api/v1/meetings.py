@@ -1,5 +1,5 @@
 """Meetings CRUD + lifecycle (open/close) + attendances + entries."""
-from datetime import datetime, timezone
+from datetime import date as date_cls, datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
@@ -10,8 +10,11 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
+from app.models.finance import FundKind, MovementDirection
 from app.models.meeting import (
     Activity,
+    ActivityType,
+    AttendanceStatus,
     EntryStatus,
     Meeting,
     MeetingActivityEntry,
@@ -19,6 +22,21 @@ from app.models.meeting import (
     MeetingStatus,
 )
 from app.models.user import User
+from app.services.finance import Allocation, get_or_create_treasury, post_movement
+from app.services import planning
+
+# Which fund each meeting activity type feeds when the meeting is closed.
+_ACTIVITY_FUND: dict[ActivityType, FundKind] = {
+    ActivityType.MONTHLY_CONTRIBUTION: FundKind.GENERAL,
+    ActivityType.INSURANCE_CONTRIBUTION: FundKind.INSURANCE,
+    ActivityType.TONTINE_CONTRIBUTION: FundKind.TONTINE,
+    ActivityType.LOAN_REPAYMENT: FundKind.GENERAL,
+    ActivityType.PENALTY: FundKind.GENERAL,
+    ActivityType.SAVINGS_DEPOSIT: FundKind.SAVINGS,
+    ActivityType.EXCEPTIONAL_DONATION: FundKind.GENERAL,
+    ActivityType.PROJECT_CONTRIBUTION: FundKind.GENERAL,
+    ActivityType.OTHER: FundKind.GENERAL,
+}
 from app.schemas.meeting import (
     AttendanceOut,
     AttendanceUpsert,
@@ -27,6 +45,9 @@ from app.schemas.meeting import (
     EntryUpdate,
     MeetingCreate,
     MeetingDetail,
+    MeetingGenerateRequest,
+    MeetingGenerateResult,
+    MemberSavePayload,
     MeetingOut,
     MeetingUpdate,
 )
@@ -257,23 +278,105 @@ async def close_meeting(
         raise HTTPException(status_code=409, detail=f"Meeting is not ongoing (status={m.status.value})")
 
     now = datetime.now(timezone.utc)
-    total_in = 0
 
-    # Validate all DRAFT entries
+    # Validate all DRAFT entries → RECORDED.
     for entry in m.entries:
         if entry.status == EntryStatus.DRAFT:
             entry.status = EntryStatus.RECORDED
             entry.recorded_by_id = current_user.id
             entry.recorded_at = now
-            total_in += entry.amount
+
+    # Post each non-voided entry to the treasury (one IN movement per entry,
+    # routed to the fund matching its activity type). Idempotent: entries that
+    # already carry a movement_id are skipped.
+    treasury = await get_or_create_treasury(db, assoc)
+    funds_by_kind = {f.kind: f for f in treasury.funds}
+
+    act_res = await db.execute(
+        select(Activity).where(Activity.association_id == m.association_id)
+    )
+    activity_type: dict[UUID, ActivityType] = {a.id: a.type for a in act_res.scalars().all()}
+
+    total_in = 0
+    for entry in m.entries:
+        if entry.status == EntryStatus.VOIDED or entry.movement_id is not None:
+            continue
+        if entry.amount <= 0:
+            continue
+        kind = _ACTIVITY_FUND.get(activity_type.get(entry.activity_id), FundKind.GENERAL)
+        fund = funds_by_kind.get(kind) or funds_by_kind.get(FundKind.GENERAL)
+        if fund is None:
+            continue
+        movement = await post_movement(
+            db,
+            treasury=treasury,
+            direction=MovementDirection.IN,
+            amount=entry.amount,
+            allocations=[Allocation(fund=fund, is_credit=True, amount=entry.amount)],
+            occurred_on=m.scheduled_on,
+            source_type="meeting_entry",
+            source_id=entry.id,
+            recorded_by_id=current_user.id,
+            related_membership_id=entry.membership_id,
+            description=f"{m.title}",
+            commit=False,
+        )
+        entry.movement_id = movement.id
+        total_in += entry.amount
 
     m.status = MeetingStatus.CLOSED
     m.closed_at = now
     m.total_in = total_in
 
+    # Rolling auto-extension: if the future-PLANNED window has fallen below the
+    # configured horizon, top it up by one. Cheap (one row added).
+    await _auto_extend_planning(db, assoc)
+
     await db.commit()
     await db.refresh(m)
     return _meeting_to_out(m)
+
+
+async def _auto_extend_planning(db: AsyncSession, assoc: Association) -> None:
+    """Maintain the rolling window of N future PLANNED meetings.
+
+    Called after closing a meeting: if `planned_count < horizon`, append exactly
+    one new meeting at the cadence date that follows the latest known one.
+    Schedules in the past (e.g. cadence wasn't configured before) are skipped.
+    """
+    today = date_cls.today()
+    res = await db.execute(
+        select(Meeting).where(
+            Meeting.association_id == assoc.id,
+            Meeting.status == MeetingStatus.PLANNED,
+            Meeting.scheduled_on >= today,
+        )
+    )
+    planned_future = list(res.scalars().all())
+    target = planning.horizon(assoc)
+    if len(planned_future) >= target:
+        return
+
+    last_res = await db.execute(
+        select(Meeting)
+        .where(Meeting.association_id == assoc.id)
+        .order_by(Meeting.scheduled_on.desc())
+        .limit(1)
+    )
+    last = last_res.scalar_one_or_none()
+    anchor = last.scheduled_on if last else today
+    nxt = planning.next_date_after(assoc, anchor)
+    if nxt < today:
+        return
+    db.add(
+        Meeting(
+            association_id=assoc.id,
+            title=planning.default_title(assoc, nxt),
+            scheduled_on=nxt,
+            location=planning.default_location(assoc),
+            status=MeetingStatus.PLANNED,
+        )
+    )
 
 
 # ── Attendances ────────────────────────────────────────────────────────────
@@ -457,3 +560,158 @@ async def void_entry(
 
     entry.status = EntryStatus.VOIDED
     await db.commit()
+
+
+# ── Per-member bulk save (collapse-close flow) ─────────────────────────────
+
+
+@router.post("/{meeting_id}/member-save", response_model=MeetingDetail)
+async def save_member(
+    meeting_id: UUID,
+    payload: MemberSavePayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Save a member's full meeting record (attendance + entries) in one call.
+
+    Used by the redesigned séance page: each member is a collapsible row, and
+    closing the collapse fires this endpoint once.
+
+    - Attendance is upserted if `attendance` is provided.
+    - All DRAFT entries for this (meeting, member) are wiped and replaced by
+      the supplied list. RECORDED entries are never touched.
+    """
+    m = await _load_meeting_detail(db, meeting_id)
+    assoc = await _get_assoc_or_404(db, m.association_id)
+    _check_access(current_user, assoc)
+
+    if m.status == MeetingStatus.CLOSED:
+        raise HTTPException(409, "Réunion clôturée — saisies verrouillées")
+    if m.status == MeetingStatus.CANCELLED:
+        raise HTTPException(409, "Réunion annulée")
+
+    now = datetime.now(timezone.utc)
+
+    # ── Attendance ──
+    if payload.attendance is not None:
+        try:
+            new_status = AttendanceStatus(payload.attendance)
+        except ValueError:
+            raise HTTPException(422, f"Statut de présence invalide : '{payload.attendance}'")
+
+        existing_att = next(
+            (a for a in m.attendances if a.membership_id == payload.membership_id), None
+        )
+        if existing_att:
+            existing_att.status = new_status
+            existing_att.notes = payload.attendance_notes
+            existing_att.excuse_reason = payload.excuse_reason
+        else:
+            db.add(
+                MeetingAttendance(
+                    meeting_id=m.id,
+                    membership_id=payload.membership_id,
+                    status=new_status,
+                    notes=payload.attendance_notes,
+                    excuse_reason=payload.excuse_reason,
+                )
+            )
+
+    # ── Entries: wipe drafts, replace with payload ──
+    for entry in m.entries:
+        if entry.membership_id == payload.membership_id and entry.status == EntryStatus.DRAFT:
+            await db.delete(entry)
+    await db.flush()
+
+    for item in payload.entries:
+        if item.amount <= 0:
+            continue
+        db.add(
+            MeetingActivityEntry(
+                meeting_id=m.id,
+                membership_id=payload.membership_id,
+                activity_id=item.activity_id,
+                amount=item.amount,
+                data=item.data,
+                notes=item.notes,
+                status=EntryStatus.DRAFT,
+                recorded_by_id=current_user.id,
+                recorded_at=now,
+            )
+        )
+
+    await db.commit()
+    db.expire_all()
+    m = await _load_meeting_detail(db, meeting_id)
+    return MeetingDetail(
+        **_meeting_to_out(m).model_dump(),
+        attendances=[_attendance_to_out(a) for a in m.attendances],
+        entries=[_entry_to_out(e) for e in m.entries],
+    )
+
+
+# ── Auto-planning ──────────────────────────────────────────────────────────
+
+
+@router.post("/generate", response_model=MeetingGenerateResult, status_code=status.HTTP_201_CREATED)
+async def generate_meetings(
+    payload: MeetingGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pre-generate N future PLANNED meetings from the association cadence.
+
+    Dates already occupied by an existing meeting (any status) are skipped so
+    the endpoint is safe to call again with the same parameters.
+    """
+    assoc = await _get_assoc_or_404(db, payload.association_id)
+    _check_access(current_user, assoc)
+
+    start = payload.start_from
+    if start is None:
+        # Continue after the latest known meeting (or one cadence step from today
+        # if the association has no meetings yet).
+        res = await db.execute(
+            select(Meeting)
+            .where(Meeting.association_id == assoc.id)
+            .order_by(Meeting.scheduled_on.desc())
+            .limit(1)
+        )
+        last = res.scalar_one_or_none()
+        start = planning.next_date_after(assoc, last.scheduled_on if last else None)
+
+    dates = planning.generate_dates(assoc, payload.count, start)
+    if not dates:
+        return MeetingGenerateResult(created=[], skipped_existing=0)
+
+    existing_res = await db.execute(
+        select(Meeting.scheduled_on).where(
+            Meeting.association_id == assoc.id,
+            Meeting.scheduled_on.in_(dates),
+        )
+    )
+    taken = {d for d in existing_res.scalars().all()}
+
+    created: List[Meeting] = []
+    for d in dates:
+        if d in taken:
+            continue
+        m = Meeting(
+            association_id=assoc.id,
+            title=planning.default_title(assoc, d),
+            scheduled_on=d,
+            location=planning.default_location(assoc),
+            status=MeetingStatus.PLANNED,
+            created_by_id=current_user.id,
+        )
+        db.add(m)
+        created.append(m)
+
+    await db.commit()
+    for m in created:
+        await db.refresh(m)
+
+    return MeetingGenerateResult(
+        created=[_meeting_to_out(m) for m in created],
+        skipped_existing=len(taken),
+    )

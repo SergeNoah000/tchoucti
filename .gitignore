@@ -53,3 +53,7 @@ backups/
 coverage/
 .coverage
 htmlcov/
+
+# Celery beat runtime state
+backend/celerybeat-schedule
+backend/celerybeat-schedule.*

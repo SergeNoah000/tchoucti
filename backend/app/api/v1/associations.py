@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
+from app.models.role import Membership, MembershipStatus
 from app.models.user import User
 from app.schemas.association import AssociationCreate, AssociationOut, AssociationUpdate
 
@@ -37,10 +38,22 @@ async def list_associations(
     if current_user.is_super_admin:
         if groupement_id:
             stmt = stmt.where(Association.groupement_id == groupement_id)
-    else:
+    elif current_user.is_groupement_admin:
+        # Group admin oversees every association of their groupement.
         if not current_user.groupement_id:
             return []
         stmt = stmt.where(Association.groupement_id == current_user.groupement_id)
+    else:
+        # Association admin / regular member: only associations they actually
+        # belong to (silo at the association grain).
+        sub = (
+            select(Membership.association_id)
+            .where(
+                Membership.user_id == current_user.id,
+                Membership.status == MembershipStatus.ACTIVE,
+            )
+        )
+        stmt = stmt.where(Association.id.in_(sub))
 
     stmt = stmt.order_by(Association.name)
     result = await db.execute(stmt)

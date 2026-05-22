@@ -127,6 +127,62 @@ services:
     command: sh -c "python -m app.db.init_db && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   # ============================================
+  # Celery worker — meeting reminders + background jobs
+  # ============================================
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tchoucti_worker
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tchoucti_user}:${POSTGRES_PASSWORD:-tchoucti_dev_password}@postgres:5432/${POSTGRES_DB:-tchoucti_db}
+      REDIS_URL: redis://redis:6379/0
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_TLS: ${SMTP_TLS:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@tchoucti.cm}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Tchoucti}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:13000}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+
+  # ============================================
+  # Celery beat — schedules periodic tasks (every 15 min: reminders)
+  # ============================================
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tchoucti_beat
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tchoucti_user}:${POSTGRES_PASSWORD:-tchoucti_dev_password}@postgres:5432/${POSTGRES_DB:-tchoucti_db}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+    depends_on:
+      worker:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    command: celery -A app.worker.celery_app beat --loglevel=info
+
+  # ============================================
   # Frontend Next.js
   # ============================================
   frontend:

@@ -22,7 +22,13 @@ from app.models.invitation import (
     InvitationStatus,
     generate_invitation_token,
 )
-from app.models.role import Membership, MembershipRole, MembershipStatus, Role
+from app.models.role import (
+    MemberCategory,
+    Membership,
+    MembershipRole,
+    MembershipStatus,
+    Role,
+)
 from app.models.user import User, UserType
 from app.schemas.membership import MembershipCreate, MembershipOut, MembershipUpdate
 
@@ -71,6 +77,7 @@ def _membership_to_out(m: Membership) -> MembershipOut:
         association_id=m.association_id,
         member_number=m.member_number,
         status=m.status.value if hasattr(m.status, "value") else m.status,
+        category=m.category.value if hasattr(m.category, "value") else m.category,
         joined_at=m.joined_at,
         left_at=m.left_at,
         cumulative_contributions=m.cumulative_contributions,
@@ -255,6 +262,12 @@ async def update_membership(
             m.status = MembershipStatus(payload.status)
         except ValueError:
             raise HTTPException(status_code=422, detail=f"Invalid status '{payload.status}'")
+
+    if payload.category is not None:
+        try:
+            m.category = MemberCategory(payload.category)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"Invalid category '{payload.category}'")
 
     if payload.member_number is not None:
         m.member_number = payload.member_number

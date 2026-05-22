@@ -13,7 +13,6 @@ import {
   Users,
   Calendar,
   MapPin,
-  Coins,
   ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -49,6 +48,7 @@ import {
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { AssociationMembersTab } from "./association-members-tab";
+import { AssociationSettings } from "./association-settings";
 import { associationsApi, membersApi, meetingsApi } from "@/lib/api";
 import type { Association, Meeting, Membership } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
@@ -113,10 +113,6 @@ export function AssociationDetail({ associationId, backHref }: AssociationDetail
       </div>
     );
   }
-
-  const amounts = Object.entries(association.config ?? {}).filter(
-    ([, v]) => typeof v === "number" || typeof v === "string"
-  );
 
   return (
     <div className="space-y-6">
@@ -267,25 +263,9 @@ export function AssociationDetail({ associationId, backHref }: AssociationDetail
           </Card>
         </TabsContent>
 
-        {/* Settings — default amounts */}
+        {/* Settings — full configuration */}
         <TabsContent value="settings" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("defaultAmounts")}</CardTitle>
-              <CardDescription>{t("tabSettings")}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {amounts.length === 0 ? (
-                <EmptyState icon={Coins} title={t("noAmounts")} />
-              ) : (
-                <div className="space-y-0">
-                  {amounts.map(([k, v], i) => (
-                    <InfoRow key={k} label={k} value={String(v)} last={i === amounts.length - 1} />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <AssociationSettings association={association} canManage={canManage} />
         </TabsContent>
       </Tabs>
     </div>

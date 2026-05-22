@@ -29,6 +29,10 @@ email-validator==2.1.0
 python-dotenv==1.0.0
 httpx==0.26.0
 python-slugify==8.0.4
+python-dateutil==2.8.2
+
+# Background tasks (reminders, scheduled jobs)
+celery==5.3.6
 
 # PDF (rapports de séance)
 reportlab==4.0.9

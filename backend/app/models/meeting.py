@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SQLEnum,
     ForeignKey,
+    Integer,
     String,
     UniqueConstraint,
     text,
@@ -318,3 +319,36 @@ class MeetingActivityEntry(BaseModel):
     movement: Mapped[Optional["TreasuryMovement"]] = relationship(
         "TreasuryMovement", foreign_keys=[movement_id]
     )
+
+
+# ───────────────────────────────────────────────────
+# MeetingReminder — one row per (meeting, days_before) sent
+# Purely an idempotency ledger for the Celery reminder task.
+# ───────────────────────────────────────────────────
+class MeetingReminder(BaseModel):
+    """A reminder dispatch for a meeting at a given offset.
+
+    The reminder worker writes one row per (meeting_id, days_before) pair the
+    moment it sends, so the next scan won't double-fire. `recipients_count`
+    records how many emails actually went out (useful for the audit page).
+    """
+
+    __tablename__ = "meeting_reminders"
+    __table_args__ = (
+        UniqueConstraint(
+            "meeting_id", "days_before",
+            name="uq_meeting_reminders_meeting_offset",
+        ),
+    )
+
+    meeting_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("meetings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # 0 = day of meeting, 1 = day before, 7 = a week before, …
+    days_before: Mapped[int] = mapped_column(Integer, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recipients_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

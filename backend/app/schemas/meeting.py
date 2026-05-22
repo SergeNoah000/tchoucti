@@ -161,3 +161,47 @@ class EntryOut(BaseModel):
 class MeetingDetail(MeetingOut):
     attendances: List[AttendanceOut] = []
     entries: List[EntryOut] = []
+
+
+# ── Per-member bulk save (collapse-close flow) ─────────────────────────────
+
+class MemberEntryItem(BaseModel):
+    """One financial entry to save for a member (replaces any prior DRAFT)."""
+
+    activity_id: UUID
+    amount: int = Field(..., gt=0)
+    data: Dict[str, Any] = Field(default_factory=dict)
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
+class MemberSavePayload(BaseModel):
+    """All the data the séance UI captures for one member at once.
+
+    On save:
+      - Attendance is upserted (if provided).
+      - DRAFT entries for this (meeting, member) are wiped and replaced by
+        `entries`. RECORDED entries (after meeting closure) are untouched.
+    """
+
+    membership_id: UUID
+    attendance: Optional[str] = None     # present|absent|excused|late
+    attendance_notes: Optional[str] = Field(None, max_length=500)
+    excuse_reason: Optional[str] = Field(None, max_length=500)
+    entries: List[MemberEntryItem] = Field(default_factory=list)
+
+
+# ── Auto-planning ──────────────────────────────────────────────────────────
+
+class MeetingGenerateRequest(BaseModel):
+    """Bulk-create N future meetings from an association's cadence."""
+
+    association_id: UUID
+    count: int = Field(12, ge=1, le=60)
+    start_from: Optional[date] = None  # first date; None → one cadence step from today
+
+
+class MeetingGenerateResult(BaseModel):
+    """Returned by /meetings/generate — what was created vs skipped."""
+
+    created: List[MeetingOut] = []
+    skipped_existing: int = 0  # dates already covered by an existing meeting

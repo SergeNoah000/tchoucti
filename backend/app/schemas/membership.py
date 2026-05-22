@@ -67,6 +67,7 @@ class MembershipCreate(BaseModel):
 
 class MembershipUpdate(BaseModel):
     status: Optional[str] = None              # active | suspended | resigned
+    category: Optional[str] = None            # active | honorary | founder | suspended
     role_codes: Optional[List[str]] = None
     member_number: Optional[str] = Field(None, max_length=50)
     notes: Optional[str] = Field(None, max_length=1000)
@@ -80,6 +81,7 @@ class MembershipOut(BaseModel):
     association_id: UUID
     member_number: Optional[str]
     status: str
+    category: str = "active"
     joined_at: datetime
     left_at: Optional[datetime]
     cumulative_contributions: int

@@ -1,12 +1,23 @@
 """Association = tenant level 2 (inside a Groupement)."""
 import uuid
+from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint, text
+from sqlalchemy import Boolean, Enum as SQLEnum, ForeignKey, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
+
+
+class AssociationType(str, Enum):
+    """Nature de l'association — choisie par l'admin dans les paramètres."""
+
+    TONTINE = "tontine"
+    MUTUELLE = "mutuelle"
+    COOPERATIVE = "cooperative"
+    ASSOCIATION = "association"
+    AUTRE = "autre"
 
 if TYPE_CHECKING:
     from app.models.finance import Treasury
@@ -31,6 +42,17 @@ class Association(BaseModel):
     description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     primary_color: Mapped[str] = mapped_column(String(7), default="#0F766E", nullable=False)
+
+    # Type / nature (paramètres généraux)
+    type: Mapped[AssociationType] = mapped_column(
+        SQLEnum(AssociationType, name="association_type"),
+        default=AssociationType.ASSOCIATION,
+        nullable=False,
+    )
+
+    # Contact
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
 
     # Localisation / monnaie
     currency: Mapped[str] = mapped_column(String(3), default="XAF", nullable=False)
