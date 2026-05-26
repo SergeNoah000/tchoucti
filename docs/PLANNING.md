@@ -1,7 +1,7 @@
 # Tchoucti — Planning
 
 > Lire `docs/CONTEXT.md` pour la stack et les conventions.
-> Ce fichier = feuille de route vivante. Mise à jour : 2026-05-21.
+> Ce fichier = feuille de route vivante. Mise à jour : 2026-05-23.
 
 ---
 
@@ -13,79 +13,79 @@
 - **Groupements** — CRUD, page détail à onglets, équipe d'admins, propriétaire + transfert, suspension
 - **Associations** — CRUD, page détail à onglets, liste hiérarchique
 - **Membres** — invitation par e-mail, liste, suspension/réactivation, rôles
-- **Réunions** — liste, détail, présences, saisies d'activités
 - **Invitations** — moteur générique (tokens hashés, expir 7j, renvoi, révocation), e-mail via Mailpit
 - **Infra** — `docker compose up` lance tout + auto-seed si base vide
 
----
+## ✅ Track 1 — Paramètres d'association (v1)
 
-## 🟡 Track 1 — Paramètres d'association  ⟵ EN COURS
+7 sections (général, tontine, caisse sociale, paiements, réunions, notifications, membres) — stockage `Association.config` JSONB. Sera **refactoré** en Phase 2 (config-v2).
 
-Tout ce que l'admin d'association peut configurer. Stockage : colonnes typées
-pour le Général, `Association.config` (JSONB) pour le reste.
+## ✅ Track 3 — Modules métier opérationnels
 
-### 1.1 Général
-- Nom · Type d'association (tontine / mutuelle / coopérative / autre) · Devise · Contact (e-mail, téléphone)
+- **Tontine** — cycles + tours + **multi-bénéficiaires** (`share_parts`), payout vers trésorerie
+- **Finance** — trésorerie + fonds + mouvements (IN/OUT/XFER), invariant `Σ fonds = trésorerie`
+- **Caisse sociale** — déclaration → approbation → versement
+- **Prêts** — échéancier (intérêt mensuel simple), approbation, déboursement, remboursement
+- **Séances** — refonte collapsible par membre, save bulk sur fermeture du collapse, clôture poste vers trésorerie
 
-### 1.2 Membres
-- Ajout / suppression de membres ✅ *(fait)*
-- **Catégories** : actif · honneur · fondateur · suspendu  → `Membership.category`
-- **Rôles/permissions** : président · trésorier · secrétaire · commissaire aux comptes · membre simple ✅ *(RBAC en place, assignation via l'onglet Membres)*
+## ✅ Auto-planning séances + Celery rappels
 
-### 1.3 Tontine — configuration
-- Montant de cotisation · fréquence · durée du cycle · nombre de participants
-- Méthode d'attribution : ordre fixe · tirage au sort · enchère · priorité urgence · vote des membres
-
-### 1.4 Caisse sociale — configuration
-- Montant de contribution sociale · conditions d'assistance
-- Événements couverts + montants : décès · maladie · mariage · naissance
-
-### 1.5 Paiements
-- Moyens activables : espèces · MTN Mobile Money · Orange Money · virement bancaire
-
-### 1.6 Réunions — configuration
-- Fréquence · mode (physique / virtuel / hybride) · quorum minimal · notifications auto
-
-### 1.7 Notifications
-- Bascules : rappel de cotisation · réunion · pénalité · attribution de tour · anniversaire · échéance de prêt
+- `POST /meetings/generate` pré-crée N séances futures selon cadence asso
+- Auto-extension après clôture (rolling window)
+- Worker Celery + beat (toutes les 15 min) envoie rappels e-mail à J-N configurables
+- Templates de rappel FR/EN/DE
+- Settings UI : horizon, titre par défaut, lieu, rappels enabled + délais
 
 ---
 
-## 🔵 Track 2 — Refonte « silo association »
+## 🟡 Phase 2 — Refonte configuration + onboarding admin ⟵ EN COURS
+
+**Voir [docs/PHASE-2-CONFIG.md](PHASE-2-CONFIG.md) pour le plan détaillé.**
+
+Retour client après tests : la configuration actuelle n'est pas assez fine ni
+explicite. Refonte majeure :
+
+- **Séparation rôle admin** — seul l'admin configure, les autres rôles opèrent
+- **Wizard d'onboarding** à 5 étapes, dashboard verrouillé tant qu'incomplet
+- **Multi-tontines** par association (chacune avec config indépendante)
+- **Caisses hybrides** — système (générale + tontine) + custom (épargne perso, collective, projet) avec config riche (récurrence, plafond, objectif, cotisation obligatoire)
+- **Prêts catalogués** — flag d'activation + types (éligibilité, taux, durée, caisse source)
+- **Aides sociales catalogués** — flag d'activation + types (cotisation membre, plafond, délai)
+- **Critères d'adhésion multiples** — âge, sexe, localisation, profession, autres + frais d'inscription
+- **Documents légaux** — statuts, ROI, récépissé via MinIO
+- **Séance dynamique** — actions listées selon ce qui est configuré
+- **Séances flexibles** — déplacement individuel, annulation sans casser le cycle
+- **Historiques aides** — par membre (sienne) ou bureau (toutes)
+
+> **Principe UX directeur :** application *explicative*. Chaque champ a une aide
+> visible + exemple concret + preview du comportement. Pas de tooltip caché.
+
+---
+
+## 🔵 Track 2 — Refonte « silo association » (différé)
 
 Décision client : chaque association = silo fermé, un compte = une association,
-e-mail unique par scope, routing `/a/[assoc]/...`. Chantier fondamental
-(auth, modèle `User`, middleware tenant, routing Next, seed). **À planifier en
-bloc** quand Track 1 est stabilisé.
+e-mail unique par scope, routing `/a/[assoc]/...`. **À planifier en bloc** après
+stabilisation Phase 2.
 
----
+## 🔵 Track 4 — Notifications & communication (partiellement fait)
 
-## 🔵 Track 3 — Modules métier opérationnels
+- ✅ Moteur e-mail (Mailpit dev + SMTP prod)
+- ✅ Rappels séance via Celery
+- 🔲 Notifications in-app temps réel
+- 🔲 Bascules fines depuis 1.7
 
-Une fois la configuration en place, les opérations qui la consomment :
+## 🔵 Track 5 — Documents & exports (partiellement fait)
 
-- **Tontine** — cycles, tours, attribution selon la méthode choisie, décaissement
-- **Caisse sociale** — déclaration de cas, validation, versement selon barème
-- **Prêts** — demande, approbation, échéancier, remboursement, pénalités
-- **Finances** — trésorerie multi-fonds, mouvements, ventilation, invariant `Σ fonds = trésorerie`
-- **Séances** — onglet Résumé (totaux + ventilation), clôture qui poste vers la trésorerie
-
----
-
-## 🔵 Track 4 — Notifications & communication
-
-- Moteur de notifications (in-app + e-mail) piloté par les bascules de 1.7
-- Rappels programmés (cotisation, réunion, échéance)
-
-## 🔵 Track 5 — Documents & exports
-
-- Upload de documents (statuts, PV) vers MinIO
-- Export PDF : PV de réunion, bilan financier
+- ✅ MinIO branché, utilisé pour invitations
+- 🔲 Upload documents légaux (Phase 2a)
+- 🔲 Export PDF PV de séance via reportlab
+- 🔲 Export bilan financier
 
 ## 🔵 Track 6 — Production
 
-- Migrations Alembic versionnées (remplacer le drop/create)
-- Tests (pytest + frontend)
+- Migrations Alembic versionnées (remplacer le drop/create du seed)
+- Tests pytest + frontend
 - CI/CD, monitoring, déploiement
 
 ---
@@ -93,9 +93,11 @@ Une fois la configuration en place, les opérations qui la consomment :
 ## Ordre recommandé
 
 ```
-Track 1 (Paramètres)  →  Track 3 (Modules métier)  →  Track 4/5
-        ↓
-Track 2 (Silo) en parallèle quand Track 1 est stable
-        ↓
-Track 6 (Production) en continu
+✅ Track 1 (v1) + Track 3 + Auto-planning
+         ↓
+🟡 Phase 2 (config-v2 + onboarding)   ⟵ EN COURS
+         ↓
+🔲 Track 2 (silo) en bloc cohérent
+         ↓
+🔲 Track 6 (production) en continu
 ```
