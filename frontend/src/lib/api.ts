@@ -247,6 +247,29 @@ export const loanTypesApi = {
   remove: async (id: string) => (await api.delete(`/loan-types/${id}`)).data,
 };
 
+// ── AidType catalogue (config-v2) ─────────────────────────────────────────
+export const aidTypesApi = {
+  list: async (associationId: string, activeOnly = false) =>
+    (await api.get("/aid-types", {
+      params: { association_id: associationId, active_only: activeOnly },
+    })).data,
+  create: async (payload: {
+    association_id: string;
+    source_caisse_id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    member_contribution_amount?: number;
+    is_contribution_recurring?: boolean;
+    aid_ceiling_amount?: number;
+    max_claims_per_member_per_year?: number;
+    declaration_delay_days?: number;
+  }) => (await api.post("/aid-types", payload)).data,
+  update: async (id: string, payload: Record<string, unknown>) =>
+    (await api.patch(`/aid-types/${id}`, payload)).data,
+  remove: async (id: string) => (await api.delete(`/aid-types/${id}`)).data,
+};
+
 // ── Caisses (config-v2 user-facing wrapper around Fund) ───────────────────
 export const caissesApi = {
   list: async (associationId: string, includeInactive = false) =>

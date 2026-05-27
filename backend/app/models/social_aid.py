@@ -144,6 +144,21 @@ class SocialAidCase(BaseModel):
         index=True,
     )
 
+    # Phase 2e — référence de l'AidType utilisé. NULL pour les dossiers legacy
+    # déclarés via le kind enum hardcodé. `source_caisse_id` est snapshoté ici
+    # (la caisse source du type peut bouger ; le dossier en cours reste figé).
+    aid_type_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("aid_types.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_caisse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("caisses.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+
     reference: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     kind: Mapped[SocialAidCaseKind] = mapped_column(
         SQLEnum(SocialAidCaseKind, name="social_aid_case_kind"), nullable=False

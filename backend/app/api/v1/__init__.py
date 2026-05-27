@@ -18,6 +18,7 @@ from app.api.v1 import (
     setup,
     caisses,
     loan_types,
+    aid_types,
 )
 
 api_router = APIRouter()
@@ -61,4 +62,7 @@ api_router.include_router(caisses.router, prefix="/caisses", tags=["caisses"])
 
 # LoanType catalogue (config-v2)
 api_router.include_router(loan_types.router, prefix="/loan-types", tags=["loan-types"])
+
+# AidType catalogue (config-v2)
+api_router.include_router(aid_types.router, prefix="/aid-types", tags=["aid-types"])
 

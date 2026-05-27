@@ -4,7 +4,7 @@ A payout debits the INSURANCE fund (« Caisse sociale ») via FinanceService.
 The aid amount defaults to the scale configured in
 `association.config.social_fund.events[kind]`.
 """
-from datetime import date
+from datetime import date, timedelta
 from typing import List, Optional
 from uuid import UUID
 
@@ -15,9 +15,16 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
-from app.models.finance import FundKind, MovementDirection
+from app.models.caisse import Caisse
+from app.models.finance import Fund, FundKind, MovementDirection
 from app.models.role import Membership
-from app.models.social_aid import SocialAidCase, SocialAidCaseKind, SocialAidCaseStatus, SocialAidPayout
+from app.models.social_aid import (
+    AidType,
+    SocialAidCase,
+    SocialAidCaseKind,
+    SocialAidCaseStatus,
+    SocialAidPayout,
+)
 from app.models.user import User
 from app.schemas.social_aid import (
     SocialAidApprove,
@@ -74,6 +81,25 @@ async def _load_case(db: AsyncSession, case_id: UUID) -> SocialAidCase:
     return case
 
 
+async def _source_fund_for(db: AsyncSession, case: SocialAidCase, treasury) -> Fund:
+    """Resolve the fund that backs `case`'s payout — the caisse snapshotted at
+    declare time, or the INSURANCE fund for legacy cases (no aid_type_id)."""
+    if case.source_caisse_id is not None:
+        res = await db.execute(
+            select(Fund)
+            .join(Caisse, Caisse.fund_id == Fund.id)
+            .where(Caisse.id == case.source_caisse_id)
+        )
+        fund = res.scalar_one_or_none()
+        if fund is None:
+            raise HTTPException(500, "Caisse source du dossier introuvable.")
+        return fund
+    fund = next((f for f in treasury.funds if f.kind == FundKind.INSURANCE), None)
+    if fund is None:
+        raise HTTPException(500, "Fonds caisse sociale introuvable")
+    return fund
+
+
 def _case_out(case: SocialAidCase) -> SocialAidCaseOut:
     beneficiary = getattr(case, "beneficiary", None)
     user = getattr(beneficiary, "user", None) if beneficiary else None
@@ -82,6 +108,8 @@ def _case_out(case: SocialAidCase) -> SocialAidCaseOut:
         association_id=case.association_id,
         beneficiary_membership_id=case.beneficiary_membership_id,
         beneficiary_name=getattr(user, "full_name", None),
+        aid_type_id=case.aid_type_id,
+        source_caisse_id=case.source_caisse_id,
         reference=case.reference,
         kind=case.kind.value if hasattr(case.kind, "value") else case.kind,
         status=case.status.value if hasattr(case.status, "value") else case.status,
@@ -148,6 +176,11 @@ async def declare_case(
     assoc = await _get_assoc_or_404(db, payload.association_id)
     _check_access(current_user, assoc)
 
+    # Block if aids are disabled at the association level.
+    cfg_aids = (assoc.config or {}).get("aids") or {}
+    if cfg_aids.get("enabled") is False:
+        raise HTTPException(409, "Les aides sociales ne sont pas activées sur cette association.")
+
     res = await db.execute(
         select(Membership).where(
             Membership.id == payload.beneficiary_membership_id,
@@ -156,6 +189,56 @@ async def declare_case(
     )
     if not res.scalar_one_or_none():
         raise HTTPException(422, "Bénéficiaire introuvable dans l'association")
+
+    # Phase 2e — résolution du AidType : valide délai + max claims/an,
+    # snapshot la caisse source + le plafond.
+    aid_type: AidType | None = None
+    source_caisse_id: UUID | None = None
+    requested_amount = _scale_amount(assoc, payload.kind)
+
+    if payload.aid_type_id is not None:
+        at_res = await db.execute(
+            select(AidType).where(
+                AidType.id == payload.aid_type_id,
+                AidType.association_id == payload.association_id,
+            )
+        )
+        aid_type = at_res.scalar_one_or_none()
+        if not aid_type:
+            raise HTTPException(422, "Type d'aide introuvable dans cette association.")
+        if not aid_type.is_active:
+            raise HTTPException(409, "Ce type d'aide est désactivé.")
+
+        # Délai de déclaration (si event_date fourni).
+        if payload.event_date and aid_type.declaration_delay_days > 0:
+            cutoff = date.today() - timedelta(days=aid_type.declaration_delay_days)
+            if payload.event_date < cutoff:
+                raise HTTPException(
+                    409,
+                    f"Délai de déclaration dépassé ({aid_type.declaration_delay_days} jours après l'événement).",
+                )
+
+        # Max claims par membre par an (12 mois glissants).
+        if aid_type.max_claims_per_member_per_year > 0:
+            one_year_ago = date.today() - timedelta(days=365)
+            year_res = await db.execute(
+                select(func.count(SocialAidCase.id)).where(
+                    SocialAidCase.beneficiary_membership_id == payload.beneficiary_membership_id,
+                    SocialAidCase.aid_type_id == aid_type.id,
+                    SocialAidCase.requested_on >= one_year_ago,
+                    SocialAidCase.status != SocialAidCaseStatus.REJECTED,
+                )
+            )
+            if (year_res.scalar() or 0) >= aid_type.max_claims_per_member_per_year:
+                raise HTTPException(
+                    409,
+                    f"Limite annuelle atteinte ({aid_type.max_claims_per_member_per_year}) pour ce type d'aide.",
+                )
+
+        source_caisse_id = aid_type.source_caisse_id
+        # Snapshot the requested amount on the ceiling (admin can adjust at approve time).
+        if not requested_amount and aid_type.aid_ceiling_amount > 0:
+            requested_amount = aid_type.aid_ceiling_amount
 
     count_res = await db.execute(
         select(func.count(SocialAidCase.id)).where(
@@ -168,6 +251,8 @@ async def declare_case(
     case = SocialAidCase(
         association_id=payload.association_id,
         beneficiary_membership_id=payload.beneficiary_membership_id,
+        aid_type_id=payload.aid_type_id,
+        source_caisse_id=source_caisse_id,
         reference=reference,
         kind=SocialAidCaseKind(payload.kind),
         status=SocialAidCaseStatus.REQUESTED,
@@ -175,7 +260,7 @@ async def declare_case(
         description=payload.description,
         event_date=payload.event_date,
         requested_on=date.today(),
-        requested_amount=_scale_amount(assoc, payload.kind),
+        requested_amount=requested_amount,
     )
     case.requested_by_id = current_user.id
     db.add(case)
@@ -204,6 +289,16 @@ async def approve_case(
         amount = _scale_amount(assoc, case.kind.value) or 0
     if amount <= 0:
         raise HTTPException(422, "Montant approuvé requis (aucun barème configuré pour ce type)")
+
+    # Phase 2e — borne par le plafond du type si applicable.
+    if case.aid_type_id is not None:
+        at_res = await db.execute(select(AidType).where(AidType.id == case.aid_type_id))
+        aid_type = at_res.scalar_one_or_none()
+        if aid_type and aid_type.aid_ceiling_amount > 0 and amount > aid_type.aid_ceiling_amount:
+            raise HTTPException(
+                422,
+                f"Montant {amount} > plafond du type ({aid_type.aid_ceiling_amount}).",
+            )
 
     case.status = SocialAidCaseStatus.APPROVED
     case.approved_amount = amount
@@ -256,9 +351,7 @@ async def payout_case(
         raise HTTPException(422, "Montant approuvé invalide")
 
     treasury = await get_or_create_treasury(db, assoc)
-    fund = next((f for f in treasury.funds if f.kind == FundKind.INSURANCE), None)
-    if fund is None:
-        raise HTTPException(500, "Fonds caisse sociale introuvable")
+    fund = await _source_fund_for(db, case, treasury)
 
     movement = await post_movement(
         db,

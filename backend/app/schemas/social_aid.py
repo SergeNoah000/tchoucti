@@ -13,6 +13,10 @@ class SocialAidCaseCreate(BaseModel):
     title: str = Field(..., min_length=2, max_length=255)
     description: Optional[str] = Field(None, max_length=2000)
     event_date: Optional[date] = None
+    # Phase 2e — référence optionnelle à un AidType configuré. Si fourni,
+    # ses règles (plafond, délai, max claims) sont vérifiées et la caisse
+    # source est snapshotée sur le dossier.
+    aid_type_id: Optional[UUID] = None
 
 
 class SocialAidApprove(BaseModel):
@@ -41,6 +45,8 @@ class SocialAidCaseOut(BaseModel):
     association_id: UUID
     beneficiary_membership_id: UUID
     beneficiary_name: Optional[str] = None
+    aid_type_id: Optional[UUID] = None
+    source_caisse_id: Optional[UUID] = None
     reference: str
     kind: str
     status: str
