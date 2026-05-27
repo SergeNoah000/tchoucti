@@ -37,6 +37,7 @@ from app.models.tontine import (
 from app.models.user import User
 from app.services import planning
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
+from app.services.meeting_agenda import upsert_tontine_activity
 from app.schemas.tontine import (
     TontineBeneficiaryOut,
     TontineCycleCreate,
@@ -391,6 +392,17 @@ async def create_cycle(
     )
     db.add(cycle)
     await db.flush()
+
+    # Phase 3 — auto-create an Activity row tied to this cycle so the séance
+    # page proposes it to every participating member on each tour.
+    await upsert_tontine_activity(
+        db,
+        association_id=payload.association_id,
+        cycle_id=cycle.id,
+        name=payload.name,
+        slug=cycle_slug,
+        round_amount=payload.round_amount,
+    )
 
     # 4. Résolution séances ↔ tours (explicite ou auto).
     meetings = await _pick_or_make_meetings(

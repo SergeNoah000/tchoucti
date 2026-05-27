@@ -10,7 +10,9 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
-from app.models.finance import FundKind, MovementDirection
+from app.models.caisse import Caisse
+from app.models.finance import Fund, FundKind, MovementDirection
+from app.models.social_aid import AidType
 from app.models.meeting import (
     Activity,
     ActivityType,
@@ -21,6 +23,7 @@ from app.models.meeting import (
     MeetingAttendance,
     MeetingStatus,
 )
+from app.models.tontine import TontineCycle
 from app.models.user import User
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.services import planning
@@ -37,6 +40,75 @@ _ACTIVITY_FUND: dict[ActivityType, FundKind] = {
     ActivityType.PROJECT_CONTRIBUTION: FundKind.GENERAL,
     ActivityType.OTHER: FundKind.GENERAL,
 }
+
+
+async def _resolve_fund_for_entry(
+    db: AsyncSession,
+    treasury,
+    funds_by_kind: dict[FundKind, "Fund"],
+    activity: Activity | None,
+) -> "Fund | None":
+    """Phase 3 fund routing — driven by activity.config when set.
+
+    Precedence:
+      1. config.caisse_id     → Caisse.fund (custom caisses + system aid caisse).
+      2. config.cycle_id      → Fund(kind=TONTINE, ref_key=cycle.slug).
+      3. config.aid_type_id   → AidType.source_caisse → fund.
+      4. _ACTIVITY_FUND[type] → legacy mapping.
+    """
+    if activity is None:
+        return funds_by_kind.get(FundKind.GENERAL)
+    cfg = activity.config or {}
+
+    # 1. Direct caisse pin — most common for Phase 3 (custom caisses).
+    caisse_id_raw = cfg.get("caisse_id")
+    if caisse_id_raw:
+        try:
+            cid = UUID(caisse_id_raw) if isinstance(caisse_id_raw, str) else caisse_id_raw
+            res = await db.execute(select(Caisse).where(Caisse.id == cid))
+            caisse = res.scalar_one_or_none()
+            if caisse:
+                fund_res = await db.execute(select(Fund).where(Fund.id == caisse.fund_id))
+                fund = fund_res.scalar_one_or_none()
+                if fund:
+                    return fund
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Tontine cycle pin — find the dedicated TONTINE fund (ref_key=cycle.slug).
+    cycle_id_raw = cfg.get("cycle_id")
+    if cycle_id_raw:
+        try:
+            cid = UUID(cycle_id_raw) if isinstance(cycle_id_raw, str) else cycle_id_raw
+            res = await db.execute(select(TontineCycle.slug).where(TontineCycle.id == cid))
+            slug = res.scalar_one_or_none()
+            if slug:
+                for f in treasury.funds:
+                    if f.kind == FundKind.TONTINE and f.ref_key == slug:
+                        return f
+        except (ValueError, TypeError):
+            pass
+
+    # 3. Aid type pin — route to the type's source caisse.
+    aid_type_id_raw = cfg.get("aid_type_id")
+    if aid_type_id_raw:
+        try:
+            aid_id = UUID(aid_type_id_raw) if isinstance(aid_type_id_raw, str) else aid_type_id_raw
+            res = await db.execute(
+                select(Fund)
+                .join(Caisse, Caisse.fund_id == Fund.id)
+                .join(AidType, AidType.source_caisse_id == Caisse.id)
+                .where(AidType.id == aid_id)
+            )
+            fund = res.scalar_one_or_none()
+            if fund:
+                return fund
+        except (ValueError, TypeError):
+            pass
+
+    # 4. Legacy: fall back to the type → fund kind mapping.
+    kind = _ACTIVITY_FUND.get(activity.type, FundKind.GENERAL)
+    return funds_by_kind.get(kind) or funds_by_kind.get(FundKind.GENERAL)
 from app.schemas.meeting import (
     AttendanceOut,
     AttendanceUpsert,
@@ -286,16 +358,19 @@ async def close_meeting(
             entry.recorded_by_id = current_user.id
             entry.recorded_at = now
 
-    # Post each non-voided entry to the treasury (one IN movement per entry,
-    # routed to the fund matching its activity type). Idempotent: entries that
-    # already carry a movement_id are skipped.
+    # Post each non-voided entry to the treasury (one IN movement per entry).
+    # Routing precedence (Phase 3):
+    #   1. activity.config.caisse_id      → Caisse.fund (CUSTOM / SYSTEM)
+    #   2. activity.config.cycle_id       → cycle-dedicated Fund(TONTINE, ref_key=slug)
+    #   3. activity.config.aid_type_id    → AidType.source_caisse → fund
+    #   4. _ACTIVITY_FUND[activity.type]  → legacy GENERAL/INSURANCE/TONTINE/SAVINGS
     treasury = await get_or_create_treasury(db, assoc)
     funds_by_kind = {f.kind: f for f in treasury.funds}
 
     act_res = await db.execute(
         select(Activity).where(Activity.association_id == m.association_id)
     )
-    activity_type: dict[UUID, ActivityType] = {a.id: a.type for a in act_res.scalars().all()}
+    activities = {a.id: a for a in act_res.scalars().all()}
 
     total_in = 0
     for entry in m.entries:
@@ -303,8 +378,8 @@ async def close_meeting(
             continue
         if entry.amount <= 0:
             continue
-        kind = _ACTIVITY_FUND.get(activity_type.get(entry.activity_id), FundKind.GENERAL)
-        fund = funds_by_kind.get(kind) or funds_by_kind.get(FundKind.GENERAL)
+        activity = activities.get(entry.activity_id)
+        fund = await _resolve_fund_for_entry(db, treasury, funds_by_kind, activity)
         if fund is None:
             continue
         movement = await post_movement(

@@ -27,6 +27,7 @@ from app.models.caisse import Caisse, CaisseCategory
 from app.models.finance import Fund, FundKind, Treasury
 from app.models.user import User
 from app.schemas.caisse import CaisseCreate, CaisseOut, CaisseUpdate
+from app.services.meeting_agenda import upsert_caisse_activity
 
 router = APIRouter()
 
@@ -150,6 +151,22 @@ async def create_caisse(
         objective_deadline=payload.objective_deadline,
     )
     db.add(caisse)
+    await db.flush()
+
+    # Phase 3 — auto-create the Activity row so the séance page picks up
+    # this caisse as a row to enter at every meeting (when recurring/required).
+    await upsert_caisse_activity(
+        db,
+        association_id=payload.association_id,
+        caisse_id=caisse.id,
+        name=payload.name,
+        slug=payload.slug,
+        is_recurring=payload.is_recurring,
+        recurring_amount=payload.recurring_amount,
+        is_member_required=payload.is_member_required,
+        member_required_amount=payload.member_required_amount,
+    )
+
     await db.commit()
     await db.refresh(caisse)
     return caisse
@@ -199,6 +216,20 @@ async def update_caisse(
                 fund.name = caisse.name
             if "description" in data:
                 fund.description = caisse.description
+
+    # Phase 3 — re-sync the matching Activity (custom caisses only).
+    if not caisse.is_system:
+        await upsert_caisse_activity(
+            db,
+            association_id=caisse.association_id,
+            caisse_id=caisse.id,
+            name=caisse.name,
+            slug=caisse.slug,
+            is_recurring=caisse.is_recurring,
+            recurring_amount=caisse.recurring_amount,
+            is_member_required=caisse.is_member_required,
+            member_required_amount=caisse.member_required_amount,
+        )
 
     await db.commit()
     await db.refresh(caisse)

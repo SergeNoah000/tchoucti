@@ -25,6 +25,7 @@ from app.models.caisse import Caisse
 from app.models.social_aid import AidType, SocialAidCase
 from app.models.user import User
 from app.schemas.aid_type import AidTypeCreate, AidTypeOut, AidTypeUpdate
+from app.services.meeting_agenda import upsert_aid_type_activity
 
 router = APIRouter()
 
@@ -131,6 +132,21 @@ async def create_aid_type(
         declaration_delay_days=payload.declaration_delay_days,
     )
     db.add(at)
+    await db.flush()
+
+    # Phase 3 — auto-create the Activity. It stays hidden in séances by
+    # default (is_visible_in_meeting=False) and gets toggled on by the agenda
+    # endpoint only when an aid case of this type is being collected.
+    await upsert_aid_type_activity(
+        db,
+        association_id=payload.association_id,
+        aid_type_id=at.id,
+        name=payload.name,
+        slug=payload.slug,
+        member_contribution_amount=payload.member_contribution_amount,
+        is_recurring=payload.is_contribution_recurring,
+    )
+
     await db.commit()
     await db.refresh(at)
     return _to_out(at, caisse.name)
