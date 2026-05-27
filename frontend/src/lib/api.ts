@@ -336,6 +336,11 @@ export const meetingsApi = {
    *  aids, loans) for this specific meeting. */
   agenda: async (meetingId: string) =>
     (await api.get(`/meetings/${meetingId}/agenda`)).data,
+  /** Phase 4 — annuler une séance individuelle.
+   *  Si la séance hébergeait un tour de tontine, il est ré-attaché à la
+   *  prochaine séance planifiée. */
+  cancel: async (meetingId: string) =>
+    (await api.post(`/meetings/${meetingId}/cancel`)).data,
 };
 
 export const activitiesApi = {

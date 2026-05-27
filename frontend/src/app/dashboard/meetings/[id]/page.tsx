@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   PlayCircle,
   CheckCircle2,
+  CalendarClock,
   Clock,
   MapPin,
   Users,
@@ -20,6 +21,7 @@ import {
   Search,
   Save,
   ArrowRight,
+  XCircle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,16 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   AlertDialog,
@@ -248,14 +260,18 @@ export default function MeetingDetailPage() {
         {/* Lifecycle actions */}
         <div className="flex shrink-0 items-center gap-2">
           {meeting.status === "planned" && (
-            <Button onClick={() => openMutation.mutate()} disabled={openMutation.isPending} className="gap-2">
-              {openMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <PlayCircle className="h-4 w-4" />
-              )}
-              {t("start")}
-            </Button>
+            <>
+              <RescheduleDialog meetingId={meeting.id} currentDate={meeting.scheduled_on} />
+              <CancelDialog meetingId={meeting.id} />
+              <Button onClick={() => openMutation.mutate()} disabled={openMutation.isPending} className="gap-2">
+                {openMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PlayCircle className="h-4 w-4" />
+                )}
+                {t("start")}
+              </Button>
+            </>
           )}
           {meeting.status === "ongoing" && (
             <AlertDialog>
@@ -761,5 +777,121 @@ function MemberRow({
         </CollapsibleContent>
       </div>
     </Collapsible>
+  );
+}
+
+// ── Phase 4 — reschedule / cancel a single meeting ────────────────────────
+
+function RescheduleDialog({
+  meetingId,
+  currentDate,
+}: {
+  meetingId: string;
+  currentDate: string;
+}) {
+  const t = useTranslations("meeting");
+  const tCommon = useTranslations("common");
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(currentDate);
+
+  const mutation = useMutation({
+    mutationFn: () => meetingsApi.update(meetingId, { scheduled_on: date }),
+    onSuccess: () => {
+      toast.success(t("rescheduleSaved"));
+      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
+      queryClient.invalidateQueries({ queryKey: ["meetings"] });
+      setOpen(false);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(msg ?? tCommon("error"));
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="gap-2">
+          <CalendarClock className="h-4 w-4" />
+          {t("reschedule")}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("rescheduleTitle")}</DialogTitle>
+          <DialogDescription>{t("rescheduleDesc")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 py-2">
+          <Label htmlFor="resched-date">{t("newDate")}</Label>
+          <Input
+            id="resched-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            {tCommon("cancel")}
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || !date || date === currentDate}
+            className="gap-2"
+          >
+            {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            {tCommon("save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CancelDialog({ meetingId }: { meetingId: string }) {
+  const t = useTranslations("meeting");
+  const tCommon = useTranslations("common");
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => meetingsApi.cancel(meetingId),
+    onSuccess: () => {
+      toast.success(t("cancelSaved"));
+      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
+      queryClient.invalidateQueries({ queryKey: ["meetings"] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(msg ?? tCommon("error"));
+    },
+  });
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="outline" className="gap-2 border-destructive/40 text-destructive">
+          <XCircle className="h-4 w-4" />
+          {t("cancelMeeting")}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t("cancelConfirmTitle")}</AlertDialogTitle>
+          <AlertDialogDescription>{t("cancelConfirmDesc")}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending}
+          >
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {t("cancelMeeting")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

@@ -31,6 +31,7 @@ from app.models.tontine import (
     TontineParticipation,
     TontineRound,
     TontineRoundBeneficiary,
+    TontineRoundStatus,
 )
 from app.models.user import User
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
@@ -315,9 +316,107 @@ async def update_meeting(
         except ValueError:
             raise HTTPException(status_code=422, detail=f"Invalid status '{data['status']}'")
 
+    # Phase 4 — Si la date change ET un round tontine est rattaché à cette
+    # séance, on synchronise round.scheduled_date (sauf lien locked).
+    if "scheduled_on" in data and data["scheduled_on"] != m.scheduled_on:
+        link_res = await db.execute(
+            select(TontineMeetingLink, TontineRound)
+            .join(TontineRound, TontineRound.id == TontineMeetingLink.round_id)
+            .where(TontineMeetingLink.meeting_id == m.id)
+        )
+        rows = list(link_res.all())
+        for link, rnd in rows:
+            if link.is_locked:
+                raise HTTPException(
+                    409,
+                    "Une tontine verrouillée est attachée à cette séance — "
+                    "décale le cycle entier au lieu de cette séance.",
+                )
+            if rnd.status == TontineRoundStatus.PAID_OUT:
+                raise HTTPException(
+                    409,
+                    "Un tour de tontine déjà versé est attaché à cette séance — "
+                    "la date ne peut plus changer.",
+                )
+            rnd.scheduled_date = data["scheduled_on"]
+
     for field, value in data.items():
         setattr(m, field, value)
 
+    await db.commit()
+    await db.refresh(m)
+    return _meeting_to_out(m)
+
+
+@router.post("/{meeting_id}/cancel", response_model=MeetingOut)
+async def cancel_meeting(
+    meeting_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Annulation d'une séance individuelle (Phase 4).
+
+    Si la séance héberge un tour de tontine non versé, on rattache le tour à
+    la prochaine séance PLANNED de l'association ; si aucune n'est disponible,
+    on génère un nouveau créneau via la cadence configurée.
+    """
+    m = await _get_meeting_or_404(db, meeting_id)
+    assoc = await _get_assoc_or_404(db, m.association_id)
+    _check_access(current_user, assoc)
+
+    if m.status == MeetingStatus.CLOSED:
+        raise HTTPException(409, "Une séance clôturée ne peut plus être annulée.")
+    if m.status == MeetingStatus.CANCELLED:
+        return _meeting_to_out(m)
+
+    # Tontine rounds attachés — réorienter ou repousser.
+    link_res = await db.execute(
+        select(TontineMeetingLink, TontineRound)
+        .join(TontineRound, TontineRound.id == TontineMeetingLink.round_id)
+        .where(TontineMeetingLink.meeting_id == m.id)
+    )
+    rows = list(link_res.all())
+    for link, rnd in rows:
+        if link.is_locked:
+            raise HTTPException(
+                409,
+                "Une tontine verrouillée est attachée à cette séance — "
+                "annule le cycle entier à la place.",
+            )
+        if rnd.status == TontineRoundStatus.PAID_OUT:
+            raise HTTPException(
+                409, "Un tour déjà versé empêche l'annulation de cette séance."
+            )
+
+        # Cherche la prochaine séance PLANNED ≥ m.scheduled_on (excluant celle
+        # qu'on annule). Si rien, on génère un nouveau créneau via la cadence.
+        next_res = await db.execute(
+            select(Meeting)
+            .where(
+                Meeting.association_id == assoc.id,
+                Meeting.status == MeetingStatus.PLANNED,
+                Meeting.id != m.id,
+                Meeting.scheduled_on >= m.scheduled_on,
+            )
+            .order_by(Meeting.scheduled_on)
+            .limit(1)
+        )
+        target = next_res.scalar_one_or_none()
+        if target is None:
+            nxt_date = planning.next_date_after(assoc, m.scheduled_on)
+            target = Meeting(
+                association_id=assoc.id,
+                title=planning.default_title(assoc, nxt_date),
+                scheduled_on=nxt_date,
+                location=planning.default_location(assoc),
+                status=MeetingStatus.PLANNED,
+            )
+            db.add(target)
+            await db.flush()
+        link.meeting_id = target.id
+        rnd.scheduled_date = target.scheduled_on
+
+    m.status = MeetingStatus.CANCELLED
     await db.commit()
     await db.refresh(m)
     return _meeting_to_out(m)
