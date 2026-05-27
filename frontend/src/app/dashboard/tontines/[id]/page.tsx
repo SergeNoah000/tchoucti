@@ -35,7 +35,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { associationsApi, tontinesApi } from "@/lib/api";
 import type { Association, TontineCycleDetail, TontineCycleStatus, TontineRoundStatus } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
-import { detectRole } from "@/lib/roles";
+import { canConfigureAssociation, canDoBureauActions } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -80,7 +80,10 @@ export default function TontineCycleDetailPage() {
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-  const canManage = detectRole(user) !== "member";
+  // Cancel a whole cycle = config (admin only). Payout an individual round =
+  // bureau operation (treasurer typically signs off).
+  const canConfigure = canConfigureAssociation(user);
+  const canPayout = canDoBureauActions(user);
 
   const cycleKey = ["tontine", id];
 
@@ -158,7 +161,7 @@ export default function TontineCycleDetailPage() {
           total: cycle.rounds_count,
         })}
         actions={
-          canManage && isActive ? (
+          canConfigure && isActive ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline" className="gap-2 border-destructive/40 text-destructive">
@@ -246,7 +249,7 @@ export default function TontineCycleDetailPage() {
                   >
                     {t(ROUND_LABEL[r.status])}
                   </span>
-                  {canManage && isActive && r.status === "collecting" && (
+                  {canPayout && isActive && r.status === "collecting" && (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="sm" className="gap-1.5">

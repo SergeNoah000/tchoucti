@@ -28,7 +28,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { associationsApi, membersApi, tontinesApi } from "@/lib/api";
 import type { Association, Membership, TontineCycle, TontineCycleStatus } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
-import { detectRole } from "@/lib/roles";
+import { canConfigureAssociation } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -49,7 +49,7 @@ function extractError(err: unknown): string | undefined {
 export default function TontinesPage() {
   const t = useTranslations("tontine");
   const { user } = useAuthStore();
-  const canManage = detectRole(user) !== "member";
+  const canManage = canConfigureAssociation(user);
 
   const { data: associations = [] } = useQuery<Association[]>({
     queryKey: ["associations"],

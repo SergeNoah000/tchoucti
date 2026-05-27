@@ -24,9 +24,18 @@ class ActivateRequest(BaseModel):
 class UserPublic(BaseModel):
     """Shape consumed by the Next.js frontend (see frontend/src/lib/types.ts).
 
-    `is_platform_admin`, `is_groupement_admin`, `is_association_admin` are
-    mutually exclusive flags derived from `User.user_type`. The frontend uses
-    them to pick the appropriate role-specific dashboard and navigation.
+    Flags are derived from User.user_type AND membership roles:
+      - `is_platform_admin`     : user_type == SUPER_ADMIN
+      - `is_groupement_admin`   : user_type == GROUPEMENT_ADMIN
+      - `is_association_admin`  : has at least one Membership with role
+                                  `association_admin`. ONLY this flag unlocks
+                                  the configuration UI (silo principle).
+      - `has_association_role`  : has any active Membership (admin, treasurer,
+                                  secretary, censor, manager, member). Used to
+                                  route to operational pages.
+
+    The frontend uses these flags to pick the dashboard and gate the config
+    section (cf. `useCanConfigure()`).
     """
 
     id: UUID
@@ -37,6 +46,11 @@ class UserPublic(BaseModel):
     is_platform_admin: bool
     is_groupement_admin: bool = False
     is_association_admin: bool = False
+    has_association_role: bool = False
+    # True if the user holds any role other than plain "member" on a membership
+    # (treasurer, secretary, manager, admin). Used to unlock bureau-only
+    # operational actions during meetings.
+    has_bureau_role: bool = False
     avatar_url: Optional[str] = None
     groupement_id: Optional[UUID] = None
     created_at: datetime

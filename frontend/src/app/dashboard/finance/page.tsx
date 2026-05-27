@@ -42,7 +42,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { associationsApi, financeApi } from "@/lib/api";
 import type { Association, MovementDirection, Treasury, TreasuryMovement } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
-import { detectRole } from "@/lib/roles";
+import { canDoBureauActions } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -62,7 +62,7 @@ const DIR_META: Record<MovementDirection, { icon: typeof ArrowDownLeft; cls: str
 export default function FinancePage() {
   const t = useTranslations("finance");
   const { user } = useAuthStore();
-  const canManage = detectRole(user) !== "member";
+  const canManage = canDoBureauActions(user);
 
   const { data: associations = [] } = useQuery<Association[]>({
     queryKey: ["associations"],

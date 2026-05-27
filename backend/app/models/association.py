@@ -114,3 +114,44 @@ class Association(BaseModel):
 
     def __repr__(self) -> str:
         return f"<Association {self.slug}>"
+
+
+# ───────────────────────────────────────────────────
+# MembershipCriterion — adhesion eligibility rules (config-v2)
+# ───────────────────────────────────────────────────
+class MembershipCriterionType(str, Enum):
+    AGE_MIN = "age_min"          # value = int (years)
+    AGE_MAX = "age_max"          # value = int (years)
+    GENDER = "gender"            # value in {"M","F","MIXED"}
+    LOCATION = "location"        # value = free text (city, region, country)
+    PROFESSION = "profession"    # value = free text
+    OTHER = "other"              # value = free text, label required
+
+
+class MembershipCriterion(BaseModel):
+    """Critère d'adhésion défini par l'admin (ex : âge min 18, sexe F uniquement).
+
+    `is_required = True` → bloque l'invitation si non satisfait.
+    `is_required = False` → indicatif (affiché sur la page d'adhésion).
+    Plusieurs critères peuvent coexister, tous évalués en AND.
+    """
+
+    __tablename__ = "membership_criteria"
+
+    association_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("associations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    type: Mapped[MembershipCriterionType] = mapped_column(
+        SQLEnum(MembershipCriterionType, name="membership_criterion_type"),
+        nullable=False,
+    )
+    # Label affiché à l'utilisateur (pour OTHER surtout).
+    label: Mapped[str] = mapped_column(String(150), nullable=False)
+    # Valeur cible — texte libre, interprété selon `type`.
+    value: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

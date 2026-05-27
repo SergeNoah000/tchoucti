@@ -45,7 +45,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { associationsApi, membersApi, socialAidApi } from "@/lib/api";
 import type { Association, Membership, SocialAidCase, SocialAidKind, SocialAidStatus } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
-import { detectRole } from "@/lib/roles";
+import { canDoBureauActions } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
 
 const KINDS: SocialAidKind[] = ["death", "illness", "marriage", "birth", "other"];
@@ -69,7 +69,7 @@ function extractError(err: unknown): string | undefined {
 export default function SocialAidPage() {
   const t = useTranslations("socialAid");
   const { user } = useAuthStore();
-  const canManage = detectRole(user) !== "member";
+  const canManage = canDoBureauActions(user);
 
   const { data: associations = [] } = useQuery<Association[]>({
     queryKey: ["associations"],

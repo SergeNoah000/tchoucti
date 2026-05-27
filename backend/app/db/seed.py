@@ -9,13 +9,20 @@ import sys
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+
 from app.core.security import get_password_hash
 from app.db.base import Base
 from app.db.session import engine, AsyncSessionLocal
 from app.models.user import User, UserType
 from app.models.groupement import Groupement
 from app.models.association import Association
+from app.models.caisse import Caisse, CaisseCategory
+from app.models.finance import Fund, FundKind, Treasury
 from app.models.groupement_admin import GroupementAdmin
+from app.models.role import Membership, MembershipRole, MembershipStatus, Role
 
 # Make sure ALL models are imported so metadata is complete
 import app.models  # noqa: F401
@@ -54,7 +61,8 @@ async def seed_demo_data():
         db.add(groupement)
         await db.flush()  # get groupement.id
 
-        # 2. Demo association
+        # 2. Demo association — setup_complete=false will trigger the onboarding
+        # wizard the first time the admin logs in.
         association = Association(
             name="Association Solidarité Démo",
             slug="solidarite-demo",
@@ -63,11 +71,44 @@ async def seed_demo_data():
             currency="XAF",
             timezone="Africa/Douala",
             city="Douala",
+            config={"setup_complete": False, "setup_step": 0},
         )
         db.add(association)
         await db.flush()
 
+        # 2b. Treasury + system caisse "Caisse générale" for the demo association.
+        treasury = Treasury(association_id=association.id, currency="XAF", balance=0)
+        db.add(treasury)
+        await db.flush()
+        general_fund = Fund(
+            treasury_id=treasury.id,
+            kind=FundKind.GENERAL,
+            ref_key="",
+            name="Caisse générale",
+            description="Fonds opérationnel de l'association.",
+            is_system=True,
+        )
+        db.add(general_fund)
+        await db.flush()
+        db.add(
+            Caisse(
+                association_id=association.id,
+                fund_id=general_fund.id,
+                name="Caisse générale",
+                slug="generale",
+                description="Caisse principale de l'association (auto-créée, non supprimable).",
+                category=CaisseCategory.SYSTEM,
+                is_system=True,
+            )
+        )
+
         # 3. Users
+        #
+        # Role layout (post Phase 0 — only `association_admin` opens the config UI):
+        #   admin@demo-asso.tchoucti.cm    → association_admin → wizard + config
+        #   tresorier@demo.tchoucti.cm     → treasurer         → operational only
+        #   secretaire@demo.tchoucti.cm    → secretary         → operational only
+        #   membre@demo.tchoucti.cm        → member            → operational only
         users_data = [
             {
                 "email": "admin@tchoucti.cm",
@@ -84,11 +125,28 @@ async def seed_demo_data():
                 "groupement_id": groupement.id,
             },
             {
+                "email": "admin@demo-asso.tchoucti.cm",
+                "full_name": "Admin Association Démo",
+                "password": "assoc123",
+                "user_type": UserType.ASSOCIATION_USER,
+                "groupement_id": groupement.id,
+                "membership_role": "association_admin",
+            },
+            {
+                "email": "tresorier@demo.tchoucti.cm",
+                "full_name": "Trésorier Démo",
+                "password": "assoc123",
+                "user_type": UserType.ASSOCIATION_USER,
+                "groupement_id": groupement.id,
+                "membership_role": "treasurer",
+            },
+            {
                 "email": "secretaire@demo.tchoucti.cm",
                 "full_name": "Secrétaire Association Démo",
                 "password": "assoc123",
                 "user_type": UserType.ASSOCIATION_USER,
                 "groupement_id": groupement.id,
+                "membership_role": "association_manager",
             },
             {
                 "email": "membre@demo.tchoucti.cm",
@@ -96,6 +154,7 @@ async def seed_demo_data():
                 "password": "membre123",
                 "user_type": UserType.MEMBER,
                 "groupement_id": groupement.id,
+                "membership_role": "member",
             },
         ]
 
@@ -126,8 +185,44 @@ async def seed_demo_data():
             )
         )
 
+        # 4. Memberships — wire each demo user to the demo association with
+        # the role declared in users_data. Required so the role-based admin
+        # check (`is_association_admin`) returns the right answer.
+        role_codes = {u["membership_role"] for u in users_data if u.get("membership_role")}
+        roles_res = await db.execute(select(Role).where(Role.code.in_(role_codes)))
+        role_by_code = {r.code: r for r in roles_res.scalars().all()}
+        missing = role_codes - role_by_code.keys()
+        if missing:
+            raise RuntimeError(
+                f"RBAC seed missing roles {missing} — run seed_rbac before seed_demo."
+            )
+
+        now = datetime.now(timezone.utc)
+        for u in users_data:
+            role_code = u.get("membership_role")
+            if not role_code:
+                continue
+            membership = Membership(
+                user_id=created[u["email"]].id,
+                association_id=association.id,
+                status=MembershipStatus.ACTIVE,
+                joined_at=now,
+            )
+            db.add(membership)
+            await db.flush()
+            db.add(
+                MembershipRole(
+                    membership_id=membership.id,
+                    role_id=role_by_code[role_code].id,
+                    assigned_at=now,
+                )
+            )
+
         await db.commit()
-        print("✅ Demo data seeded (4 users + groupement + association + owner)")
+        print(
+            f"✅ Demo data seeded ({len(users_data)} users + groupement + "
+            f"association + memberships + system caisse)"
+        )
 
 
 async def seed_rbac_data():
@@ -140,8 +235,9 @@ async def seed_rbac_data():
 async def main():
     print("🌱 Seeding Tchoucti database...")
     await create_tables()
-    await seed_demo_data()
+    # RBAC roles MUST exist before demo data: demo memberships attach roles.
     await seed_rbac_data()
+    await seed_demo_data()
     await engine.dispose()
     print("🎉 Done!")
 

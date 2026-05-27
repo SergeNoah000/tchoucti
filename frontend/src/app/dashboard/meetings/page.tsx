@@ -36,7 +36,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { meetingsApi, associationsApi } from "@/lib/api";
 import type { Meeting, Association, MeetingStatus } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
-import { detectRole } from "@/lib/roles";
+import { canConfigureAssociation } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -115,7 +115,7 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
 export default function MeetingsPage() {
   const t = useTranslations("meeting");
   const { user } = useAuthStore();
-  const canManage = detectRole(user) !== "member";
+  const canManage = canConfigureAssociation(user);
 
   const { data: associations = [] } = useQuery<Association[]>({
     queryKey: ["associations"],

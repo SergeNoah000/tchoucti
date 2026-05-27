@@ -45,6 +45,10 @@ export default function DashboardPage() {
       return <AssociationAdminDashboard />;
     case "member":
     default:
+      // Bureau roles (treasurer, secretary, manager) need to see meetings,
+      // members and finance — they share the association layout with the
+      // admin, just without the config widgets (gated separately).
+      if (user?.has_bureau_role) return <AssociationAdminDashboard />;
       return <MemberDashboard />;
   }
 }

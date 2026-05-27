@@ -34,8 +34,9 @@ async def main() -> None:
 
     print("🌱 Empty database — creating tables and seeding demo data...")
     await create_tables()
-    await seed_demo_data()
+    # RBAC must precede demo data: memberships need roles to attach to.
     await seed_rbac_data()
+    await seed_demo_data()
     await engine.dispose()
     print("🎉 Database ready.")
 

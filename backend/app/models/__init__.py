@@ -3,7 +3,12 @@ from app.models.base import BaseModel, TimestampMixin, UUIDMixin  # noqa: F401
 
 # Tenant & identity
 from app.models.groupement import Groupement  # noqa: F401
-from app.models.association import Association, AssociationType  # noqa: F401
+from app.models.association import (  # noqa: F401
+    Association,
+    AssociationType,
+    MembershipCriterion,
+    MembershipCriterionType,
+)
 from app.models.user import User, UserType, InviteStatus  # noqa: F401
 from app.models.role import (  # noqa: F401
     Role,
@@ -27,6 +32,13 @@ from app.models.finance import (  # noqa: F401
     LedgerEntry,
 )
 
+# Caisse layer (config-v2) — user-facing wrapper around Fund
+from app.models.caisse import (  # noqa: F401
+    Caisse,
+    CaisseCategory,
+    MemberCaisseBalance,
+)
+
 # Meetings & activities
 from app.models.meeting import (  # noqa: F401
     Meeting,
@@ -48,6 +60,8 @@ from app.models.tontine import (  # noqa: F401
     TontineRoundBeneficiary,
     TontineRoundStatus,
     TontineContribution,
+    TontineMeetingLink,
+    TontineParticipation,
 )
 
 # Loans
@@ -57,6 +71,7 @@ from app.models.loan import (  # noqa: F401
     LoanInstallment,
     LoanInstallmentStatus,
     LoanRepayment,
+    LoanType,
 )
 
 # Social aid
@@ -65,6 +80,7 @@ from app.models.social_aid import (  # noqa: F401
     SocialAidCaseKind,
     SocialAidCaseStatus,
     SocialAidPayout,
+    AidType,
 )
 
 # Projects

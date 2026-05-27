@@ -49,6 +49,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import BaseModel
 
 if TYPE_CHECKING:
+    from app.models.association import Association
+    from app.models.caisse import Caisse
     from app.models.finance import TreasuryMovement
     from app.models.role import Membership
 
@@ -62,6 +64,75 @@ class LoanStatus(str, Enum):
     REJECTED = "rejected"
     DEFAULTED = "defaulted"      # défaillant (radié)
     CANCELLED = "cancelled"
+
+
+# ───────────────────────────────────────────────────
+# LoanType — catalog of loan products an association offers (config-v2)
+# ───────────────────────────────────────────────────
+class LoanType(BaseModel):
+    """Type de prêt configurable par l'admin.
+
+    Définit les règles d'éligibilité, le coût (intérêt + pénalité) et la
+    caisse depuis laquelle le capital est tiré. Les demandes de prêt (modèle
+    `Loan`) référencent un LoanType pour copier ses paramètres au moment du
+    décaissement (les changements ultérieurs au LoanType ne touchent pas les
+    prêts déjà émis).
+    """
+
+    __tablename__ = "loan_types"
+    __table_args__ = (
+        UniqueConstraint(
+            "association_id", "slug",
+            name="uq_loan_types_assoc_slug",
+        ),
+    )
+
+    association_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("associations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Caisse source — c'est de là que sort le capital.
+    source_caisse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("caisses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # ── Éligibilité ──────────────────────────────────────────────────────────
+    eligibility_min_seniority_months: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    eligibility_no_default: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    # Limites — max prêts actifs simultanés et max nouveau prêt par an pour un membre.
+    max_simultaneous: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    max_per_year: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    # ── Coût ────────────────────────────────────────────────────────────────
+    # Taux d'intérêt mensuel (ex 5.0 = 5%)
+    interest_rate_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=0, nullable=False
+    )
+    # Pénalité par mois de retard (% de l'échéance)
+    late_fee_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=0, nullable=False
+    )
+    # Durée max en mois — l'admin du prêt ne peut pas dépasser
+    max_duration_months: Mapped[int] = mapped_column(Integer, default=12, nullable=False)
+
+    # ── Relationships ───────────────────────────────────────────────────────
+    association: Mapped["Association"] = relationship("Association")
+    source_caisse: Mapped["Caisse"] = relationship("Caisse")
 
 
 class LoanInstallmentStatus(str, Enum):

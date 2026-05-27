@@ -22,6 +22,7 @@ from app.models.base import BaseModel
 if TYPE_CHECKING:
     from app.models.association import Association
     from app.models.finance import TreasuryMovement
+    from app.models.meeting import Meeting
     from app.models.role import Membership
 
 
@@ -79,6 +80,11 @@ class TontineCycle(BaseModel):
         nullable=False,
         index=True,
     )
+
+    # Si True : tous les membres actifs sont participants obligatoires (pas
+    # d'opt-out possible). Si False : participation par défaut mais l'admin
+    # peut opt-out un membre via TontineParticipation.
+    is_mandatory: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     notes: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
 
@@ -225,3 +231,76 @@ class TontineContribution(BaseModel):
 
     round: Mapped["TontineRound"] = relationship("TontineRound", back_populates="contributions")
     membership: Mapped["Membership"] = relationship("Membership")
+
+
+# ───────────────────────────────────────────────────
+# TontineMeetingLink — which séance hosts which round (config-v2)
+# ───────────────────────────────────────────────────
+class TontineMeetingLink(BaseModel):
+    """Mapping un tour de tontine ↔ une séance.
+
+    À la création d'une tontine, on choisit pour chaque tour la séance hôte
+    parmi les séances futures de l'association. Permet de :
+      - savoir quelles tontines collecter à chaque séance ;
+      - déplacer un tour individuellement (en changeant la séance hôte) sans
+        toucher le reste du cycle.
+
+    `is_locked` empêche le déplacement isolé (utile si le cycle est rigide).
+    """
+
+    __tablename__ = "tontine_meeting_links"
+    __table_args__ = (
+        UniqueConstraint("round_id", name="uq_tontine_meeting_links_round"),
+    )
+
+    round_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tontine_rounds.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    meeting_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("meetings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+# ───────────────────────────────────────────────────
+# TontineParticipation — opt-in/opt-out per member per cycle
+# ───────────────────────────────────────────────────
+class TontineParticipation(BaseModel):
+    """Participation d'un membre à un cycle de tontine.
+
+    Par défaut OBLIGATOIRE (`is_participating=True`) pour chaque membre actif.
+    L'admin peut opt-out un membre à la création du cycle (sauf si la tontine
+    a `is_mandatory=True` au niveau du cycle).
+
+    Présent uniquement pour les membres qui ont quelque chose à dire (opt-out
+    ou statut spécial). Absence de ligne = par défaut, participe.
+    """
+
+    __tablename__ = "tontine_participations"
+    __table_args__ = (
+        UniqueConstraint(
+            "cycle_id", "membership_id",
+            name="uq_tontine_participations_pair",
+        ),
+    )
+
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tontine_cycles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    membership_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("memberships.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    is_participating: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)

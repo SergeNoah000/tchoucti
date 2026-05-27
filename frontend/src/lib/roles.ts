@@ -2,7 +2,9 @@ import type { User } from "./types";
 
 /**
  * 4 espaces fonctionnels, déduits du profil utilisateur.
- * `association_admin` n'est pas encore détectable côté API → fallback `member`.
+ * Depuis Phase 0, `is_association_admin` est *strict* : seul un user avec le
+ * rôle `association_admin` retourne `"association_admin"` ici. Les autres
+ * rôles opérationnels (treasurer, secretary, manager) retombent sur `"member"`.
  */
 export type AppRole =
   | "super_admin"
@@ -12,7 +14,13 @@ export type AppRole =
 
 export function detectRole(
   user:
-    | Pick<User, "is_platform_admin" | "is_groupement_admin" | "is_association_admin">
+    | Pick<
+        User,
+        | "is_platform_admin"
+        | "is_groupement_admin"
+        | "is_association_admin"
+        | "has_association_role"
+      >
     | null
     | undefined,
 ): AppRole {
@@ -21,6 +29,48 @@ export function detectRole(
   if (user.is_groupement_admin) return "groupement_admin";
   if (user.is_association_admin) return "association_admin";
   return "member";
+}
+
+/** True only if the user can edit the association configuration.
+ *
+ *  - Super admin & groupement admin: yes (they can edit anything in their scope).
+ *  - Association admin: yes — owns the association configuration.
+ *  - Everyone else (treasurer, secretary, member): no, operational only. */
+export function canConfigureAssociation(
+  user:
+    | Pick<User, "is_platform_admin" | "is_groupement_admin" | "is_association_admin">
+    | null
+    | undefined,
+): boolean {
+  if (!user) return false;
+  return (
+    !!user.is_platform_admin || !!user.is_groupement_admin || !!user.is_association_admin
+  );
+}
+
+/** True if the user can perform operational bureau actions during meetings
+ *  (record entries, approve loans, payout aids, post movements). Includes the
+ *  admin path. Excludes plain members. Use this for `canManage`-style gates
+ *  on operational pages. */
+export function canDoBureauActions(
+  user:
+    | Pick<
+        User,
+        | "is_platform_admin"
+        | "is_groupement_admin"
+        | "is_association_admin"
+        | "has_bureau_role"
+      >
+    | null
+    | undefined,
+): boolean {
+  if (!user) return false;
+  return (
+    !!user.is_platform_admin ||
+    !!user.is_groupement_admin ||
+    !!user.is_association_admin ||
+    !!user.has_bureau_role
+  );
 }
 
 export interface RoleTheme {

@@ -86,6 +86,9 @@ class FundKind(str, Enum):
     SAVINGS = "savings"
     PROJECT = "project"
     EXTERNAL = "external"
+    # User-defined caisse (config-v2). The Fund is created together with a
+    # Caisse row that carries the user-facing rules.
+    CUSTOM = "custom"
 
 
 class MovementDirection(str, Enum):

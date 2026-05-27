@@ -108,10 +108,17 @@ export interface User {
   full_name: string;
   phone?: string | null;
   is_active: boolean;
-  /** Mutually exclusive role flags — backend sets exactly zero or one of these. */
+  /** Mutually exclusive role flags. `is_association_admin` is now strict: only
+   *  true when the user has the `association_admin` role on a membership. */
   is_platform_admin: boolean;
   is_groupement_admin?: boolean;
   is_association_admin?: boolean;
+  /** True for any operational association role (treasurer, secretary, manager,
+   *  member). Used to route to the operational dashboard instead of /onboarding. */
+  has_association_role?: boolean;
+  /** True if the user holds any role other than plain "member" on a membership
+   *  (treasurer, secretary, manager, admin). Unlocks bureau actions in séances. */
+  has_bureau_role?: boolean;
   avatar_url?: string | null;
   groupement_id?: UUID | null;
   created_at: string;

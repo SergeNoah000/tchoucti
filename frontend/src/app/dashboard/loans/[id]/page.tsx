@@ -51,7 +51,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { associationsApi, loansApi } from "@/lib/api";
 import type { Association, LoanDetail, LoanInstallmentStatus, LoanStatus } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
-import { detectRole } from "@/lib/roles";
+import { canDoBureauActions } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -87,7 +87,7 @@ export default function LoanDetailPage() {
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-  const canManage = detectRole(user) !== "member";
+  const canManage = canDoBureauActions(user);
 
   const loanKey = ["loan", id];
   const { data: loan, isLoading } = useQuery<LoanDetail>({

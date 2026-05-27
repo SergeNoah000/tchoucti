@@ -11,10 +11,13 @@ from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     Enum as SQLEnum,
     ForeignKey,
+    Integer,
     String,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -23,6 +26,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import BaseModel
 
 if TYPE_CHECKING:
+    from app.models.association import Association
+    from app.models.caisse import Caisse
     from app.models.finance import TreasuryMovement
     from app.models.role import Membership
 
@@ -44,6 +49,78 @@ class SocialAidCaseStatus(str, Enum):
     PAID = "paid"             # décaissement effectué
     REJECTED = "rejected"
     CANCELLED = "cancelled"
+
+
+# ───────────────────────────────────────────────────
+# AidType — catalog of social aid kinds an association offers (config-v2)
+# ───────────────────────────────────────────────────
+class AidType(BaseModel):
+    """Type d'aide sociale configurable par l'admin.
+
+    Définit le barème (combien chaque membre doit cotiser, plafond versé au
+    bénéficiaire), la fréquence de cotisation et les contraintes (max demandes
+    par membre par an, délai de déclaration).
+
+    Si is_contribution_recurring : la cotisation est collectée à chaque séance
+    pendant que l'aide est en cours. Sinon : collecte one-shot dès l'approbation.
+
+    La caisse `source_caisse_id` reçoit les cotisations et finance le versement.
+    """
+
+    __tablename__ = "aid_types"
+    __table_args__ = (
+        UniqueConstraint(
+            "association_id", "slug",
+            name="uq_aid_types_assoc_slug",
+        ),
+    )
+
+    association_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("associations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Caisse qui reçoit les cotisations et finance le versement.
+    source_caisse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("caisses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # ── Cotisation membre ───────────────────────────────────────────────────
+    member_contribution_amount: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+    # True = collectée à chaque séance pendant que l'aide est en cours.
+    # False = collecte one-shot lors de l'approbation.
+    is_contribution_recurring: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+
+    # ── Versement au bénéficiaire ────────────────────────────────────────────
+    aid_ceiling_amount: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False
+    )
+
+    # ── Contraintes ──────────────────────────────────────────────────────────
+    max_claims_per_member_per_year: Mapped[int] = mapped_column(
+        Integer, default=1, nullable=False
+    )
+    # Délai max de déclaration après l'événement (jours).
+    declaration_delay_days: Mapped[int] = mapped_column(
+        Integer, default=30, nullable=False
+    )
+
+    # ── Relationships ───────────────────────────────────────────────────────
+    association: Mapped["Association"] = relationship("Association")
+    source_caisse: Mapped["Caisse"] = relationship("Caisse")
 
 
 # ───────────────────────────────────────────────────

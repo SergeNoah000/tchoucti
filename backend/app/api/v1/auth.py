@@ -15,6 +15,7 @@ from app.core.security import (
     get_password_hash,
     verify_password,
 )
+from app.models.role import Membership, MembershipRole, MembershipStatus, Role
 from app.models.user import InviteStatus, User, UserType
 from app.schemas.auth import (
     ActivateRequest,
@@ -26,16 +27,36 @@ from app.schemas.auth import (
 router = APIRouter()
 
 
-def _public_user(user: User) -> dict:
+async def _public_user(db: AsyncSession, user: User) -> dict:
     """Adapt SQLAlchemy User → frontend-facing payload.
 
-    Flags are mutually exclusive — derived from ``user.user_type``. The frontend
-    routes each user to a different dashboard based on which one is set:
-      SUPER_ADMIN      → is_platform_admin
-      GROUPEMENT_ADMIN → is_groupement_admin
-      ASSOCIATION_USER → is_association_admin (admin/secretary/treasurer/manager)
-      MEMBER           → none set → plain member
+    Computes the role flags from membership data (not from `user.user_type`
+    alone): only users with at least one `association_admin` role on an
+    ACTIVE membership get `is_association_admin=True`. Treasurers, secretaries,
+    censors and plain members get `has_association_role=True` instead and see
+    only the operational dashboard.
     """
+    is_assoc_admin = False
+    has_assoc_role = False
+    has_bureau_role = False
+    if user.user_type in (UserType.ASSOCIATION_USER, UserType.MEMBER):
+        stmt = (
+            select(Role.code)
+            .join(MembershipRole, MembershipRole.role_id == Role.id)
+            .join(Membership, Membership.id == MembershipRole.membership_id)
+            .where(
+                Membership.user_id == user.id,
+                Membership.status == MembershipStatus.ACTIVE,
+            )
+        )
+        res = await db.execute(stmt)
+        role_codes = {row[0] for row in res.all()}
+        has_assoc_role = bool(role_codes)
+        is_assoc_admin = "association_admin" in role_codes
+        # Bureau = anything that lets the user act during meetings beyond just
+        # attending. Plain "member" alone does NOT count.
+        has_bureau_role = bool(role_codes - {"member"})
+
     return {
         "id": user.id,
         "email": user.email,
@@ -44,7 +65,9 @@ def _public_user(user: User) -> dict:
         "is_active": user.is_active,
         "is_platform_admin": user.user_type == UserType.SUPER_ADMIN,
         "is_groupement_admin": user.user_type == UserType.GROUPEMENT_ADMIN,
-        "is_association_admin": user.user_type == UserType.ASSOCIATION_USER,
+        "is_association_admin": is_assoc_admin,
+        "has_association_role": has_assoc_role,
+        "has_bureau_role": has_bureau_role,
         "avatar_url": user.avatar_url,
         "groupement_id": user.groupement_id,
         "created_at": user.created_at,
@@ -109,8 +132,11 @@ async def logout(_: User = Depends(get_current_user)):
 
 
 @router.get("/me", response_model=UserPublic)
-async def me(user: User = Depends(get_current_user)):
-    return _public_user(user)
+async def me(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _public_user(db, user)
 
 
 @router.post("/activate", response_model=UserPublic)
@@ -134,4 +160,4 @@ async def activate(payload: ActivateRequest, db: AsyncSession = Depends(get_db))
     user.invite_status = InviteStatus.ACCEPTED
     await db.commit()
     await db.refresh(user)
-    return _public_user(user)
+    return await _public_user(db, user)
