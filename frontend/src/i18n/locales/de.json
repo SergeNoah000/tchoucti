@@ -754,9 +754,24 @@
     "amountError": "Betrag muss positiv sein",
     "sameFundError": "Wählen Sie zwei verschiedene Fonds"
   },
+  "aidHistory": {
+    "titleMember": "Meine Beiträge zur Sozialhilfe",
+    "subtitleMember": "Historie Ihrer Beiträge zu Hilfefällen.",
+    "titleBureau": "Verlauf der Hilfe-Beiträge",
+    "subtitleBureau": "Alle Beiträge, die in Sitzungen erfasst wurden, nach Mitglied und Hilfetyp.",
+    "since": "Seit",
+    "until": "Bis",
+    "total": "Gesamt",
+    "perMember": "Pro Mitglied",
+    "entries": "Beiträge",
+    "empty": "Keine Beiträge in diesem Zeitraum erfasst.",
+    "aidTypeUnknown": "Hilfe (unbekannter Typ)",
+    "statusDraft": "Entwurf"
+  },
   "socialAid": {
     "title": "Sozialhilfe",
     "subtitle": "Hilfefälle der Sozialkasse.",
+    "historyLink": "Beiträge",
     "declare": "Fall melden",
     "declareTitle": "Sozialhilfefall melden",
     "declareDesc": "Die konfigurierte Skala bestimmt den vorgeschlagenen Betrag.",

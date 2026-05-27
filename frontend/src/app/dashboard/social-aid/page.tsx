@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { HeartHandshake, Plus, Loader2, Check, X, HandCoins } from "lucide-react";
+import Link from "next/link";
+import { HeartHandshake, History, Plus, Loader2, Check, X, HandCoins } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -89,7 +90,17 @@ export default function SocialAidPage() {
       <PageHeader
         title={t("title")}
         description={t("subtitle")}
-        actions={associationId ? <DeclareDialog association={association!} /> : undefined}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" className="gap-1.5">
+              <Link href="/dashboard/social-aid/history">
+                <History className="h-4 w-4" />
+                {t("historyLink")}
+              </Link>
+            </Button>
+            {associationId && <DeclareDialog association={association!} />}
+          </div>
+        }
       />
 
       {isLoading ? (

@@ -17,7 +17,7 @@ from app.api.deps import get_current_user, get_db
 from app.models.association import Association
 from app.models.caisse import Caisse
 from app.models.finance import Fund, FundKind, MovementDirection
-from app.models.role import Membership
+from app.models.role import Membership, MembershipRole, MembershipStatus, Role
 from app.models.social_aid import (
     AidType,
     SocialAidCase,
@@ -27,13 +27,19 @@ from app.models.social_aid import (
 )
 from app.models.user import User
 from app.schemas.social_aid import (
+    AidContributionOut,
     SocialAidApprove,
     SocialAidCaseCreate,
     SocialAidCaseDetail,
     SocialAidCaseOut,
     SocialAidReject,
 )
-from app.models.meeting import Activity
+from app.models.meeting import (
+    Activity,
+    EntryStatus,
+    Meeting,
+    MeetingActivityEntry,
+)
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 
 router = APIRouter()
@@ -153,6 +159,30 @@ async def list_cases(
         stmt = stmt.where(SocialAidCase.status == SocialAidCaseStatus(status_filter))
     res = await db.execute(stmt)
     return [_case_out(c) for c in res.scalars().all()]
+
+
+# Phase 5 — placed BEFORE /{case_id} so FastAPI doesn't try to parse
+# "contributions" as a UUID. The full implementation lives at the bottom
+# of the file ; this is just the route declaration shim that calls it.
+@router.get("/contributions", response_model=List[AidContributionOut])
+async def list_contributions_route(
+    association_id: UUID = Query(...),
+    membership_id: UUID | None = Query(None),
+    aid_type_id: UUID | None = Query(None),
+    since: Optional[date] = Query(None),
+    until: Optional[date] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await _list_contributions_impl(
+        association_id=association_id,
+        membership_id=membership_id,
+        aid_type_id=aid_type_id,
+        since=since,
+        until=until,
+        db=db,
+        current_user=current_user,
+    )
 
 
 @router.get("/{case_id}", response_model=SocialAidCaseDetail)
@@ -427,3 +457,156 @@ async def payout_case(
     db.expire_all()  # drop stale collections so the reload sees the new payout
     case = await _load_case(db, case_id)
     return _case_detail(case)
+
+
+# ── Phase 5 — historique des cotisations d'aides sociales ──────────────────
+
+
+async def _resolve_membership_filter(
+    db: AsyncSession,
+    user: User,
+    assoc: Association,
+    requested: UUID | None,
+) -> UUID | None:
+    """Compute the effective membership_id filter for /contributions.
+
+    - Plain members (has_bureau_role=False) : always limited to their own
+      membership_id ; any `requested` other than theirs → 403.
+    - Bureau / admin : pass `requested` through, or None (= all members).
+    """
+    if user.is_super_admin or user.is_groupement_admin:
+        return requested
+
+    # Find the user's own membership in this asso, if any.
+    own_res = await db.execute(
+        select(Membership.id)
+        .join(MembershipRole, MembershipRole.membership_id == Membership.id)
+        .join(Role, Role.id == MembershipRole.role_id)
+        .where(
+            Membership.user_id == user.id,
+            Membership.association_id == assoc.id,
+            Membership.status == MembershipStatus.ACTIVE,
+        )
+        .limit(1)
+    )
+    own_id = own_res.scalar_one_or_none()
+    if own_id is None:
+        # Not a member of this asso — let _check_access handle the 403.
+        return requested
+
+    # Has bureau (anything other than plain "member") ?
+    bureau_res = await db.execute(
+        select(Role.code)
+        .join(MembershipRole, MembershipRole.role_id == Role.id)
+        .where(MembershipRole.membership_id == own_id, Role.code != "member")
+        .limit(1)
+    )
+    is_bureau = bureau_res.first() is not None
+    if is_bureau:
+        return requested
+
+    # Plain member — force scope to themselves.
+    if requested is not None and requested != own_id:
+        raise HTTPException(403, "Vous ne pouvez consulter que votre propre historique.")
+    return own_id
+
+
+async def _list_contributions_impl(
+    *,
+    association_id: UUID,
+    membership_id: UUID | None,
+    aid_type_id: UUID | None,
+    since: Optional[date],
+    until: Optional[date],
+    db: AsyncSession,
+    current_user: User,
+):
+    """Historique des cotisations d'aides sociales d'un membre ou de tous.
+
+    - Bureau (trésorier, secrétaire, admin) : voit toutes les cotisations,
+      filtrable par membre + type + période.
+    - Membre simple : limité à `membership_id = sa propre membership`.
+    """
+    assoc = await _get_assoc_or_404(db, association_id)
+    _check_access(current_user, assoc)
+    effective_member = await _resolve_membership_filter(db, current_user, assoc, membership_id)
+
+    # Join entries → activities (with aid_type_id in config) → meetings + memberships.
+    stmt = (
+        select(
+            MeetingActivityEntry,
+            Meeting,
+            Activity,
+            Membership,
+        )
+        .join(Activity, Activity.id == MeetingActivityEntry.activity_id)
+        .join(Meeting, Meeting.id == MeetingActivityEntry.meeting_id)
+        .join(Membership, Membership.id == MeetingActivityEntry.membership_id)
+        .options(selectinload(Membership.user))
+        .where(
+            Meeting.association_id == assoc.id,
+            Activity.code.like("aid-%"),
+            MeetingActivityEntry.status != EntryStatus.VOIDED,
+        )
+        .order_by(Meeting.scheduled_on.desc())
+    )
+    if effective_member is not None:
+        stmt = stmt.where(MeetingActivityEntry.membership_id == effective_member)
+    if since is not None:
+        stmt = stmt.where(Meeting.scheduled_on >= since)
+    if until is not None:
+        stmt = stmt.where(Meeting.scheduled_on <= until)
+
+    res = await db.execute(stmt)
+    rows = list(res.all())
+
+    if not rows:
+        return []
+
+    # Resolve aid type names from activity.config.aid_type_id.
+    aid_type_ids: set[UUID] = set()
+    for entry, _m, act, _mb in rows:
+        cfg = act.config or {}
+        aid_id_raw = cfg.get("aid_type_id")
+        if aid_id_raw:
+            try:
+                aid_type_ids.add(UUID(aid_id_raw))
+            except (ValueError, TypeError):
+                pass
+    aid_type_names: dict[UUID, tuple[UUID, str]] = {}
+    if aid_type_ids:
+        at_res = await db.execute(
+            select(AidType.id, AidType.name).where(AidType.id.in_(aid_type_ids))
+        )
+        aid_type_names = {aid_id: (aid_id, name) for aid_id, name in at_res.all()}
+
+    out: list[AidContributionOut] = []
+    for entry, meeting, act, mb in rows:
+        cfg = act.config or {}
+        atid = None
+        atname = None
+        aid_id_raw = cfg.get("aid_type_id")
+        if aid_id_raw:
+            try:
+                atid = UUID(aid_id_raw)
+                _key, atname = aid_type_names.get(atid, (None, None))
+            except (ValueError, TypeError):
+                pass
+        if aid_type_id is not None and atid != aid_type_id:
+            continue  # post-filter by aid type
+        u = getattr(mb, "user", None)
+        out.append(
+            AidContributionOut(
+                entry_id=entry.id,
+                meeting_id=meeting.id,
+                meeting_title=meeting.title,
+                meeting_date=meeting.scheduled_on,
+                membership_id=mb.id,
+                member_name=getattr(u, "full_name", None),
+                aid_type_id=atid,
+                aid_type_name=atname,
+                amount=entry.amount,
+                status=entry.status.value if hasattr(entry.status, "value") else entry.status,
+            )
+        )
+    return out

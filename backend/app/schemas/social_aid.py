@@ -64,3 +64,23 @@ class SocialAidCaseOut(BaseModel):
 
 class SocialAidCaseDetail(SocialAidCaseOut):
     payouts: List[SocialAidPayoutOut] = []
+
+
+# ── Phase 5 — historique des cotisations ──────────────────────────────────
+
+
+class AidContributionOut(BaseModel):
+    """Une cotisation d'un membre pour une aide sociale, capturée en séance."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    entry_id: UUID
+    meeting_id: UUID
+    meeting_title: str
+    meeting_date: date
+    membership_id: UUID
+    member_name: Optional[str] = None
+    aid_type_id: Optional[UUID] = None
+    aid_type_name: Optional[str] = None
+    amount: int
+    status: str  # entry status (recorded / draft / voided / corrected)

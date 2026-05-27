@@ -423,6 +423,19 @@ export const financeApi = {
     (await api.post(`/finance/movements/${id}/void`, { reason })).data,
 };
 
+export interface AidContribution {
+  entry_id: string;
+  meeting_id: string;
+  meeting_title: string;
+  meeting_date: string;
+  membership_id: string;
+  member_name?: string | null;
+  aid_type_id?: string | null;
+  aid_type_name?: string | null;
+  amount: number;
+  status: string;
+}
+
 export const socialAidApi = {
   list: async (associationId: string, status?: string) =>
     (await api.get("/social-aid", { params: { association_id: associationId, status } })).data,
@@ -440,6 +453,20 @@ export const socialAidApi = {
   reject: async (id: string, reason: string) =>
     (await api.post(`/social-aid/${id}/reject`, { reason })).data,
   payout: async (id: string) => (await api.post(`/social-aid/${id}/payout`, {})).data,
+  /** Phase 5 — historique des cotisations. RBAC : un membre simple ne voit
+   *  que ses propres cotisations, les bureau/admin voient tout. */
+  listContributions: async (
+    associationId: string,
+    params?: {
+      membership_id?: string;
+      aid_type_id?: string;
+      since?: string;
+      until?: string;
+    },
+  ) =>
+    (await api.get("/social-aid/contributions", {
+      params: { association_id: associationId, ...params },
+    })).data as AidContribution[],
 };
 
 export const loansApi = {

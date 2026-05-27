@@ -754,9 +754,24 @@
     "amountError": "Le montant doit être positif",
     "sameFundError": "Choisissez deux fonds différents"
   },
+  "aidHistory": {
+    "titleMember": "Mes cotisations d'aide sociale",
+    "subtitleMember": "Historique de vos contributions aux dossiers d'aide.",
+    "titleBureau": "Historique des cotisations d'aide",
+    "subtitleBureau": "Toutes les cotisations enregistrées en séance, par membre et type d'aide.",
+    "since": "Depuis le",
+    "until": "Jusqu'au",
+    "total": "Total",
+    "perMember": "Par membre",
+    "entries": "Cotisations",
+    "empty": "Aucune cotisation enregistrée sur la période.",
+    "aidTypeUnknown": "Aide (type inconnu)",
+    "statusDraft": "Brouillon"
+  },
   "socialAid": {
     "title": "Aide sociale",
     "subtitle": "Dossiers d'assistance de la caisse sociale.",
+    "historyLink": "Cotisations",
     "declare": "Déclarer un cas",
     "declareTitle": "Déclarer un cas d'aide sociale",
     "declareDesc": "Le barème configuré détermine le montant proposé.",

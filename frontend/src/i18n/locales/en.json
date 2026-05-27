@@ -754,9 +754,24 @@
     "amountError": "Amount must be positive",
     "sameFundError": "Pick two different funds"
   },
+  "aidHistory": {
+    "titleMember": "My social aid contributions",
+    "subtitleMember": "History of your contributions to aid cases.",
+    "titleBureau": "Aid contributions history",
+    "subtitleBureau": "Every contribution recorded at a meeting, by member and aid type.",
+    "since": "From",
+    "until": "Until",
+    "total": "Total",
+    "perMember": "Per member",
+    "entries": "Contributions",
+    "empty": "No contribution recorded for this period.",
+    "aidTypeUnknown": "Aid (unknown type)",
+    "statusDraft": "Draft"
+  },
   "socialAid": {
     "title": "Social aid",
     "subtitle": "Assistance cases from the social fund.",
+    "historyLink": "Contributions",
     "declare": "Declare a case",
     "declareTitle": "Declare a social-aid case",
     "declareDesc": "The configured scale sets the proposed amount.",
