@@ -205,3 +205,35 @@ class MeetingGenerateResult(BaseModel):
 
     created: List[MeetingOut] = []
     skipped_existing: int = 0  # dates already covered by an existing meeting
+
+
+# ── Agenda (Phase 3b — séance dynamique driven by config) ─────────────────
+
+
+class AgendaRow(BaseModel):
+    """One pre-filled row in the séance for a specific (member, item)."""
+
+    activity_id: UUID
+    label: str
+    default_amount: int
+    is_required: bool = False
+    # Polymorphic back-pointer — empty for plain catalogue activities.
+    context: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MemberAgenda(BaseModel):
+    """Everything one member must / can do at this séance, grouped by kind."""
+
+    membership_id: UUID
+    member_name: Optional[str] = None
+    tontines: List[AgendaRow] = []
+    caisses: List[AgendaRow] = []
+    loans: List[AgendaRow] = []
+    aids: List[AgendaRow] = []
+
+
+class MeetingAgenda(BaseModel):
+    """The whole séance agenda — one MemberAgenda per active membership."""
+
+    meeting_id: UUID
+    members: List[MemberAgenda] = []

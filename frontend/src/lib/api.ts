@@ -332,6 +332,10 @@ export const meetingsApi = {
   /** Pre-generate N future PLANNED meetings from the association cadence. */
   generate: async (payload: { association_id: string; count?: number; start_from?: string }) =>
     (await api.post("/meetings/generate", payload)).data,
+  /** Phase 3b — per-member agenda computed from config-v2 (tontines, caisses,
+   *  aids, loans) for this specific meeting. */
+  agenda: async (meetingId: string) =>
+    (await api.get(`/meetings/${meetingId}/agenda`)).data,
 };
 
 export const activitiesApi = {

@@ -12,7 +12,9 @@ from app.api.deps import get_current_user, get_db
 from app.models.association import Association
 from app.models.caisse import Caisse
 from app.models.finance import Fund, FundKind, MovementDirection
-from app.models.social_aid import AidType
+from app.models.loan import Loan, LoanInstallment, LoanInstallmentStatus, LoanStatus
+from app.models.role import Membership, MembershipStatus
+from app.models.social_aid import AidType, SocialAidCase, SocialAidCaseStatus
 from app.models.meeting import (
     Activity,
     ActivityType,
@@ -23,7 +25,13 @@ from app.models.meeting import (
     MeetingAttendance,
     MeetingStatus,
 )
-from app.models.tontine import TontineCycle
+from app.models.tontine import (
+    TontineCycle,
+    TontineMeetingLink,
+    TontineParticipation,
+    TontineRound,
+    TontineRoundBeneficiary,
+)
 from app.models.user import User
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.services import planning
@@ -110,15 +118,18 @@ async def _resolve_fund_for_entry(
     kind = _ACTIVITY_FUND.get(activity.type, FundKind.GENERAL)
     return funds_by_kind.get(kind) or funds_by_kind.get(FundKind.GENERAL)
 from app.schemas.meeting import (
+    AgendaRow,
     AttendanceOut,
     AttendanceUpsert,
     EntryCreate,
     EntryOut,
     EntryUpdate,
+    MeetingAgenda,
     MeetingCreate,
     MeetingDetail,
     MeetingGenerateRequest,
     MeetingGenerateResult,
+    MemberAgenda,
     MemberSavePayload,
     MeetingOut,
     MeetingUpdate,
@@ -790,3 +801,210 @@ async def generate_meetings(
         created=[_meeting_to_out(m) for m in created],
         skipped_existing=len(taken),
     )
+
+
+# ── Phase 3b — Per-member agenda computed from config-v2 ───────────────────
+
+
+@router.get("/{meeting_id}/agenda", response_model=MeetingAgenda)
+async def meeting_agenda(
+    meeting_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Compute, for each active member, the rows that should appear in the
+    séance UI. Driven entirely by config-v2 :
+
+      - tontines : un cycle propose une ligne au membre s'il est participant
+        ET que cette séance héberge un de ses tours (TontineMeetingLink).
+      - caisses : caisses récurrentes ou obligatoires (auto-Activity créée
+        à la création de la caisse).
+      - aides : aid cases approuvées de type récurrent ; contribution membre.
+      - prêts : prêts actifs du membre, échéance suggérée = montant attendu
+        de la prochaine installment non encore payée.
+    """
+    m = await _get_meeting_or_404(db, meeting_id)
+    assoc = await _get_assoc_or_404(db, m.association_id)
+    _check_access(current_user, assoc)
+
+    # ── Catalogue : tous les Activity actifs de l'asso ─────────────────────
+    act_res = await db.execute(
+        select(Activity).where(Activity.association_id == assoc.id, Activity.is_active.is_(True))
+    )
+    activities = list(act_res.scalars().all())
+    by_code = {a.code: a for a in activities}
+    loan_activity = next(
+        (a for a in activities if a.type == ActivityType.LOAN_REPAYMENT), None
+    )
+
+    # ── Membres actifs ─────────────────────────────────────────────────────
+    mem_res = await db.execute(
+        select(Membership)
+        .options(selectinload(Membership.user))
+        .where(
+            Membership.association_id == assoc.id,
+            Membership.status == MembershipStatus.ACTIVE,
+        )
+        .order_by(Membership.created_at)
+    )
+    members = list(mem_res.scalars().all())
+    member_ids = [m.id for m in members]
+
+    # ── Rounds tontine hébergés par CETTE séance ───────────────────────────
+    rnd_res = await db.execute(
+        select(TontineRound, TontineMeetingLink, TontineCycle)
+        .join(TontineMeetingLink, TontineMeetingLink.round_id == TontineRound.id)
+        .join(TontineCycle, TontineCycle.id == TontineRound.cycle_id)
+        .where(TontineMeetingLink.meeting_id == meeting_id)
+    )
+    rounds_here = list(rnd_res.all())
+
+    # Pour chaque cycle, on a besoin de savoir qui participe.
+    cycle_ids = {c.id for _r, _l, c in rounds_here}
+    opted_out: set[tuple[UUID, UUID]] = set()  # (cycle_id, membership_id)
+    if cycle_ids:
+        op_res = await db.execute(
+            select(TontineParticipation).where(
+                TontineParticipation.cycle_id.in_(cycle_ids),
+                TontineParticipation.is_participating.is_(False),
+            )
+        )
+        opted_out = {(p.cycle_id, p.membership_id) for p in op_res.scalars().all()}
+
+    # ── Prêts actifs de l'asso (avec leur prochaine installment) ───────────
+    loan_rows: dict[UUID, tuple[Loan, LoanInstallment | None]] = {}
+    if loan_activity:
+        loans_res = await db.execute(
+            select(Loan)
+            .options(selectinload(Loan.installments))
+            .where(
+                Loan.association_id == assoc.id,
+                Loan.status.in_([LoanStatus.DISBURSED, LoanStatus.REPAYING]),
+                Loan.borrower_membership_id.in_(member_ids),
+            )
+        )
+        for loan in loans_res.scalars().all():
+            next_inst = next(
+                (
+                    inst
+                    for inst in sorted(loan.installments, key=lambda i: i.number)
+                    if inst.status not in (LoanInstallmentStatus.PAID, LoanInstallmentStatus.WAIVED)
+                ),
+                None,
+            )
+            loan_rows[loan.id] = (loan, next_inst)
+
+    # ── Aides en cours — récurrentes uniquement ────────────────────────────
+    aid_res = await db.execute(
+        select(SocialAidCase, AidType)
+        .join(AidType, AidType.id == SocialAidCase.aid_type_id)
+        .where(
+            SocialAidCase.association_id == assoc.id,
+            SocialAidCase.status == SocialAidCaseStatus.APPROVED,
+            AidType.is_contribution_recurring.is_(True),
+        )
+    )
+    aid_cases = list(aid_res.all())
+
+    # ── Assemblage par membre ──────────────────────────────────────────────
+    member_agendas: list[MemberAgenda] = []
+    for mem in members:
+        # Tontines : un round par cycle où mem est participant.
+        tontines: list[AgendaRow] = []
+        for rnd, _link, cycle in rounds_here:
+            if (cycle.id, mem.id) in opted_out:
+                continue
+            code = f"tontine-{cycle.slug}"
+            act = by_code.get(code)
+            if not act:
+                continue
+            tontines.append(
+                AgendaRow(
+                    activity_id=act.id,
+                    label=f"Tontine {cycle.name} — Tour {rnd.round_number}",
+                    default_amount=cycle.round_amount,
+                    is_required=cycle.is_mandatory,
+                    context={
+                        "cycle_id": str(cycle.id),
+                        "round_id": str(rnd.id),
+                        "round_number": rnd.round_number,
+                    },
+                )
+            )
+
+        # Caisses : Activities visibles pinnées sur une caisse.
+        caisses_rows: list[AgendaRow] = []
+        for act in activities:
+            cfg = act.config or {}
+            if not act.is_visible_in_meeting:
+                continue
+            if not cfg.get("caisse_id"):
+                continue
+            caisses_rows.append(
+                AgendaRow(
+                    activity_id=act.id,
+                    label=act.name,
+                    default_amount=int(cfg.get("amount") or 0),
+                    is_required=act.is_required,
+                    context={"caisse_id": cfg.get("caisse_id")},
+                )
+            )
+
+        # Aides : 1 ligne par AidCase APPROVED de type récurrent.
+        aids: list[AgendaRow] = []
+        for case, atype in aid_cases:
+            code = f"aid-{atype.slug}"
+            act = by_code.get(code)
+            if not act:
+                continue
+            aids.append(
+                AgendaRow(
+                    activity_id=act.id,
+                    label=f"{atype.name} — {case.reference}",
+                    default_amount=int(atype.member_contribution_amount or 0),
+                    is_required=True,
+                    context={
+                        "aid_case_id": str(case.id),
+                        "aid_type_id": str(atype.id),
+                    },
+                )
+            )
+
+        # Prêts : 1 ligne par prêt actif du membre.
+        loans_section: list[AgendaRow] = []
+        if loan_activity:
+            for loan, next_inst in loan_rows.values():
+                if loan.borrower_membership_id != mem.id:
+                    continue
+                expected = (
+                    (next_inst.expected_amount - next_inst.paid_principal - next_inst.paid_interest)
+                    if next_inst
+                    else 0
+                )
+                loans_section.append(
+                    AgendaRow(
+                        activity_id=loan_activity.id,
+                        label=f"Prêt {loan.reference}"
+                        + (f" — Échéance {next_inst.number}" if next_inst else " — Soldé"),
+                        default_amount=max(0, expected),
+                        is_required=False,
+                        context={
+                            "loan_id": str(loan.id),
+                            "installment_id": str(next_inst.id) if next_inst else None,
+                        },
+                    )
+                )
+
+        u = getattr(mem, "user", None)
+        member_agendas.append(
+            MemberAgenda(
+                membership_id=mem.id,
+                member_name=getattr(u, "full_name", None),
+                tontines=tontines,
+                caisses=caisses_rows,
+                aids=aids,
+                loans=loans_section,
+            )
+        )
+
+    return MeetingAgenda(meeting_id=meeting_id, members=member_agendas)

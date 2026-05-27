@@ -61,6 +61,28 @@ const ATTENDANCE_PILLS: Record<AttendanceStatus, string> = {
 
 const ATTENDANCES: AttendanceStatus[] = ["present", "absent", "excused", "late"];
 
+interface AgendaRow {
+  activity_id: string;
+  label: string;
+  default_amount: number;
+  is_required: boolean;
+  context: Record<string, unknown>;
+}
+
+interface MemberAgendaData {
+  membership_id: string;
+  member_name?: string | null;
+  tontines: AgendaRow[];
+  caisses: AgendaRow[];
+  loans: AgendaRow[];
+  aids: AgendaRow[];
+}
+
+interface MeetingAgendaData {
+  meeting_id: string;
+  members: MemberAgendaData[];
+}
+
 interface MemberLocalState {
   attendance: AttendanceStatus | null;
   amounts: Record<string, string>; // activity_id → amount string
@@ -95,6 +117,16 @@ export default function MeetingDetailPage() {
     queryKey: ["activities", associationId],
     queryFn: () => activitiesApi.list({ association_id: associationId }),
     enabled: !!associationId,
+  });
+
+  // Phase 3b — per-member agenda computed from config-v2 (tontines actives
+  // sur cette séance, caisses récurrentes/obligatoires, aides en cours,
+  // prêts actifs). Fallback : si l'agenda est vide, on retombe sur la liste
+  // plate d'activités pour ne pas casser les assos legacy.
+  const { data: agenda } = useQuery<MeetingAgendaData>({
+    queryKey: ["meeting-agenda", meeting?.id],
+    queryFn: () => meetingsApi.agenda(meeting!.id),
+    enabled: !!meeting?.id,
   });
 
   const { data: memberships = [] } = useQuery<Membership[]>({
@@ -312,6 +344,7 @@ export default function MeetingDetailPage() {
               meeting={meeting}
               member={m}
               activities={visibleActivities}
+              memberAgenda={agenda?.members.find((ma) => ma.membership_id === m.id) ?? null}
               canEdit={canEdit}
               isOpen={openMembers.has(m.id)}
               setOpen={(open) => toggleMember(m.id, open)}
@@ -373,10 +406,61 @@ function StatCard({
 
 // ── Member row (collapsible) ─────────────────────────────────────────────────
 
+function AgendaSection({
+  title,
+  rows,
+  amounts,
+  setAmount,
+  canEdit,
+}: {
+  title: string;
+  rows: AgendaRow[];
+  amounts: Record<string, string>;
+  setAmount: (activityId: string, value: string) => void;
+  canEdit: boolean;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+      </p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {rows.map((r) => (
+          <div
+            key={`${r.activity_id}-${JSON.stringify(r.context)}`}
+            className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm">{r.label}</span>
+              {r.is_required && (
+                <span className="text-[10px] uppercase tracking-wide text-destructive/70">
+                  Obligatoire
+                </span>
+              )}
+            </span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              disabled={!canEdit}
+              value={amounts[r.activity_id] ?? (r.default_amount > 0 ? String(r.default_amount) : "")}
+              onChange={(e) => setAmount(r.activity_id, e.target.value)}
+              placeholder={r.default_amount > 0 ? String(r.default_amount) : "0"}
+              className="h-8 w-28 text-right text-sm"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MemberRow({
   meeting,
   member,
   activities,
+  memberAgenda,
   canEdit,
   isOpen,
   setOpen,
@@ -386,6 +470,7 @@ function MemberRow({
   meeting: MeetingDetail;
   member: Membership;
   activities: Activity[];
+  memberAgenda: MemberAgendaData | null;
   canEdit: boolean;
   isOpen: boolean;
   setOpen: (open: boolean) => void;
@@ -559,42 +644,82 @@ function MemberRow({
             </div>
           </div>
 
-          {/* Activities */}
-          <div className="space-y-1.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {t("activities")}
-            </p>
-            {activities.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border px-3 py-3 text-center text-sm text-muted-foreground">
-                {t("noActivities")}
+          {/* Agenda sections (Phase 3b, driven by config-v2).
+              Fallback : si l'agenda est vide (asso legacy ou pas encore
+              configurée), on retombe sur la liste plate d'activités pour
+              ne pas casser les flux existants. */}
+          {memberAgenda &&
+          (memberAgenda.tontines.length > 0 ||
+            memberAgenda.caisses.length > 0 ||
+            memberAgenda.loans.length > 0 ||
+            memberAgenda.aids.length > 0) ? (
+            <>
+              <AgendaSection
+                title={t("sectionTontines")}
+                rows={memberAgenda.tontines}
+                amounts={local.amounts}
+                setAmount={setAmount}
+                canEdit={canEdit}
+              />
+              <AgendaSection
+                title={t("sectionCaisses")}
+                rows={memberAgenda.caisses}
+                amounts={local.amounts}
+                setAmount={setAmount}
+                canEdit={canEdit}
+              />
+              <AgendaSection
+                title={t("sectionLoans")}
+                rows={memberAgenda.loans}
+                amounts={local.amounts}
+                setAmount={setAmount}
+                canEdit={canEdit}
+              />
+              <AgendaSection
+                title={t("sectionAids")}
+                rows={memberAgenda.aids}
+                amounts={local.amounts}
+                setAmount={setAmount}
+                canEdit={canEdit}
+              />
+            </>
+          ) : (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("activities")}
               </p>
-            ) : (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {activities.map((a) => (
-                  <div
-                    key={a.id}
-                    className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2"
-                  >
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: a.color || "var(--primary)" }}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm">{a.name}</span>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      disabled={!canEdit}
-                      value={local.amounts[a.id] ?? ""}
-                      onChange={(e) => setAmount(a.id, e.target.value)}
-                      placeholder="0"
-                      className="h-8 w-28 text-right text-sm"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+              {activities.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-border px-3 py-3 text-center text-sm text-muted-foreground">
+                  {t("noActivities")}
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {activities.map((a) => (
+                    <div
+                      key={a.id}
+                      className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2"
+                    >
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: a.color || "var(--primary)" }}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-sm">{a.name}</span>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        disabled={!canEdit}
+                        value={local.amounts[a.id] ?? ""}
+                        onChange={(e) => setAmount(a.id, e.target.value)}
+                        placeholder="0"
+                        className="h-8 w-28 text-right text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Footer actions */}
           {canEdit && (

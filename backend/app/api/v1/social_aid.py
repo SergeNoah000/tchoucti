@@ -33,6 +33,7 @@ from app.schemas.social_aid import (
     SocialAidCaseOut,
     SocialAidReject,
 )
+from app.models.meeting import Activity
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 
 router = APIRouter()
@@ -304,6 +305,25 @@ async def approve_case(
     case.approved_amount = amount
     case.decided_on = date.today()
     case.decided_by_id = current_user.id
+
+    # Phase 3b — make the matching Activity visible in séances so members
+    # can contribute. Recurring types stay visible until the case is paid ;
+    # non-recurring types are one-shot (collected at approval, hidden again
+    # immediately to avoid double-charging).
+    if case.aid_type_id is not None:
+        at_res = await db.execute(select(AidType).where(AidType.id == case.aid_type_id))
+        aid_type = at_res.scalar_one_or_none()
+        if aid_type:
+            code = f"aid-{aid_type.slug}"
+            act_res = await db.execute(
+                select(Activity).where(
+                    Activity.association_id == assoc.id, Activity.code == code
+                )
+            )
+            act = act_res.scalar_one_or_none()
+            if act and aid_type.is_contribution_recurring:
+                act.is_visible_in_meeting = True
+
     await db.commit()
     case = await _load_case(db, case_id)
     return _case_detail(case)
@@ -378,6 +398,31 @@ async def payout_case(
     )
     case.status = SocialAidCaseStatus.PAID
     case.paid_amount = case.approved_amount
+
+    # Phase 3b — if no other APPROVED case of this type remains, hide the
+    # Activity again so it stops appearing on séances.
+    if case.aid_type_id is not None:
+        other_open = await db.execute(
+            select(SocialAidCase.id).where(
+                SocialAidCase.aid_type_id == case.aid_type_id,
+                SocialAidCase.id != case.id,
+                SocialAidCase.status == SocialAidCaseStatus.APPROVED,
+            ).limit(1)
+        )
+        if other_open.first() is None:
+            at_res = await db.execute(select(AidType).where(AidType.id == case.aid_type_id))
+            aid_type = at_res.scalar_one_or_none()
+            if aid_type:
+                code = f"aid-{aid_type.slug}"
+                act_res = await db.execute(
+                    select(Activity).where(
+                        Activity.association_id == assoc.id, Activity.code == code
+                    )
+                )
+                act = act_res.scalar_one_or_none()
+                if act:
+                    act.is_visible_in_meeting = False
+
     await db.commit()
     db.expire_all()  # drop stale collections so the reload sees the new payout
     case = await _load_case(db, case_id)
