@@ -206,12 +206,16 @@ export interface TontineRound {
   collected_amount: number;
   paid_out_amount: number;
   status: TontineRoundStatus;
+  /** Phase 2c — séance qui héberge ce tour (null si pas encore mappée). */
+  meeting_id?: UUID | null;
+  meeting_title?: string | null;
 }
 
 export interface TontineCycle {
   id: UUID;
   association_id: UUID;
   name: string;
+  slug: string;
   description?: string | null;
   round_amount: number;
   rounds_count: number;
@@ -220,6 +224,8 @@ export interface TontineCycle {
   end_date?: string | null;
   order_strategy: string;
   status: TontineCycleStatus;
+  /** Phase 2c — si false, des membres peuvent être opt-out. */
+  is_mandatory: boolean;
   created_at: string;
 }
 

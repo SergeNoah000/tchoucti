@@ -238,6 +238,11 @@ export default function TontineCycleDetailPage() {
                       {" · "}
                       {t("pot")}: {fmt.currency(r.expected_amount)}
                     </p>
+                    {r.meeting_title && (
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        🗓 {r.meeting_title}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

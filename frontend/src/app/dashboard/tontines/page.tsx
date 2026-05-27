@@ -147,6 +147,9 @@ function CreateCycleDialog({ association }: { association: Association }) {
   const [shuffle, setShuffle] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [beneficiariesPerRound, setBeneficiariesPerRound] = useState("1");
+  // Phase 2c — participation par défaut obligatoire. Si off, les membres
+  // non sélectionnés comme bénéficiaires sont opt-out explicitement.
+  const [isMandatory, setIsMandatory] = useState(true);
   const [error, setError] = useState("");
 
   const { data: members = [] } = useQuery<Membership[]>({
@@ -171,6 +174,14 @@ function CreateCycleDialog({ association }: { association: Association }) {
 
   const previewRounds = useMemo(() => buildRounds(), [selected, beneficiariesPerRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When the cycle is not mandatory, every active member NOT picked as
+  // beneficiary is opt-out explicitly. When mandatory, no exclusions.
+  const computedExclusions = useMemo(() => {
+    if (isMandatory) return [];
+    const selectedSet = new Set(selected);
+    return activeMembers.filter((m) => !selectedSet.has(m.id)).map((m) => m.id);
+  }, [isMandatory, selected, activeMembers]);
+
   const createMutation = useMutation({
     mutationFn: () =>
       tontinesApi.create({
@@ -180,6 +191,8 @@ function CreateCycleDialog({ association }: { association: Association }) {
         start_date: startDate,
         rounds: buildRounds(),
         shuffle,
+        is_mandatory: isMandatory,
+        excluded_membership_ids: computedExclusions,
       }),
     onSuccess: () => {
       toast.success(t("created"));
@@ -196,6 +209,7 @@ function CreateCycleDialog({ association }: { association: Association }) {
     setShuffle(false);
     setSelected([]);
     setBeneficiariesPerRound("1");
+    setIsMandatory(true);
     setError("");
   };
 
@@ -296,6 +310,22 @@ function CreateCycleDialog({ association }: { association: Association }) {
             </div>
             <Switch checked={shuffle} onCheckedChange={setShuffle} />
           </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/50 bg-muted/20 px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">{t("isMandatory")}</p>
+                <p className="text-xs text-muted-foreground">{t("isMandatoryHint")}</p>
+              </div>
+            </div>
+            <Switch checked={isMandatory} onCheckedChange={setIsMandatory} />
+          </div>
+          {!isMandatory && computedExclusions.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+              {t("excludedHint", { count: computedExclusions.length })}
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label>

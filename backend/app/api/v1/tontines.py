@@ -8,27 +8,34 @@ Total participants = sum of beneficiaries across all rounds (each person is
 beneficiary of exactly one round in their cycle).
 """
 import random
-from datetime import date, timedelta
+import re
+from datetime import date
 from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from slugify import slugify
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
-from app.models.finance import FundKind, MovementDirection
-from app.models.role import Membership
+from app.models.caisse import Caisse, CaisseCategory
+from app.models.finance import Fund, FundKind, MovementDirection
+from app.models.meeting import Meeting, MeetingStatus
+from app.models.role import Membership, MembershipStatus
 from app.models.tontine import (
     TontineCycle,
     TontineCycleStatus,
+    TontineMeetingLink,
+    TontineParticipation,
     TontineRound,
     TontineRoundBeneficiary,
     TontineRoundStatus,
 )
 from app.models.user import User
+from app.services import planning
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.schemas.tontine import (
     TontineBeneficiaryOut,
@@ -74,7 +81,20 @@ async def _load_cycle(db: AsyncSession, cycle_id: UUID) -> TontineCycle:
     return cycle
 
 
-def _round_out(r: TontineRound) -> TontineRoundOut:
+async def _meeting_map_for_cycle(
+    db: AsyncSession, cycle_id: UUID
+) -> dict[UUID, tuple[UUID, str]]:
+    """Return {round_id: (meeting_id, meeting_title)} for all linked rounds."""
+    res = await db.execute(
+        select(TontineMeetingLink, Meeting)
+        .join(Meeting, Meeting.id == TontineMeetingLink.meeting_id)
+        .join(TontineRound, TontineRound.id == TontineMeetingLink.round_id)
+        .where(TontineRound.cycle_id == cycle_id)
+    )
+    return {link.round_id: (m.id, m.title) for link, m in res.all()}
+
+
+def _round_out(r: TontineRound, meeting_info: tuple[UUID, str] | None = None) -> TontineRoundOut:
     benefs: List[TontineBeneficiaryOut] = []
     for b in r.beneficiaries:
         membership = getattr(b, "membership", None)
@@ -87,6 +107,8 @@ def _round_out(r: TontineRound) -> TontineRoundOut:
                 share_parts=b.share_parts,
             )
         )
+    meeting_id = meeting_info[0] if meeting_info else None
+    meeting_title = meeting_info[1] if meeting_info else None
     return TontineRoundOut(
         id=r.id,
         round_number=r.round_number,
@@ -97,18 +119,24 @@ def _round_out(r: TontineRound) -> TontineRoundOut:
         collected_amount=r.collected_amount,
         paid_out_amount=r.paid_out_amount,
         status=r.status.value if hasattr(r.status, "value") else r.status,
+        meeting_id=meeting_id,
+        meeting_title=meeting_title,
     )
 
 
-def _cycle_detail(cycle: TontineCycle) -> TontineCycleDetail:
+def _cycle_detail(
+    cycle: TontineCycle, meeting_map: dict[UUID, tuple[UUID, str]] | None = None
+) -> TontineCycleDetail:
     rounds = sorted(cycle.rounds, key=lambda r: r.round_number)
     # rounds_count is stored as the number of rounds, not the participants count.
     # Total participants = unique memberships across all beneficiary entries.
     total_participants = sum(len(r.beneficiaries) for r in rounds)
+    mm = meeting_map or {}
     return TontineCycleDetail(
         id=cycle.id,
         association_id=cycle.association_id,
         name=cycle.name,
+        slug=cycle.slug,
         description=cycle.description,
         round_amount=cycle.round_amount,
         rounds_count=cycle.rounds_count,
@@ -117,8 +145,9 @@ def _cycle_detail(cycle: TontineCycle) -> TontineCycleDetail:
         end_date=cycle.end_date,
         order_strategy=cycle.order_strategy,
         status=cycle.status.value if hasattr(cycle.status, "value") else cycle.status,
+        is_mandatory=cycle.is_mandatory,
         created_at=cycle.created_at,
-        rounds=[_round_out(r) for r in rounds],
+        rounds=[_round_out(r, mm.get(r.id)) for r in rounds],
         pot_amount=cycle.round_amount * total_participants,
     )
 
@@ -166,7 +195,98 @@ async def get_cycle(
     cycle = await _load_cycle(db, cycle_id)
     assoc = await _get_assoc_or_404(db, cycle.association_id)
     _check_access(current_user, assoc)
-    return _cycle_detail(cycle)
+    meeting_map = await _meeting_map_for_cycle(db, cycle.id)
+    return _cycle_detail(cycle, meeting_map)
+
+
+async def _unique_slug(db: AsyncSession, association_id: UUID, name: str) -> str:
+    """Generate a slug unique within the association — handles collisions
+    with -2, -3… suffix."""
+    base = slugify(name)[:80] or "tontine"
+    base = re.sub(r"-+", "-", base).strip("-") or "tontine"
+    candidate = base
+    i = 2
+    while True:
+        existing = await db.execute(
+            select(TontineCycle.id).where(
+                TontineCycle.association_id == association_id,
+                TontineCycle.slug == candidate,
+            )
+        )
+        if existing.scalar_one_or_none() is None:
+            return candidate
+        candidate = f"{base}-{i}"
+        i += 1
+
+
+async def _pick_or_make_meetings(
+    db: AsyncSession,
+    assoc: Association,
+    rounds_count: int,
+    start_date: date,
+    explicit_ids: list[UUID] | None,
+) -> list[Meeting]:
+    """Resolve `rounds_count` meetings to host the rounds.
+
+    - If `explicit_ids` is provided, validate length + ownership.
+    - Otherwise pick the next N PLANNED meetings (asso, scheduled_on >= start_date).
+    - If the pool is short, auto-generate missing ones via the cadence helper.
+    """
+    if explicit_ids is not None:
+        if len(explicit_ids) != rounds_count:
+            raise HTTPException(
+                422,
+                f"meeting_ids doit avoir {rounds_count} entrées (autant que de tours).",
+            )
+        res = await db.execute(
+            select(Meeting)
+            .where(Meeting.id.in_(explicit_ids), Meeting.association_id == assoc.id)
+            .order_by(Meeting.scheduled_on)
+        )
+        meetings = list(res.scalars().all())
+        if len(meetings) != rounds_count:
+            raise HTTPException(422, "Une ou plusieurs séances explicites n'appartiennent pas à l'association.")
+        # Preserve the order the admin supplied.
+        by_id = {m.id: m for m in meetings}
+        return [by_id[i] for i in explicit_ids]
+
+    # Auto-pick the next N planned meetings.
+    res = await db.execute(
+        select(Meeting)
+        .where(
+            Meeting.association_id == assoc.id,
+            Meeting.status == MeetingStatus.PLANNED,
+            Meeting.scheduled_on >= start_date,
+        )
+        .order_by(Meeting.scheduled_on)
+    )
+    pool = list(res.scalars().all())
+    if len(pool) >= rounds_count:
+        return pool[:rounds_count]
+
+    # Top up the pool — generate missing slots from the cadence.
+    last_date = pool[-1].scheduled_on if pool else None
+    anchor = last_date if last_date and last_date >= start_date else start_date
+    # First missing date is one cadence step after the anchor; but if the
+    # pool is empty, anchor IS start_date — use it directly.
+    if not pool:
+        d = start_date
+    else:
+        d = planning.next_date_after(assoc, anchor)
+    to_create = rounds_count - len(pool)
+    for _ in range(to_create):
+        m = Meeting(
+            association_id=assoc.id,
+            title=planning.default_title(assoc, d),
+            scheduled_on=d,
+            location=planning.default_location(assoc),
+            status=MeetingStatus.PLANNED,
+        )
+        db.add(m)
+        await db.flush()
+        pool.append(m)
+        d = planning.next_date_after(assoc, d)
+    return pool[:rounds_count]
 
 
 @router.post("", response_model=TontineCycleDetail, status_code=status.HTTP_201_CREATED)
@@ -200,12 +320,26 @@ async def create_cycle(
     if missing:
         raise HTTPException(422, f"Membres introuvables dans l'association : {', '.join(missing)}")
 
+    # Validate opt-outs (only meaningful when is_mandatory=False).
+    if payload.is_mandatory and payload.excluded_membership_ids:
+        raise HTTPException(
+            422, "Impossible d'exclure des membres quand la tontine est obligatoire."
+        )
+    if payload.excluded_membership_ids:
+        # All excluded must be active members of the association.
+        exc_res = await db.execute(
+            select(Membership.id).where(
+                Membership.id.in_(payload.excluded_membership_ids),
+                Membership.association_id == payload.association_id,
+            )
+        )
+        exc_found = {m for m in exc_res.scalars().all()}
+        bad = [str(i) for i in payload.excluded_membership_ids if i not in exc_found]
+        if bad:
+            raise HTTPException(422, f"Membres exclus introuvables : {', '.join(bad)}")
+
     n_participants = len(all_ids)
     pot = payload.round_amount * n_participants  # each round's pot
-
-    # Round cadence comes from the association's tontine config.
-    freq = ((assoc.config or {}).get("tontine") or {}).get("frequency") or "monthly"
-    interval_days = {"weekly": 7, "biweekly": 14, "monthly": 30, "quarterly": 90}.get(freq, 30)
 
     rounds_config = list(payload.rounds)
     strategy = "manual"
@@ -213,9 +347,39 @@ async def create_cycle(
         random.shuffle(rounds_config)
         strategy = "random"
 
+    # 1. Slug unique pour l'asso (sert de ref_key sur le Fund dédié).
+    cycle_slug = await _unique_slug(db, payload.association_id, payload.name)
+
+    # 2. Caisse système + Fund dédiés à cette tontine (préserve l'invariant
+    #    trésorerie tout en isolant les flux entre cycles concurrents).
+    treasury = await get_or_create_treasury(db, assoc)
+    tontine_fund = Fund(
+        treasury_id=treasury.id,
+        kind=FundKind.TONTINE,
+        ref_key=cycle_slug,
+        name=f"Tontine — {payload.name}",
+        description="Fonds dédié à la rotation de cette tontine.",
+        is_system=True,
+    )
+    db.add(tontine_fund)
+    await db.flush()
+    db.add(
+        Caisse(
+            association_id=payload.association_id,
+            fund_id=tontine_fund.id,
+            name=f"Tontine — {payload.name}",
+            slug=cycle_slug,
+            description="Caisse système liée à cette tontine (auto-créée).",
+            category=CaisseCategory.SYSTEM,
+            is_system=True,
+        )
+    )
+
+    # 3. Cycle.
     cycle = TontineCycle(
         association_id=payload.association_id,
         name=payload.name,
+        slug=cycle_slug,
         description=payload.description,
         round_amount=payload.round_amount,
         rounds_count=len(rounds_config),
@@ -223,20 +387,30 @@ async def create_cycle(
         start_date=payload.start_date,
         order_strategy=strategy,
         status=TontineCycleStatus.ACTIVE,
+        is_mandatory=payload.is_mandatory,
     )
     db.add(cycle)
     await db.flush()
 
-    for idx, rcfg in enumerate(rounds_config):
+    # 4. Résolution séances ↔ tours (explicite ou auto).
+    meetings = await _pick_or_make_meetings(
+        db, assoc, len(rounds_config), payload.start_date, payload.meeting_ids
+    )
+
+    # 5. Création des tours + liens séances + bénéficiaires.
+    for idx, (rcfg, meeting) in enumerate(zip(rounds_config, meetings)):
         rnd = TontineRound(
             cycle_id=cycle.id,
             round_number=idx + 1,
-            scheduled_date=payload.start_date + timedelta(days=interval_days * idx),
+            scheduled_date=meeting.scheduled_on,
             expected_amount=pot,
             status=TontineRoundStatus.COLLECTING if idx == 0 else TontineRoundStatus.PENDING,
         )
         db.add(rnd)
         await db.flush()
+
+        db.add(TontineMeetingLink(round_id=rnd.id, meeting_id=meeting.id))
+
         parts = [b.share_parts for b in rcfg.beneficiaries]
         shares = _shares(pot, parts)
         for b, amt in zip(rcfg.beneficiaries, shares):
@@ -249,9 +423,20 @@ async def create_cycle(
                 )
             )
 
+    # 6. Opt-outs explicites.
+    for mid in payload.excluded_membership_ids:
+        db.add(
+            TontineParticipation(
+                cycle_id=cycle.id,
+                membership_id=mid,
+                is_participating=False,
+            )
+        )
+
     await db.commit()
     cycle = await _load_cycle(db, cycle.id)
-    return _cycle_detail(cycle)
+    meeting_map = await _meeting_map_for_cycle(db, cycle.id)
+    return _cycle_detail(cycle, meeting_map)
 
 
 @router.post("/{cycle_id}/rounds/{round_id}/payout", response_model=TontineCycleDetail)
@@ -282,7 +467,20 @@ async def payout_round(
     pot = rnd.expected_amount
 
     treasury = await get_or_create_treasury(db, assoc)
-    tontine_fund = next((f for f in treasury.funds if f.kind == FundKind.TONTINE), None)
+    # Phase 2c — each cycle has its own dedicated TONTINE fund identified by
+    # ref_key=cycle.slug, so concurrent tontines never share a balance.
+    tontine_fund = next(
+        (f for f in treasury.funds
+         if f.kind == FundKind.TONTINE and f.ref_key == cycle.slug),
+        None,
+    )
+    if tontine_fund is None:
+        # Backward compatibility — cycles created before Phase 2c had a single
+        # shared TONTINE fund with empty ref_key. Fall back to it if needed.
+        tontine_fund = next(
+            (f for f in treasury.funds if f.kind == FundKind.TONTINE and not f.ref_key),
+            None,
+        )
     if tontine_fund is None:
         raise HTTPException(500, "Fonds tontine introuvable")
 
@@ -325,7 +523,8 @@ async def payout_round(
 
     await db.commit()
     cycle = await _load_cycle(db, cycle_id)
-    return _cycle_detail(cycle)
+    meeting_map = await _meeting_map_for_cycle(db, cycle.id)
+    return _cycle_detail(cycle, meeting_map)
 
 
 @router.post("/{cycle_id}/cancel", response_model=TontineCycleDetail)
@@ -342,4 +541,61 @@ async def cancel_cycle(
     cycle.status = TontineCycleStatus.CANCELLED
     await db.commit()
     cycle = await _load_cycle(db, cycle_id)
-    return _cycle_detail(cycle)
+    meeting_map = await _meeting_map_for_cycle(db, cycle.id)
+    return _cycle_detail(cycle, meeting_map)
+
+
+# ── Phase 2c — relinking a round to a different meeting ───────────────────
+
+
+@router.patch("/{cycle_id}/rounds/{round_id}/meeting", response_model=TontineCycleDetail)
+async def relink_round_to_meeting(
+    cycle_id: UUID,
+    round_id: UUID,
+    meeting_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Déplace un tour vers une autre séance hôte (sauf si le lien est verrouillé).
+
+    Use cases :
+      - L'admin a généré le mapping auto puis veut substituer une séance ;
+      - Une séance est annulée/déplacée et il faut rattacher le tour à une autre.
+
+    Le tour doit être PENDING ou COLLECTING (jamais déjà payé).
+    """
+    cycle = await _load_cycle(db, cycle_id)
+    assoc = await _get_assoc_or_404(db, cycle.association_id)
+    _check_access(current_user, assoc)
+
+    rnd = next((r for r in cycle.rounds if r.id == round_id), None)
+    if not rnd:
+        raise HTTPException(404, "Tour introuvable")
+    if rnd.status == TontineRoundStatus.PAID_OUT:
+        raise HTTPException(409, "Tour déjà versé — il ne peut plus être déplacé.")
+
+    res = await db.execute(
+        select(Meeting).where(Meeting.id == meeting_id, Meeting.association_id == assoc.id)
+    )
+    new_meeting = res.scalar_one_or_none()
+    if not new_meeting:
+        raise HTTPException(422, "Séance cible introuvable dans cette association.")
+
+    link_res = await db.execute(
+        select(TontineMeetingLink).where(TontineMeetingLink.round_id == round_id)
+    )
+    link = link_res.scalar_one_or_none()
+    if link and link.is_locked:
+        raise HTTPException(
+            409, "Lien tour ↔ séance verrouillé — décale le cycle entier à la place."
+        )
+    if link:
+        link.meeting_id = new_meeting.id
+    else:
+        db.add(TontineMeetingLink(round_id=round_id, meeting_id=new_meeting.id))
+    rnd.scheduled_date = new_meeting.scheduled_on
+
+    await db.commit()
+    cycle = await _load_cycle(db, cycle_id)
+    meeting_map = await _meeting_map_for_cycle(db, cycle.id)
+    return _cycle_detail(cycle, meeting_map)

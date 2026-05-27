@@ -48,9 +48,16 @@ class TontineCycle(BaseModel):
 
     Tous les participants versent `round_amount` à chaque tour. Le pot
     (round_amount × n_participants) est remis au bénéficiaire désigné du tour.
+
+    Une association peut avoir plusieurs cycles concurrents (Phase 2c) —
+    chaque cycle a sa propre caisse système (slug unique) pour préserver
+    l'invariant trésorerie tout en isolant les flux.
     """
 
     __tablename__ = "tontine_cycles"
+    __table_args__ = (
+        UniqueConstraint("association_id", "slug", name="uq_tontine_cycles_assoc_slug"),
+    )
 
     association_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -60,6 +67,10 @@ class TontineCycle(BaseModel):
     )
 
     name: Mapped[str] = mapped_column(String(150), nullable=False)
+    # Identifier used as the ref_key of the dedicated system caisse / fund
+    # created for this cycle. Generated at creation from the name; unique
+    # per association.
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     round_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)

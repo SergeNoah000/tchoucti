@@ -31,6 +31,23 @@ class TontineCycleCreate(BaseModel):
     start_date: date
     rounds: List[TontineRoundConfig] = Field(..., min_length=1, max_length=50)
     shuffle: bool = False
+    # Phase 2c — Multi-tontines + meeting binding
+    is_mandatory: bool = Field(
+        True,
+        description="Si False, l'admin peut opt-out certains membres via excluded_membership_ids.",
+    )
+    excluded_membership_ids: List[UUID] = Field(
+        default_factory=list,
+        description="Memberships exclus de ce cycle (utile uniquement si is_mandatory=False).",
+    )
+    meeting_ids: Optional[List[UUID]] = Field(
+        None,
+        description=(
+            "Mapping explicite tour → séance hôte (taille = nb de tours). "
+            "Si null : auto-pick des N prochaines séances PLANNED après start_date "
+            "(génère des séances manquantes via la cadence asso si besoin)."
+        ),
+    )
 
 
 class TontineBeneficiaryOut(BaseModel):
@@ -52,6 +69,9 @@ class TontineRoundOut(BaseModel):
     collected_amount: int
     paid_out_amount: int
     status: str
+    # Phase 2c — séance hôte du tour (null si pas encore mappée)
+    meeting_id: Optional[UUID] = None
+    meeting_title: Optional[str] = None
 
 
 class TontineCycleOut(BaseModel):
@@ -60,6 +80,7 @@ class TontineCycleOut(BaseModel):
     id: UUID
     association_id: UUID
     name: str
+    slug: str
     description: Optional[str]
     round_amount: int
     rounds_count: int
@@ -68,6 +89,7 @@ class TontineCycleOut(BaseModel):
     end_date: Optional[date]
     order_strategy: str
     status: str
+    is_mandatory: bool = True
     created_at: datetime
 
 

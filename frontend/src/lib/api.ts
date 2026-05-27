@@ -327,10 +327,21 @@ export const tontinesApi = {
       beneficiaries: Array<{ membership_id: string; share_parts?: number }>;
     }>;
     shuffle?: boolean;
+    /** Phase 2c — participation obligatoire par défaut. */
+    is_mandatory?: boolean;
+    /** Memberships à exclure (uniquement si is_mandatory=false). */
+    excluded_membership_ids?: string[];
+    /** Mapping explicite tour→séance (taille = nb de tours). null = auto. */
+    meeting_ids?: string[];
   }) => (await api.post("/tontines", payload)).data,
   payout: async (cycleId: string, roundId: string) =>
     (await api.post(`/tontines/${cycleId}/rounds/${roundId}/payout`, {})).data,
   cancel: async (cycleId: string) => (await api.post(`/tontines/${cycleId}/cancel`, {})).data,
+  /** Phase 2c — déplacer un tour vers une autre séance. */
+  relinkRound: async (cycleId: string, roundId: string, meetingId: string) =>
+    (await api.patch(`/tontines/${cycleId}/rounds/${roundId}/meeting`, null, {
+      params: { meeting_id: meetingId },
+    })).data,
 };
 
 export const financeApi = {
