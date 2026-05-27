@@ -15,7 +15,7 @@ services:
   # Traefik — reverse proxy + Let's Encrypt
   # ============================================
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3
     container_name: tchoucti_traefik
     restart: unless-stopped
     command:
