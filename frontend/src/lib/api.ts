@@ -163,6 +163,93 @@ export const associationsApi = {
     (await api.patch(`/associations/${id}`, payload)).data,
 };
 
+// ── Setup wizard (config-v2, admin only) ───────────────────────────────────
+export const setupApi = {
+  /** Where the admin is in the onboarding wizard. */
+  getState: async (associationId: string) =>
+    (await api.get(`/associations/${associationId}/setup`)).data as {
+      setup_complete: boolean;
+      setup_step: number;
+    },
+  /** Advance the wizard step or mark setup_complete=true. Idempotent. */
+  advance: async (
+    associationId: string,
+    payload: { step?: number; complete?: boolean },
+  ) => (await api.patch(`/associations/${associationId}/setup`, payload)).data,
+  setRegistrationFee: async (associationId: string, amount: number) =>
+    (await api.patch(`/associations/${associationId}/registration-fee`, {
+      registration_fee: amount,
+    })).data,
+
+  // Critères d'adhésion
+  listCriteria: async (associationId: string) =>
+    (await api.get(`/associations/${associationId}/criteria`)).data,
+  addCriterion: async (
+    associationId: string,
+    payload: {
+      type: string;
+      label: string;
+      value: string;
+      is_required?: boolean;
+      sort_order?: number;
+    },
+  ) => (await api.post(`/associations/${associationId}/criteria`, payload)).data,
+  deleteCriterion: async (associationId: string, criterionId: string) =>
+    (await api.delete(`/associations/${associationId}/criteria/${criterionId}`)).data,
+
+  // Documents légaux
+  listDocuments: async (associationId: string) =>
+    (await api.get(`/associations/${associationId}/documents`)).data,
+  uploadDocument: async (
+    associationId: string,
+    file: File,
+    title: string,
+    kind: string,
+    description?: string,
+  ) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("title", title);
+    fd.append("kind", kind);
+    if (description) fd.append("description", description);
+    return (
+      await api.post(`/associations/${associationId}/documents`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+    ).data;
+  },
+  deleteDocument: async (associationId: string, documentId: string) =>
+    (await api.delete(`/associations/${associationId}/documents/${documentId}`)).data,
+};
+
+// ── Caisses (config-v2 user-facing wrapper around Fund) ───────────────────
+export const caissesApi = {
+  list: async (associationId: string, includeInactive = false) =>
+    (await api.get("/caisses", {
+      params: { association_id: associationId, include_inactive: includeInactive },
+    })).data,
+  get: async (id: string) => (await api.get(`/caisses/${id}`)).data,
+  create: async (payload: {
+    association_id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    category: "collective" | "project" | "personal";
+    is_recurring?: boolean;
+    recurring_amount?: number;
+    is_member_required?: boolean;
+    member_required_amount?: number;
+    has_ceiling?: boolean;
+    ceiling_amount?: number;
+    has_objective?: boolean;
+    objective_amount?: number;
+    objective_deadline?: string;
+  }) => (await api.post("/caisses", payload)).data,
+  update: async (id: string, payload: Record<string, unknown>) =>
+    (await api.patch(`/caisses/${id}`, payload)).data,
+  remove: async (id: string) => (await api.delete(`/caisses/${id}`)).data,
+};
+
 export const meetingsApi = {
   list: async (params?: { association_id?: string; status?: string }) =>
     (await api.get("/meetings", { params })).data,

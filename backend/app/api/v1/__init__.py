@@ -15,6 +15,8 @@ from app.api.v1 import (
     finance,
     social_aid,
     loans,
+    setup,
+    caisses,
 )
 
 api_router = APIRouter()
@@ -49,4 +51,10 @@ api_router.include_router(social_aid.router, prefix="/social-aid", tags=["social
 
 # Loans
 api_router.include_router(loans.router, prefix="/loans", tags=["loans"])
+
+# Setup wizard + association adhesion config (config-v2, admin only)
+api_router.include_router(setup.router, prefix="/associations", tags=["setup"])
+
+# Caisses (config-v2 wrapper around Fund)
+api_router.include_router(caisses.router, prefix="/caisses", tags=["caisses"])
 
