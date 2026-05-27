@@ -5,6 +5,7 @@ Money flow via FinanceService:
   • repay    → IN: principal part → GENERAL, interest + late fee → INSURANCE
 """
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
@@ -15,13 +16,15 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
-from app.models.finance import FundKind, MovementDirection
+from app.models.caisse import Caisse
+from app.models.finance import Fund, FundKind, MovementDirection
 from app.models.loan import (
     Loan,
     LoanInstallment,
     LoanInstallmentStatus,
     LoanRepayment,
     LoanStatus,
+    LoanType,
 )
 from app.models.role import Membership
 from app.models.user import User
@@ -62,6 +65,25 @@ def _require_admin(user: User) -> None:
         raise HTTPException(403, "Action réservée aux administrateurs")
 
 
+async def _source_fund_for(db: AsyncSession, loan: Loan, treasury) -> Fund:
+    """Resolve the fund that backs `loan` — the caisse snapshotted at request
+    time, or the GENERAL fund for legacy loans (no type)."""
+    if loan.source_caisse_id is not None:
+        res = await db.execute(
+            select(Fund)
+            .join(Caisse, Caisse.fund_id == Fund.id)
+            .where(Caisse.id == loan.source_caisse_id)
+        )
+        fund = res.scalar_one_or_none()
+        if fund is None:
+            raise HTTPException(500, "Caisse source du prêt introuvable.")
+        return fund
+    fund = next((f for f in treasury.funds if f.kind == FundKind.GENERAL), None)
+    if fund is None:
+        raise HTTPException(500, "Fonds général introuvable")
+    return fund
+
+
 async def _load_loan(db: AsyncSession, loan_id: UUID) -> Loan:
     res = await db.execute(
         select(Loan)
@@ -86,6 +108,8 @@ def _loan_out(loan: Loan) -> LoanOut:
         association_id=loan.association_id,
         borrower_membership_id=loan.borrower_membership_id,
         borrower_name=getattr(user, "full_name", None),
+        loan_type_id=loan.loan_type_id,
+        source_caisse_id=loan.source_caisse_id,
         reference=loan.reference,
         principal=loan.principal,
         interest_rate_pct=loan.interest_rate_pct,
@@ -163,6 +187,11 @@ async def request_loan(
     assoc = await _get_assoc_or_404(db, payload.association_id)
     _check_access(current_user, assoc)
 
+    # Loans must be enabled on the association before any request lands.
+    cfg_loans = (assoc.config or {}).get("loans") or {}
+    if cfg_loans.get("enabled") is False:
+        raise HTTPException(409, "Les prêts ne sont pas activés sur cette association.")
+
     res = await db.execute(
         select(Membership).where(
             Membership.id == payload.borrower_membership_id,
@@ -171,6 +200,86 @@ async def request_loan(
     )
     if not res.scalar_one_or_none():
         raise HTTPException(422, "Emprunteur introuvable dans l'association")
+
+    # Phase 2d — résolution du LoanType : snapshot des règles + caisse source.
+    loan_type: LoanType | None = None
+    source_caisse_id: UUID | None = None
+    rate = payload.interest_rate_pct
+    late_fee = payload.late_fee_pct
+    duration = payload.duration_months
+
+    if payload.loan_type_id is not None:
+        lt_res = await db.execute(
+            select(LoanType).where(
+                LoanType.id == payload.loan_type_id,
+                LoanType.association_id == payload.association_id,
+            )
+        )
+        loan_type = lt_res.scalar_one_or_none()
+        if not loan_type:
+            raise HTTPException(422, "Type de prêt introuvable dans cette association.")
+        if not loan_type.is_active:
+            raise HTTPException(409, "Ce type de prêt est désactivé.")
+        if duration > loan_type.max_duration_months:
+            raise HTTPException(
+                422,
+                f"Durée {duration}m > max autorisée par ce type ({loan_type.max_duration_months}m).",
+            )
+        # Éligibilité — borne le nombre de prêts vivants + sur 365j.
+        if loan_type.max_simultaneous > 0:
+            live_res = await db.execute(
+                select(func.count(Loan.id)).where(
+                    Loan.borrower_membership_id == payload.borrower_membership_id,
+                    Loan.loan_type_id == loan_type.id,
+                    Loan.status.in_([
+                        LoanStatus.REQUESTED,
+                        LoanStatus.APPROVED,
+                        LoanStatus.DISBURSED,
+                        LoanStatus.REPAYING,
+                    ]),
+                )
+            )
+            if (live_res.scalar() or 0) >= loan_type.max_simultaneous:
+                raise HTTPException(
+                    409,
+                    f"Limite de prêts simultanés atteinte ({loan_type.max_simultaneous}) pour ce type.",
+                )
+        if loan_type.max_per_year > 0:
+            one_year_ago = date.today() - timedelta(days=365)
+            year_res = await db.execute(
+                select(func.count(Loan.id)).where(
+                    Loan.borrower_membership_id == payload.borrower_membership_id,
+                    Loan.loan_type_id == loan_type.id,
+                    Loan.requested_on >= one_year_ago,
+                )
+            )
+            if (year_res.scalar() or 0) >= loan_type.max_per_year:
+                raise HTTPException(
+                    409,
+                    f"Limite annuelle atteinte ({loan_type.max_per_year}) pour ce type.",
+                )
+        if loan_type.eligibility_no_default:
+            defaulted = await db.execute(
+                select(Loan.id).where(
+                    Loan.borrower_membership_id == payload.borrower_membership_id,
+                    Loan.status == LoanStatus.DEFAULTED,
+                ).limit(1)
+            )
+            if defaulted.first():
+                raise HTTPException(
+                    409,
+                    "Ce membre a un défaut de paiement antérieur — ce type de prêt l'exclut.",
+                )
+        # Snapshot des paramètres financiers du type.
+        rate = rate if rate is not None else loan_type.interest_rate_pct
+        late_fee = late_fee if late_fee is not None else loan_type.late_fee_pct
+        source_caisse_id = loan_type.source_caisse_id
+
+    # Fallback minimal pour les prêts sans type (legacy).
+    if rate is None:
+        raise HTTPException(422, "Le taux d'intérêt est requis (ou choisis un type de prêt).")
+    if late_fee is None:
+        late_fee = Decimal("0")
 
     count_res = await db.execute(
         select(func.count(Loan.id)).where(Loan.association_id == payload.association_id)
@@ -181,11 +290,13 @@ async def request_loan(
     loan = Loan(
         association_id=payload.association_id,
         borrower_membership_id=payload.borrower_membership_id,
+        loan_type_id=payload.loan_type_id,
+        source_caisse_id=source_caisse_id,
         reference=reference,
         principal=payload.principal,
-        interest_rate_pct=payload.interest_rate_pct,
-        late_fee_pct=payload.late_fee_pct,
-        duration_months=payload.duration_months,
+        interest_rate_pct=rate,
+        late_fee_pct=late_fee,
+        duration_months=duration,
         requested_on=date.today(),
         requested_by_id=current_user.id,
         status=LoanStatus.REQUESTED,
@@ -287,9 +398,7 @@ async def disburse_loan(
         raise HTTPException(409, "Seul un prêt approuvé peut être décaissé")
 
     treasury = await get_or_create_treasury(db, assoc)
-    fund = next((f for f in treasury.funds if f.kind == FundKind.GENERAL), None)
-    if fund is None:
-        raise HTTPException(500, "Fonds général introuvable")
+    fund = await _source_fund_for(db, loan, treasury)
 
     movement = await post_movement(
         db,
@@ -365,16 +474,17 @@ async def repay_loan(
         elif inst.paid_interest > 0 or inst.paid_principal > 0:
             inst.status = LoanInstallmentStatus.PARTIALLY_PAID
 
-    # Post the cash-in: principal → GENERAL, interest → INSURANCE.
+    # Post the cash-in: principal → loan's source caisse (GENERAL fallback),
+    # interest → INSURANCE.
     treasury = await get_or_create_treasury(db, assoc)
-    general = next((f for f in treasury.funds if f.kind == FundKind.GENERAL), None)
+    principal_fund = await _source_fund_for(db, loan, treasury)
     insurance = next((f for f in treasury.funds if f.kind == FundKind.INSURANCE), None)
-    if general is None or insurance is None:
-        raise HTTPException(500, "Fonds introuvables")
+    if insurance is None:
+        raise HTTPException(500, "Fonds assurance introuvable")
 
     allocations = []
     if paid_principal > 0:
-        allocations.append(Allocation(fund=general, is_credit=True, amount=paid_principal))
+        allocations.append(Allocation(fund=principal_fund, is_credit=True, amount=paid_principal))
     if paid_interest > 0:
         allocations.append(Allocation(fund=insurance, is_credit=True, amount=paid_interest))
 

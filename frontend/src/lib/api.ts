@@ -222,6 +222,31 @@ export const setupApi = {
     (await api.delete(`/associations/${associationId}/documents/${documentId}`)).data,
 };
 
+// ── LoanType catalogue (config-v2) ────────────────────────────────────────
+export const loanTypesApi = {
+  list: async (associationId: string, activeOnly = false) =>
+    (await api.get("/loan-types", {
+      params: { association_id: associationId, active_only: activeOnly },
+    })).data,
+  create: async (payload: {
+    association_id: string;
+    source_caisse_id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    eligibility_min_seniority_months?: number;
+    eligibility_no_default?: boolean;
+    max_simultaneous?: number;
+    max_per_year?: number;
+    interest_rate_pct?: string;
+    late_fee_pct?: string;
+    max_duration_months?: number;
+  }) => (await api.post("/loan-types", payload)).data,
+  update: async (id: string, payload: Record<string, unknown>) =>
+    (await api.patch(`/loan-types/${id}`, payload)).data,
+  remove: async (id: string) => (await api.delete(`/loan-types/${id}`)).data,
+};
+
 // ── Caisses (config-v2 user-facing wrapper around Fund) ───────────────────
 export const caissesApi = {
   list: async (associationId: string, includeInactive = false) =>

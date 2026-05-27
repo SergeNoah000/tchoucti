@@ -76,10 +76,13 @@ async def seed_demo_data():
         db.add(association)
         await db.flush()
 
-        # 2b. Treasury + system caisse "Caisse générale" for the demo association.
+        # 2b. Treasury + system caisses for the demo association :
+        #     - Caisse générale (cotisations, capital prêts)
+        #     - Caisse assurance (intérêts + pénalités + aides sociales)
         treasury = Treasury(association_id=association.id, currency="XAF", balance=0)
         db.add(treasury)
         await db.flush()
+
         general_fund = Fund(
             treasury_id=treasury.id,
             kind=FundKind.GENERAL,
@@ -88,9 +91,18 @@ async def seed_demo_data():
             description="Fonds opérationnel de l'association.",
             is_system=True,
         )
-        db.add(general_fund)
+        insurance_fund = Fund(
+            treasury_id=treasury.id,
+            kind=FundKind.INSURANCE,
+            ref_key="",
+            name="Caisse assurance",
+            description="Intérêts de prêts, pénalités et aides sociales.",
+            is_system=True,
+        )
+        db.add_all([general_fund, insurance_fund])
         await db.flush()
-        db.add(
+
+        db.add_all([
             Caisse(
                 association_id=association.id,
                 fund_id=general_fund.id,
@@ -99,8 +111,17 @@ async def seed_demo_data():
                 description="Caisse principale de l'association (auto-créée, non supprimable).",
                 category=CaisseCategory.SYSTEM,
                 is_system=True,
-            )
-        )
+            ),
+            Caisse(
+                association_id=association.id,
+                fund_id=insurance_fund.id,
+                name="Caisse assurance",
+                slug="assurance",
+                description="Reçoit les intérêts, les pénalités, les aides sociales.",
+                category=CaisseCategory.SYSTEM,
+                is_system=True,
+            ),
+        ])
 
         # 3. Users
         #

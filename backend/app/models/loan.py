@@ -164,6 +164,21 @@ class Loan(BaseModel):
         index=True,
     )
 
+    # Phase 2d — référence du LoanType utilisé. NULL pour les prêts legacy
+    # créés sans catalogue. `source_caisse_id` est snapshoté ici (la caisse
+    # source du type peut bouger ; le prêt en cours reste figé).
+    loan_type_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("loan_types.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_caisse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("caisses.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+
     reference: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # ex: PRT-2026-001
 
     # Montants

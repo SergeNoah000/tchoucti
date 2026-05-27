@@ -12,8 +12,11 @@ class LoanCreate(BaseModel):
     borrower_membership_id: UUID
     principal: int = Field(..., gt=0)
     duration_months: int = Field(..., ge=1, le=120)
-    interest_rate_pct: Decimal = Field(..., ge=0, le=100)   # monthly
-    late_fee_pct: Decimal = Field(Decimal("0"), ge=0, le=100)
+    # If `loan_type_id` is provided, the type's caps & rates are inherited and
+    # interest_rate_pct/late_fee_pct may be omitted (server-side fallback).
+    loan_type_id: Optional[UUID] = None
+    interest_rate_pct: Optional[Decimal] = Field(None, ge=0, le=100)
+    late_fee_pct: Optional[Decimal] = Field(None, ge=0, le=100)
     purpose: Optional[str] = Field(None, max_length=500)
 
 
@@ -67,6 +70,8 @@ class LoanOut(BaseModel):
     association_id: UUID
     borrower_membership_id: UUID
     borrower_name: Optional[str] = None
+    loan_type_id: Optional[UUID] = None
+    source_caisse_id: Optional[UUID] = None
     reference: str
     principal: int
     interest_rate_pct: Decimal
