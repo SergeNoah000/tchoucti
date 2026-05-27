@@ -3,6 +3,11 @@
 Pipeline simple, git-based : tu pousses sur GitHub, tu te connectes au VPS,
 tu lances `deploy.sh`. CI à venir plus tard.
 
+> **Tu veux héberger d'autres apps sur le même VPS ?**
+> Lis [MULTI-APP.md](MULTI-APP.md) — il explique comment extraire Traefik
+> dans une stack partagée et brancher de nouvelles apps derrière (avec
+> clone Git en SSH **ou** HTTPS, sans dépendance à `gh`).
+
 ## 0. Vue d'ensemble
 
 ```
