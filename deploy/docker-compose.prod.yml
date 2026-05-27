@@ -1,0 +1,287 @@
+# Tchoucti — Production compose (single-VPS, Traefik + Let's Encrypt)
+#
+# Run from the repo root:
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d
+#
+# All public traffic flows through Traefik (ports 80/443). Internal services
+# (postgres, redis, minio API) are not exposed on the host.
+#
+# Required env vars: see deploy/.env.example.
+
+name: tchoucti
+
+services:
+  # ============================================
+  # Traefik — reverse proxy + Let's Encrypt
+  # ============================================
+  traefik:
+    image: traefik:v3.1
+    container_name: tchoucti_traefik
+    restart: unless-stopped
+    command:
+      # Docker provider — only containers with explicit labels are exposed.
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=tchoucti_web
+      # Entrypoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      # Let's Encrypt (HTTP-01) — first request triggers issuance, then cached.
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      # Logs
+      - --log.level=${TRAEFIK_LOG_LEVEL:-INFO}
+      - --accesslog=true
+      # Dashboard (gated by basic auth + Host rule below)
+      - --api.dashboard=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - web
+    labels:
+      - traefik.enable=true
+      # Dashboard at https://traefik.${DOMAIN} (basic auth — set TRAEFIK_AUTH in .env).
+      - traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN}`)
+      - traefik.http.routers.dashboard.entrypoints=websecure
+      - traefik.http.routers.dashboard.tls.certresolver=le
+      - traefik.http.routers.dashboard.service=api@internal
+      - traefik.http.routers.dashboard.middlewares=dashboard-auth
+      - traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_AUTH}
+
+  # ============================================
+  # PostgreSQL — internal only
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: tchoucti_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Redis — internal only
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: tchoucti_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # MinIO — object storage (API internal, Console gated via Traefik)
+  # ============================================
+  minio:
+    image: minio/minio:latest
+    container_name: tchoucti_minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BROWSER_REDIRECT_URL: https://minio.${DOMAIN}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - web
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      - traefik.enable=true
+      # Public file URLs: https://storage.${DOMAIN}/<bucket>/<key>
+      - traefik.http.routers.minio.rule=Host(`storage.${DOMAIN}`)
+      - traefik.http.routers.minio.entrypoints=websecure
+      - traefik.http.routers.minio.tls.certresolver=le
+      - traefik.http.routers.minio.service=minio
+      - traefik.http.services.minio.loadbalancer.server.port=9000
+      # Admin console: https://minio.${DOMAIN}
+      - traefik.http.routers.minio-console.rule=Host(`minio.${DOMAIN}`)
+      - traefik.http.routers.minio-console.entrypoints=websecure
+      - traefik.http.routers.minio-console.tls.certresolver=le
+      - traefik.http.routers.minio-console.service=minio-console
+      - traefik.http.services.minio-console.loadbalancer.server.port=9001
+
+  # ============================================
+  # Backend FastAPI — api.${DOMAIN}
+  # ============================================
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: tchoucti/backend:latest
+    container_name: tchoucti_backend
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_URL: https://storage.${DOMAIN}
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET:-tchoucti-files}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      CORS_ORIGINS: "https://${DOMAIN},https://www.${DOMAIN},https://admin.${DOMAIN},https://api.${DOMAIN}"
+      APP_BASE_DOMAIN: ${DOMAIN}
+      PLATFORM_ADMIN_SUBDOMAIN: admin
+      FRONTEND_URL: https://${DOMAIN}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Tchoucti}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - web
+    # Seed-if-empty then start production server (no --reload).
+    command: sh -c "python -m app.db.init_db && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.backend.rule=Host(`api.${DOMAIN}`)
+      - traefik.http.routers.backend.entrypoints=websecure
+      - traefik.http.routers.backend.tls.certresolver=le
+      - traefik.http.services.backend.loadbalancer.server.port=8000
+
+  # ============================================
+  # Celery worker — email reminders, background jobs
+  # ============================================
+  worker:
+    image: tchoucti/backend:latest
+    container_name: tchoucti_worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      FRONTEND_URL: https://${DOMAIN}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Tchoucti}
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - web
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+
+  beat:
+    image: tchoucti/backend:latest
+    container_name: tchoucti_beat
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      worker:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - web
+    command: celery -A app.worker.celery_app beat --loglevel=info
+
+  # ============================================
+  # Frontend Next.js — myappsuite.com (+ www, +admin, +groupement subdomains)
+  # ============================================
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        DOCKER_BUILD: "1"
+        # Embedded at build-time — Next.js needs these as NEXT_PUBLIC_*
+        NEXT_PUBLIC_API_URL: https://api.${DOMAIN}/api
+        NEXT_PUBLIC_ROOT_DOMAIN: ${DOMAIN}
+    image: tchoucti/frontend:latest
+    container_name: tchoucti_frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://api.${DOMAIN}/api
+      NEXT_PUBLIC_ROOT_DOMAIN: ${DOMAIN}
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      - backend
+    networks:
+      - web
+    labels:
+      - traefik.enable=true
+      # Apex + www + admin + any groupement subdomain — single router.
+      # HostRegexp matches "myappsuite.com" and "*.myappsuite.com". Specific
+      # subdomains (api, storage, minio, traefik) are claimed by their own
+      # routers above; Traefik will pick the more specific match.
+      - traefik.http.routers.frontend.rule=Host(`${DOMAIN}`) || HostRegexp(`^[a-z0-9-]+\.${DOMAIN}$`)
+      - traefik.http.routers.frontend.entrypoints=websecure
+      - traefik.http.routers.frontend.tls.certresolver=le
+      - traefik.http.services.frontend.loadbalancer.server.port=3000
+      # Redirect www → apex
+      - traefik.http.routers.frontend-www.rule=Host(`www.${DOMAIN}`)
+      - traefik.http.routers.frontend-www.entrypoints=websecure
+      - traefik.http.routers.frontend-www.tls.certresolver=le
+      - traefik.http.routers.frontend-www.middlewares=www-to-apex
+      - traefik.http.middlewares.www-to-apex.redirectregex.regex=^https://www\.${DOMAIN}/(.*)
+      - traefik.http.middlewares.www-to-apex.redirectregex.replacement=https://${DOMAIN}/$$1
+      - traefik.http.middlewares.www-to-apex.redirectregex.permanent=true
+
+networks:
+  # Single project network. Postgres/Redis/MinIO have no Traefik labels and
+  # no host port bindings, so they are reachable only by sibling containers
+  # via Docker's default isolation. Worker/beat need outbound internet for
+  # SMTP, so the network is not marked `internal: true`.
+  web:
+    name: tchoucti_web
+
+volumes:
+  postgres_data:
+    name: tchoucti_postgres_data
+  redis_data:
+    name: tchoucti_redis_data
+  minio_data:
+    name: tchoucti_minio_data
+  traefik_letsencrypt:
+    name: tchoucti_traefik_letsencrypt
