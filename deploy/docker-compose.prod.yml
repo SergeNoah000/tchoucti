@@ -50,6 +50,7 @@ services:
       - traefik.enable=true
       # Dashboard at https://traefik.${DOMAIN} (basic auth — set TRAEFIK_AUTH in .env).
       - traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN}`)
+      - traefik.http.routers.dashboard.priority=200
       - traefik.http.routers.dashboard.entrypoints=websecure
       - traefik.http.routers.dashboard.tls.certresolver=le
       - traefik.http.routers.dashboard.service=api@internal
@@ -120,12 +121,14 @@ services:
       - traefik.enable=true
       # Public file URLs: https://storage.${DOMAIN}/<bucket>/<key>
       - traefik.http.routers.minio.rule=Host(`storage.${DOMAIN}`)
+      - traefik.http.routers.minio.priority=200
       - traefik.http.routers.minio.entrypoints=websecure
       - traefik.http.routers.minio.tls.certresolver=le
       - traefik.http.routers.minio.service=minio
       - traefik.http.services.minio.loadbalancer.server.port=9000
       # Admin console: https://minio.${DOMAIN}
       - traefik.http.routers.minio-console.rule=Host(`minio.${DOMAIN}`)
+      - traefik.http.routers.minio-console.priority=200
       - traefik.http.routers.minio-console.entrypoints=websecure
       - traefik.http.routers.minio-console.tls.certresolver=le
       - traefik.http.routers.minio-console.service=minio-console
@@ -177,6 +180,9 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.backend.rule=Host(`api.${DOMAIN}`)
+      # Higher priority than the frontend catch-all so api.${DOMAIN} is
+      # never intercepted by the HostRegexp on the frontend router.
+      - traefik.http.routers.backend.priority=200
       - traefik.http.routers.backend.entrypoints=websecure
       - traefik.http.routers.backend.tls.certresolver=le
       - traefik.http.services.backend.loadbalancer.server.port=8000
@@ -251,16 +257,18 @@ services:
       - web
     labels:
       - traefik.enable=true
-      # Apex + www + admin + any groupement subdomain — single router.
-      # HostRegexp matches "myappsuite.com" and "*.myappsuite.com". Specific
-      # subdomains (api, storage, minio, traefik) are claimed by their own
-      # routers above; Traefik will pick the more specific match.
+      # Apex + any groupement subdomain. Reserved subdomains (api, storage,
+      # minio, traefik, www) have their own routers with priority=200, so
+      # the lower-priority HostRegexp here only catches what's left
+      # (apex + custom groupement subdomains).
       - traefik.http.routers.frontend.rule=Host(`${DOMAIN}`) || HostRegexp(`^[a-z0-9-]+\.${DOMAIN}$`)
+      - traefik.http.routers.frontend.priority=10
       - traefik.http.routers.frontend.entrypoints=websecure
       - traefik.http.routers.frontend.tls.certresolver=le
       - traefik.http.services.frontend.loadbalancer.server.port=3000
-      # Redirect www → apex
+      # Redirect www → apex (priority above the catch-all)
       - traefik.http.routers.frontend-www.rule=Host(`www.${DOMAIN}`)
+      - traefik.http.routers.frontend-www.priority=200
       - traefik.http.routers.frontend-www.entrypoints=websecure
       - traefik.http.routers.frontend-www.tls.certresolver=le
       - traefik.http.routers.frontend-www.middlewares=www-to-apex
