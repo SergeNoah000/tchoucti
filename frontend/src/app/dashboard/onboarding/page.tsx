@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,6 +15,7 @@ import {
   Loader2,
   Plus,
   Repeat,
+  Settings,
   Trash2,
   Upload,
   Wallet,
@@ -35,7 +37,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 
-import { associationsApi, caissesApi, setupApi } from "@/lib/api";
+import {
+  aidTypesApi,
+  associationsApi,
+  caissesApi,
+  loanTypesApi,
+  setupApi,
+  tontinesApi,
+} from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { canConfigureAssociation } from "@/lib/roles";
 import type { Association } from "@/lib/types";
@@ -144,10 +153,8 @@ export default function OnboardingPage() {
         />
       )}
       {stepKey === "tontines" && (
-        <StubStep
-          icon={Repeat}
-          title={t("stepTontinesTitle")}
-          desc={t("stepTontinesDesc")}
+        <TontinesLinkStep
+          association={association}
           onBack={() => setCurrentStep(1)}
           onSkip={async () => {
             await advance.mutateAsync({ step: 3 });
@@ -156,10 +163,8 @@ export default function OnboardingPage() {
         />
       )}
       {stepKey === "loans" && (
-        <StubStep
-          icon={HandCoins}
-          title={t("stepLoansTitle")}
-          desc={t("stepLoansDesc")}
+        <LoansLinkStep
+          association={association}
           onBack={() => setCurrentStep(2)}
           onSkip={async () => {
             await advance.mutateAsync({ step: 4 });
@@ -168,10 +173,8 @@ export default function OnboardingPage() {
         />
       )}
       {stepKey === "aids" && (
-        <StubStep
-          icon={HeartHandshake}
-          title={t("stepAidsTitle")}
-          desc={t("stepAidsDesc")}
+        <AidsLinkStep
+          association={association}
           onBack={() => setCurrentStep(3)}
           finishLabel={t("finish")}
           onSkip={finish}
@@ -667,8 +670,8 @@ function StepCaisses({
                 <Wallet className="h-4 w-4" />
               </div>
               <div className="min-w-0">
-                <p className="flex items-center gap-2 truncate text-sm font-semibold">
-                  {c.name}
+                <div className="flex items-center gap-2 truncate text-sm font-semibold">
+                  <span className="truncate">{c.name}</span>
                   {c.is_system && (
                     <Badge variant="secondary" className="text-[10px]">
                       {t("system")}
@@ -677,7 +680,7 @@ function StepCaisses({
                   <Badge variant="outline" className="text-[10px]">
                     {t(`cat_${c.category}` as never)}
                   </Badge>
-                </p>
+                </div>
                 <p className="truncate text-xs text-muted-foreground">
                   {c.is_recurring
                     ? t("caissePreviewRecurring", { amount: c.recurring_amount })
@@ -909,10 +912,19 @@ function CaisseForm({
 
 // ── Stub step (tontines / loans / aids) ────────────────────────────────────
 
+// ── Stub link step (tontines / loans / aids) ──────────────────────────────
+// La vraie CRUD vit sur la page de config standalone correspondante. Le
+// wizard se contente d'afficher l'état actuel (nombre d'éléments configurés)
+// et de renvoyer l'admin vers la page complète. Au retour, il revient au
+// wizard via la bannière "Retour à l'onboarding".
+
 function StubStep({
   icon: Icon,
   title,
   desc,
+  configHref,
+  count,
+  countLabel,
   onBack,
   onSkip,
   finishLabel,
@@ -920,6 +932,9 @@ function StubStep({
   icon: React.ElementType;
   title: string;
   desc: string;
+  configHref: string;
+  count: number | null;
+  countLabel: string;
   onBack: () => void;
   onSkip: () => Promise<void>;
   finishLabel?: string;
@@ -954,8 +969,121 @@ function StubStep({
     >
       <div className="flex flex-col items-center gap-3 py-6 text-center">
         <Icon className="h-12 w-12 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">{t("stubLater")}</p>
+        {count !== null && (
+          <p className="text-sm font-medium">
+            {count} {countLabel}
+          </p>
+        )}
+        <p className="text-sm text-muted-foreground">{t("openConfigHint")}</p>
+        <Button asChild className="mt-2 gap-2">
+          <Link href={`${configHref}?from=onboarding`}>
+            <Settings className="h-4 w-4" />
+            {t("openConfig")}
+          </Link>
+        </Button>
       </div>
     </WizardCard>
+  );
+}
+
+// ── Wizard step 3 — Tontines ──────────────────────────────────────────────
+
+function TontinesLinkStep({
+  association,
+  onBack,
+  onSkip,
+}: {
+  association: Association;
+  onBack: () => void;
+  onSkip: () => Promise<void>;
+}) {
+  const t = useTranslations("onboarding");
+  const { data: cycles = [] } = useQuery<{ id: string; status: string }[]>({
+    queryKey: ["tontines", association.id],
+    queryFn: () => tontinesApi.list(association.id),
+  });
+  const active = cycles.filter((c) => c.status === "active").length;
+  return (
+    <StubStep
+      icon={Repeat}
+      title={t("stepTontinesTitle")}
+      desc={t("stepTontinesDesc")}
+      configHref="/dashboard/config/tontines"
+      count={cycles.length}
+      countLabel={t("countTontines", { active })}
+      onBack={onBack}
+      onSkip={onSkip}
+    />
+  );
+}
+
+// ── Wizard step 4 — Loans ─────────────────────────────────────────────────
+
+function LoansLinkStep({
+  association,
+  onBack,
+  onSkip,
+}: {
+  association: Association;
+  onBack: () => void;
+  onSkip: () => Promise<void>;
+}) {
+  const t = useTranslations("onboarding");
+  const enabled = Boolean(
+    (association.config as { loans?: { enabled?: boolean } })?.loans?.enabled,
+  );
+  const { data: types = [] } = useQuery<{ id: string }[]>({
+    queryKey: ["loan-types", association.id],
+    queryFn: () => loanTypesApi.list(association.id),
+    enabled,
+  });
+  return (
+    <StubStep
+      icon={HandCoins}
+      title={t("stepLoansTitle")}
+      desc={t("stepLoansDesc")}
+      configHref="/dashboard/config/loans"
+      count={enabled ? types.length : 0}
+      countLabel={enabled ? t("countLoanTypes") : t("disabled")}
+      onBack={onBack}
+      onSkip={onSkip}
+    />
+  );
+}
+
+// ── Wizard step 5 — Aides sociales ────────────────────────────────────────
+
+function AidsLinkStep({
+  association,
+  onBack,
+  onSkip,
+  finishLabel,
+}: {
+  association: Association;
+  onBack: () => void;
+  onSkip: () => Promise<void>;
+  finishLabel?: string;
+}) {
+  const t = useTranslations("onboarding");
+  const enabled = Boolean(
+    (association.config as { aids?: { enabled?: boolean } })?.aids?.enabled,
+  );
+  const { data: types = [] } = useQuery<{ id: string }[]>({
+    queryKey: ["aid-types", association.id],
+    queryFn: () => aidTypesApi.list(association.id),
+    enabled,
+  });
+  return (
+    <StubStep
+      icon={HeartHandshake}
+      title={t("stepAidsTitle")}
+      desc={t("stepAidsDesc")}
+      configHref="/dashboard/config/aids"
+      count={enabled ? types.length : 0}
+      countLabel={enabled ? t("countAidTypes") : t("disabled")}
+      onBack={onBack}
+      onSkip={onSkip}
+      finishLabel={finishLabel}
+    />
   );
 }

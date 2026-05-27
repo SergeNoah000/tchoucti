@@ -118,7 +118,7 @@ const ASSOCIATION_NAV: NavSection[] = [
     label: null,
     items: [
       { href: "/dashboard", icon: LayoutDashboard, key: "dashboard" },
-      { href: "/dashboard/associations", icon: FolderKanban, key: "associations" },
+      { href: "/dashboard/my-association", icon: Building2, key: "myAssociation" },
       { href: "/dashboard/meetings", icon: Calendar, key: "meetings" },
       { href: "/dashboard/members", icon: Users, key: "members" },
     ],
@@ -130,6 +130,15 @@ const ASSOCIATION_NAV: NavSection[] = [
       { href: "/dashboard/loans", icon: Banknote, key: "loans" },
       { href: "/dashboard/tontines", icon: Repeat, key: "tontines" },
       { href: "/dashboard/social-aid", icon: HeartHandshake, key: "socialAid" },
+    ],
+  },
+  {
+    label: "config",
+    items: [
+      { href: "/dashboard/config/caisses", icon: Wallet, key: "configCaisses" },
+      { href: "/dashboard/config/tontines", icon: Repeat, key: "configTontines" },
+      { href: "/dashboard/config/loans", icon: Banknote, key: "configLoans" },
+      { href: "/dashboard/config/aids", icon: HeartHandshake, key: "configAids" },
     ],
   },
   {

@@ -76,6 +76,7 @@
       "operations": "Opérations",
       "finance": "Finance",
       "programs": "Programmes",
+      "config": "Configuration",
       "tools": "Outils",
       "personal": "Mon espace"
     }
@@ -104,7 +105,13 @@
     "audit": "Journal d'audit",
     "myContributions": "Mes cotisations",
     "myLoans": "Mes prêts",
-    "myGroupement": "Mon groupement"
+    "myGroupement": "Mon groupement",
+    "myAssociation": "Mon association",
+    "config": "Configuration",
+    "configCaisses": "Caisses",
+    "configTontines": "Tontines",
+    "configLoans": "Prêts",
+    "configAids": "Aides sociales"
   },
   "login": {
     "title": "Connexion",
@@ -1168,7 +1175,15 @@
     "stepLoansDesc": "Activez les prêts et définissez vos types (éligibilité, taux, durée, caisse source).",
     "stepAidsTitle": "Aides sociales",
     "stepAidsDesc": "Définissez les types d'aides (naissance, décès…) et la cotisation par membre.",
-    "stubLater": "Cette section sera disponible bientôt. Vous pourrez la configurer à tout moment depuis le tableau de bord."
+    "stubLater": "Cette section sera disponible bientôt. Vous pourrez la configurer à tout moment depuis le tableau de bord.",
+    "openConfig": "Configurer maintenant",
+    "openConfigHint": "Ouvre la page de configuration dédiée. Revenez ici via la bannière en haut quand vous avez terminé.",
+    "inWizardHint": "Vous êtes en cours de configuration initiale.",
+    "backToWizard": "Retour au wizard",
+    "countTontines": "tontine(s) configurée(s) — {active} active(s)",
+    "countLoanTypes": "type(s) de prêt",
+    "countAidTypes": "type(s) d'aide",
+    "disabled": "Module désactivé"
   },
   "errors": {
     "generic": "Une erreur est survenue, veuillez réessayer.",

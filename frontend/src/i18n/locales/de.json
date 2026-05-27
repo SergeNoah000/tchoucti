@@ -76,6 +76,7 @@
       "operations": "Betrieb",
       "finance": "Finanzen",
       "programs": "Programme",
+      "config": "Konfiguration",
       "tools": "Werkzeuge",
       "personal": "Mein Bereich"
     }
@@ -104,7 +105,13 @@
     "audit": "Audit-Protokoll",
     "myContributions": "Meine Beiträge",
     "myLoans": "Meine Darlehen",
-    "myGroupement": "Meine Gruppe"
+    "myGroupement": "Meine Gruppe",
+    "myAssociation": "Mein Verein",
+    "config": "Konfiguration",
+    "configCaisses": "Kassen",
+    "configTontines": "Tontines",
+    "configLoans": "Darlehen",
+    "configAids": "Soziale Hilfen"
   },
   "login": {
     "title": "Anmelden",
@@ -1160,7 +1167,15 @@
     "stepLoansDesc": "Darlehen aktivieren und Typen definieren (Berechtigung, Zins, Dauer, Quellkasse).",
     "stepAidsTitle": "Soziale Hilfen",
     "stepAidsDesc": "Hilfsarten festlegen (Geburt, Todesfall…) und Mitgliedsbeitrag.",
-    "stubLater": "Dieser Abschnitt ist bald verfügbar. Sie können ihn jederzeit vom Dashboard aus konfigurieren."
+    "stubLater": "Dieser Abschnitt ist bald verfügbar. Sie können ihn jederzeit vom Dashboard aus konfigurieren.",
+    "openConfig": "Jetzt konfigurieren",
+    "openConfigHint": "Öffnet die zugehörige Konfigurationsseite. Kommen Sie über das Banner oben zurück, wenn Sie fertig sind.",
+    "inWizardHint": "Sie befinden sich im Einrichtungs-Wizard.",
+    "backToWizard": "Zurück zum Wizard",
+    "countTontines": "Tontine(s) konfiguriert — {active} aktiv",
+    "countLoanTypes": "Darlehenstyp(en)",
+    "countAidTypes": "Hilfetyp(en)",
+    "disabled": "Modul deaktiviert"
   },
   "errors": {
     "generic": "Ein Fehler ist aufgetreten, bitte versuchen Sie es erneut.",

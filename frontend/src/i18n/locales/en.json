@@ -76,6 +76,7 @@
       "operations": "Operations",
       "finance": "Finance",
       "programs": "Programs",
+      "config": "Configuration",
       "tools": "Tools",
       "personal": "My space"
     }
@@ -104,7 +105,13 @@
     "audit": "Audit log",
     "myContributions": "My contributions",
     "myLoans": "My loans",
-    "myGroupement": "My group"
+    "myGroupement": "My group",
+    "myAssociation": "My association",
+    "config": "Configuration",
+    "configCaisses": "Funds",
+    "configTontines": "Tontines",
+    "configLoans": "Loans",
+    "configAids": "Social aids"
   },
   "login": {
     "title": "Sign in",
@@ -1160,7 +1167,15 @@
     "stepLoansDesc": "Enable loans and define your types (eligibility, rate, duration, source fund).",
     "stepAidsTitle": "Social aid",
     "stepAidsDesc": "Define aid types (birth, death…) and member contribution.",
-    "stubLater": "This section will be available soon. You can configure it any time from the dashboard."
+    "stubLater": "This section will be available soon. You can configure it any time from the dashboard.",
+    "openConfig": "Configure now",
+    "openConfigHint": "Opens the dedicated configuration page. Come back here via the banner on top when you're done.",
+    "inWizardHint": "You're in the initial setup wizard.",
+    "backToWizard": "Back to wizard",
+    "countTontines": "tontine(s) configured — {active} active",
+    "countLoanTypes": "loan type(s)",
+    "countAidTypes": "aid type(s)",
+    "disabled": "Module disabled"
   },
   "errors": {
     "generic": "An error occurred, please try again.",

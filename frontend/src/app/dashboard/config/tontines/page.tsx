@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/common/page-header";
 import { ConfigPreview } from "@/components/onboarding/help-field";
+import { OnboardingBanner } from "@/components/onboarding/onboarding-banner";
 
 import { associationsApi, tontinesApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
@@ -104,6 +105,7 @@ export default function ConfigTontinesPage() {
 
   return (
     <div className="space-y-6">
+      <OnboardingBanner />
       <PageHeader
         title={t("title")}
         description={t("subtitle")}

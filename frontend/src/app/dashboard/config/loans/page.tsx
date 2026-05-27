@@ -31,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { PageHeader } from "@/components/common/page-header";
 import { HelpField, ConfigPreview } from "@/components/onboarding/help-field";
+import { OnboardingBanner } from "@/components/onboarding/onboarding-banner";
 import { associationsApi, caissesApi, loanTypesApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { canConfigureAssociation } from "@/lib/roles";
@@ -147,6 +148,7 @@ function ConfigLoansInner({ association }: { association: Association }) {
 
   return (
     <div className="space-y-6">
+      <OnboardingBanner />
       <PageHeader
         title={t("title")}
         description={t("subtitle")}
