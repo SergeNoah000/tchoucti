@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,12 +9,9 @@ import {
   ArrowRight,
   Building2,
   CheckCircle2,
-  HandCoins,
-  HeartHandshake,
   Loader2,
   Plus,
   Repeat,
-  Settings,
   Trash2,
   Upload,
   Wallet,
@@ -38,18 +34,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 
 import {
-  aidTypesApi,
   associationsApi,
   caissesApi,
-  loanTypesApi,
   setupApi,
   tontinesApi,
 } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { canConfigureAssociation } from "@/lib/roles";
+import { useFormatters } from "@/lib/format";
 import type { Association } from "@/lib/types";
 import { HelpField, ConfigPreview } from "@/components/onboarding/help-field";
 import { StepIndicator, WizardCard, type WizardStep } from "@/components/onboarding/wizard";
+import { LoanTypesManager } from "@/components/config/loan-types-manager";
+import { AidTypesManager } from "@/components/config/aid-types-manager";
+import { CreateCycleDialog } from "@/components/tontines/create-cycle-dialog";
 
 const STEP_KEYS = ["association", "caisses", "tontines", "loans", "aids"] as const;
 type StepKey = (typeof STEP_KEYS)[number];
@@ -918,23 +916,11 @@ function CaisseForm({
 // et de renvoyer l'admin vers la page complète. Au retour, il revient au
 // wizard via la bannière "Retour à l'onboarding".
 
-function StubStep({
-  icon: Icon,
-  title,
-  desc,
-  configHref,
-  count,
-  countLabel,
+function WizardStepFooter({
   onBack,
   onSkip,
   finishLabel,
 }: {
-  icon: React.ElementType;
-  title: string;
-  desc: string;
-  configHref: string;
-  count: number | null;
-  countLabel: string;
   onBack: () => void;
   onSkip: () => Promise<void>;
   finishLabel?: string;
@@ -942,51 +928,29 @@ function StubStep({
   const t = useTranslations("onboarding");
   const tCommon = useTranslations("common");
   return (
-    <WizardCard
-      title={title}
-      description={desc}
-      footer={
-        <>
-          <Button variant="outline" onClick={onBack} className="gap-1.5">
-            <ArrowLeft className="h-4 w-4" />
-            {tCommon("previous")}
-          </Button>
-          <Button onClick={onSkip} className="gap-2">
-            {finishLabel ? (
-              <>
-                <CheckCircle2 className="h-4 w-4" />
-                {finishLabel}
-              </>
-            ) : (
-              <>
-                {t("skip")}
-                <ArrowRight className="h-4 w-4" />
-              </>
-            )}
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col items-center gap-3 py-6 text-center">
-        <Icon className="h-12 w-12 text-muted-foreground" />
-        {count !== null && (
-          <p className="text-sm font-medium">
-            {count} {countLabel}
-          </p>
+    <>
+      <Button variant="outline" onClick={onBack} className="gap-1.5">
+        <ArrowLeft className="h-4 w-4" />
+        {tCommon("previous")}
+      </Button>
+      <Button onClick={onSkip} className="gap-2">
+        {finishLabel ? (
+          <>
+            <CheckCircle2 className="h-4 w-4" />
+            {finishLabel}
+          </>
+        ) : (
+          <>
+            {t("continue")}
+            <ArrowRight className="h-4 w-4" />
+          </>
         )}
-        <p className="text-sm text-muted-foreground">{t("openConfigHint")}</p>
-        <Button asChild className="mt-2 gap-2">
-          <Link href={`${configHref}?from=onboarding`}>
-            <Settings className="h-4 w-4" />
-            {t("openConfig")}
-          </Link>
-        </Button>
-      </div>
-    </WizardCard>
+      </Button>
+    </>
   );
 }
 
-// ── Wizard step 3 — Tontines ──────────────────────────────────────────────
+// ── Wizard step 3 — Tontines (CRUD inline) ─────────────────────────────────
 
 function TontinesLinkStep({
   association,
@@ -998,26 +962,54 @@ function TontinesLinkStep({
   onSkip: () => Promise<void>;
 }) {
   const t = useTranslations("onboarding");
-  const { data: cycles = [] } = useQuery<{ id: string; status: string }[]>({
+  const tTontine = useTranslations("tontine");
+  const fmt = useFormatters(association.currency);
+  const { data: cycles = [] } = useQuery<
+    { id: string; name: string; status: string; round_amount: number; rounds_count: number }[]
+  >({
     queryKey: ["tontines", association.id],
     queryFn: () => tontinesApi.list(association.id),
   });
-  const active = cycles.filter((c) => c.status === "active").length;
+
   return (
-    <StubStep
-      icon={Repeat}
+    <WizardCard
       title={t("stepTontinesTitle")}
-      desc={t("stepTontinesDesc")}
-      configHref="/dashboard/config/tontines"
-      count={cycles.length}
-      countLabel={t("countTontines", { active })}
-      onBack={onBack}
-      onSkip={onSkip}
-    />
+      description={t("stepTontinesDesc")}
+      footer={<WizardStepFooter onBack={onBack} onSkip={onSkip} />}
+    >
+      <ConfigPreview intent="info">{t("stepTontinesIntro")}</ConfigPreview>
+      {cycles.length > 0 && (
+        <ul className="space-y-2">
+          {cycles.map((c) => (
+            <li
+              key={c.id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Repeat className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{c.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {tTontine("roundsCount")}: {c.rounds_count} · {tTontine("roundAmount")}:{" "}
+                    {fmt.currency(c.round_amount)}
+                  </p>
+                </div>
+              </div>
+              <Badge variant="outline" className="shrink-0 text-[10px]">
+                {tTontine(`status${c.status.charAt(0).toUpperCase() + c.status.slice(1)}`)}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+      <CreateCycleDialog association={association} />
+    </WizardCard>
   );
 }
 
-// ── Wizard step 4 — Loans ─────────────────────────────────────────────────
+// ── Wizard step 4 — Loans (CRUD inline) ────────────────────────────────────
 
 function LoansLinkStep({
   association,
@@ -1029,29 +1021,18 @@ function LoansLinkStep({
   onSkip: () => Promise<void>;
 }) {
   const t = useTranslations("onboarding");
-  const enabled = Boolean(
-    (association.config as { loans?: { enabled?: boolean } })?.loans?.enabled,
-  );
-  const { data: types = [] } = useQuery<{ id: string }[]>({
-    queryKey: ["loan-types", association.id],
-    queryFn: () => loanTypesApi.list(association.id),
-    enabled,
-  });
   return (
-    <StubStep
-      icon={HandCoins}
+    <WizardCard
       title={t("stepLoansTitle")}
-      desc={t("stepLoansDesc")}
-      configHref="/dashboard/config/loans"
-      count={enabled ? types.length : 0}
-      countLabel={enabled ? t("countLoanTypes") : t("disabled")}
-      onBack={onBack}
-      onSkip={onSkip}
-    />
+      description={t("stepLoansDesc")}
+      footer={<WizardStepFooter onBack={onBack} onSkip={onSkip} />}
+    >
+      <LoanTypesManager association={association} />
+    </WizardCard>
   );
 }
 
-// ── Wizard step 5 — Aides sociales ────────────────────────────────────────
+// ── Wizard step 5 — Aides sociales (CRUD inline) ───────────────────────────
 
 function AidsLinkStep({
   association,
@@ -1065,25 +1046,13 @@ function AidsLinkStep({
   finishLabel?: string;
 }) {
   const t = useTranslations("onboarding");
-  const enabled = Boolean(
-    (association.config as { aids?: { enabled?: boolean } })?.aids?.enabled,
-  );
-  const { data: types = [] } = useQuery<{ id: string }[]>({
-    queryKey: ["aid-types", association.id],
-    queryFn: () => aidTypesApi.list(association.id),
-    enabled,
-  });
   return (
-    <StubStep
-      icon={HeartHandshake}
+    <WizardCard
       title={t("stepAidsTitle")}
-      desc={t("stepAidsDesc")}
-      configHref="/dashboard/config/aids"
-      count={enabled ? types.length : 0}
-      countLabel={enabled ? t("countAidTypes") : t("disabled")}
-      onBack={onBack}
-      onSkip={onSkip}
-      finishLabel={finishLabel}
-    />
+      description={t("stepAidsDesc")}
+      footer={<WizardStepFooter onBack={onBack} onSkip={onSkip} finishLabel={finishLabel} />}
+    >
+      <AidTypesManager association={association} />
+    </WizardCard>
   );
 }

@@ -1168,6 +1168,8 @@
     "stepAidsTitle": "Soziale Hilfen",
     "stepAidsDesc": "Hilfsarten festlegen (Geburt, Todesfall…) und Mitgliedsbeitrag.",
     "stubLater": "Dieser Abschnitt ist bald verfügbar. Sie können ihn jederzeit vom Dashboard aus konfigurieren.",
+    "continue": "Weiter",
+    "stepTontinesIntro": "Erstellen Sie die Tontines des Vereins. Jede Tontine hat ihren eigenen isolierten Fonds und Runden. Erstellen Sie beliebig viele oder überspringen Sie diesen Schritt.",
     "openConfig": "Jetzt konfigurieren",
     "openConfigHint": "Öffnet die zugehörige Konfigurationsseite. Kommen Sie über das Banner oben zurück, wenn Sie fertig sind.",
     "inWizardHint": "Sie befinden sich im Einrichtungs-Wizard.",

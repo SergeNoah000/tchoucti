@@ -1168,6 +1168,8 @@
     "stepAidsTitle": "Social aid",
     "stepAidsDesc": "Define aid types (birth, death…) and member contribution.",
     "stubLater": "This section will be available soon. You can configure it any time from the dashboard.",
+    "continue": "Continue",
+    "stepTontinesIntro": "Create the association's tontines. Each tontine has its own isolated fund and rounds. Create as many as you need, or skip this step.",
     "openConfig": "Configure now",
     "openConfigHint": "Opens the dedicated configuration page. Come back here via the banner on top when you're done.",
     "inWizardHint": "You're in the initial setup wizard.",

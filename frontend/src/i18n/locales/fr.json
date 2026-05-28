@@ -1176,6 +1176,8 @@
     "stepAidsTitle": "Aides sociales",
     "stepAidsDesc": "Définissez les types d'aides (naissance, décès…) et la cotisation par membre.",
     "stubLater": "Cette section sera disponible bientôt. Vous pourrez la configurer à tout moment depuis le tableau de bord.",
+    "continue": "Continuer",
+    "stepTontinesIntro": "Créez les tontines de l'association. Chaque tontine a son propre fonds isolé et ses tours. Vous pouvez en créer plusieurs ou passer cette étape.",
     "openConfig": "Configurer maintenant",
     "openConfigHint": "Ouvre la page de configuration dédiée. Revenez ici via la bannière en haut quand vous avez terminé.",
     "inWizardHint": "Vous êtes en cours de configuration initiale.",
