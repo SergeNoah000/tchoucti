@@ -62,7 +62,33 @@ explicite. Refonte majeure :
 
 ---
 
-## 🔵 Track 2 — Refonte « silo association » (différé)
+## 🟠 Phase 6 — Réalignement modèle métier + devise + silo ⟵ EN COURS
+
+**Voir [docs/PHASE-6-DOMAIN-REALIGN.md](PHASE-6-DOMAIN-REALIGN.md).**
+
+Suite à un cadrage métier (2026-05-29), le modèle Phase 2 était partiellement
+faux. Corrections validées :
+
+- **Tontine → Cycles → séances** : une tontine est durable et a *plusieurs
+  cycles* ; un cycle = une rotation ; **1 séance = 1 tour**. Mon `TontineCycle`
+  était traité comme racine → il faut un parent `Tontine`.
+- **Séances créées d'office** pour tout le cycle à sa création (plus de bouton
+  "générer", sauf séances extraordinaires). Pas de tontine = pas de séance régulière.
+- **Cycle suivant hérite de tout** (config + participants + activités).
+- **Distribution** : plusieurs gagnants/tour, 1 fois chacun → `nb_tours =
+  participants / bénéf_par_tour`. `beneficiary_pays` configurable.
+- **Caisses ↔ tontines** : indépendance totale (tontine possède sa caisse).
+- **Devise** : `<Select>` ISO + conversion via API libre (frankfurter) au
+  changement, exemples i18n dynamiques (plus de « 5 000 XAF » en dur).
+- **Silo login** (Track 2 absorbé ici) : `{grp}.myappsuite.com/a/{slug}`, fix
+  invitation (email admin de N assos), Open Graph + logo asso.
+- **Fix UI** : modal d'invitation qui déborde (lien tronqué + copier).
+
+> ⚠️ La mémoire `domain-model-tontine.md` fait foi sur le modèle métier.
+
+---
+
+## 🔵 Track 2 — Refonte « silo association » (absorbé dans Phase 6D)
 
 Décision client : chaque association = silo fermé, un compte = une association,
 e-mail unique par scope, routing `/a/[assoc]/...`. **À planifier en bloc** après
