@@ -19,6 +19,7 @@ from app.api.v1 import (
     caisses,
     loan_types,
     aid_types,
+    public,
 )
 
 api_router = APIRouter()
@@ -65,4 +66,7 @@ api_router.include_router(loan_types.router, prefix="/loan-types", tags=["loan-t
 
 # AidType catalogue (config-v2)
 api_router.include_router(aid_types.router, prefix="/aid-types", tags=["aid-types"])
+
+# Public (no auth) — shareable branded pages
+api_router.include_router(public.router, prefix="/public", tags=["public"])
 

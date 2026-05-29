@@ -130,34 +130,41 @@ participants, copiés depuis le cycle précédent à la génération).
 
 ## Phase 6D — Login par association (silo) + invitation + Open Graph
 
-> Gros chantier = Track 2 différé. À découper.
-
-### Bug invitation (prioritaire)
+### 6D-1 — Bug invitation ✅ FAIT (commit c0689d6)
 - Symptôme : un email déjà admin d'une autre asso du groupement n'a pas reçu
   l'invitation comme admin d'une nouvelle asso.
-- Cause probable : dédoublonnage de l'utilisateur/invitation par email **global**.
-- Fix : invitation + membership scopées à **(email, association)**. Un même email
-  peut exister comme **comptes séparés** par association (décision silo déjà prise).
-  → revoir `memberships.invite` + `invitations.accept` pour ne pas court-circuiter
-  quand l'email existe ailleurs.
+- Cause : dans `create_membership`, l'email n'était envoyé que pour un compte
+  tout neuf (`created_new_user`). Compte existant → ajouté en silence.
+- Fix : envoi d'invitation dès qu'on invite par email (neuf OU existant).
+  `accept` : mot de passe optionnel (requis seulement si compte sans password) ;
+  un actif rejoignant une 2e asso garde son mot de passe. `peek` expose
+  `existing_active` + `association_name` → la page d'activation saute l'étape
+  mot de passe et propose « Rejoindre ».
 
-### Login par association
-- URL : `{groupement}.myappsuite.com/a/{slug-asso}` (login scopé).
-- Lien partageable → page de login/adhésion de l'association.
-- Implique : middleware tenant (sous-domaine groupement + path slug asso),
-  refonte du modèle `User` (un compte par scope), refresh du flux de login.
+### 6D-2 — Upload logo ✅ FAIT (commit ea05149)
+- `POST /associations/{id}/logo` (image ≤ 5 Mo → MinIO → `logo_url`).
+- Composant `LogoUpload` dans onboarding (profil) + paramètres (Général).
 
-### Open Graph (lien partageable)
-- Meta sociales (`og:title`, `og:description`, `og:image`) sur la page
-  login/adhésion, avec le **logo de l'association** (champ `logo_url`, upload à
-  ajouter dans la config asso — oublié jusqu'ici).
-- `generateMetadata` dynamique côté Next.js selon l'asso.
+### 6D-3/4 — Login brandé par association + Open Graph ✅ FAIT
+- Backend : `GET /public/association-branding?groupement={sub|slug}&association={slug}`
+  (sans auth) → branding public (nom, logo, couleur) groupement + asso.
+- Frontend : route serveur `app/a/[slug]/page.tsx` — résout le groupement via
+  `x-tenant-slug` (sous-domaine, posé par le middleware tenant) ou `?g=` en dev ;
+  `generateMetadata` → `og:title/description/image` (= logo asso) + twitter card ;
+  `BrandedLogin` (client) affiche logo + couleur de l'asso. 404 si introuvable.
+- CORS : `CORS_ORIGIN_REGEX` autorise `https://{grp}.${DOMAIN}`.
 
-### Commits estimés
-10. `Phase 6D-1 — fix invitation scopée (email peut être admin de N assos)`
-11. `Phase 6D-2 — upload logo association + champ logo_url`
-12. `Phase 6D-3 — login par sous-domaine groupement + slug asso`
-13. `Phase 6D-4 — Open Graph dynamique (logo asso) sur lien partageable`
+#### Infra (à appliquer sur le VPS — voir aussi le guide de déploiement)
+1. **DNS** : enregistrement A wildcard `*.${DOMAIN}` → IP du VPS.
+2. **Traefik** : le router frontend matche désormais
+   `Host(${DOMAIN}) || HostRegexp(^[a-z0-9-]+\.${DOMAIN}$)` en **priority=10**
+   (catch-all de dernier recours ; les routers explicites et ceux des autres
+   apps gagnent). ⚠️ Vérifier après déploiement que les autres apps du domaine
+   (ex. `globalasset.${DOMAIN}`) répondent toujours.
+3. **TLS** : Let's Encrypt génère un cert par hôte via HTTP-01 au 1er accès
+   (OK avec DNS wildcard). Pour un vrai cert wildcard → challenge DNS-01.
+4. **SSR** : `API_INTERNAL_URL` (= `http://backend:8000/api`) pour le fetch de
+   branding côté serveur Next (l'OG doit être rendu serveur).
 
 ---
 

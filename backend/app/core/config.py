@@ -1,5 +1,5 @@
 """Application settings."""
-from typing import List, Union
+from typing import List, Optional, Union
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -43,6 +43,9 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+    # Regex fallback for per-groupement subdomains ({grp}.${DOMAIN}) which can't
+    # be listed exhaustively. e.g. r"https://([a-z0-9-]+\.)?myappsuite\.com"
+    CORS_ORIGIN_REGEX: Optional[str] = None
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

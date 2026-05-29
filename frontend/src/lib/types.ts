@@ -450,6 +450,22 @@ export interface GroupementAdmin {
   user_is_active?: boolean | null;
 }
 
+export interface AssociationBranding {
+  groupement: {
+    name: string;
+    slug: string;
+    subdomain: string;
+    logo_url?: string | null;
+    primary_color: string;
+  };
+  association: {
+    name: string;
+    slug: string;
+    logo_url?: string | null;
+    primary_color: string;
+  };
+}
+
 export interface InvitationPeek {
   email: string;
   full_name?: string | null;

@@ -194,6 +194,9 @@ services:
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:18000/api}
+      # Server-side (SSR) base — reachable from inside the Next container for
+      # branded login SSR + Open Graph. Browser calls still use NEXT_PUBLIC_API_URL.
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://backend:8000/api}
       NEXT_PUBLIC_ROOT_DOMAIN: ${NEXT_PUBLIC_ROOT_DOMAIN:-localhost}
       NEXT_TELEMETRY_DISABLED: "1"
     ports:

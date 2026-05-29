@@ -156,6 +156,9 @@ services:
       S3_BUCKET: ${S3_BUCKET:-tchoucti-files}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       CORS_ORIGINS: "https://${DOMAIN},https://www.${DOMAIN},https://admin.${DOMAIN},https://api.${DOMAIN}"
+      # Autorise les origines des sous-domaines groupement ({grp}.${DOMAIN}) pour
+      # le login brandé, sans devoir les lister un par un.
+      CORS_ORIGIN_REGEX: "https://([a-z0-9-]+\\.)?${DOMAIN}"
       APP_BASE_DOMAIN: ${DOMAIN}
       PLATFORM_ADMIN_SUBDOMAIN: admin
       FRONTEND_URL: https://${DOMAIN}
@@ -257,16 +260,22 @@ services:
       - web
     labels:
       - traefik.enable=true
-      # IMPORTANT : Tchoucti ne possède QUE l'apex (+ ses sous-domaines
-      # réservés api/storage/minio/traefik déclarés ailleurs). On ne capture
-      # PAS *.myappsuite.com — sinon Tchoucti intercepterait les autres apps
-      # hébergées sur le même domaine (ex. globalasset.myappsuite.com).
+      # Apex + login par groupement : {grp}.${DOMAIN}/a/{slug}. Le router est en
+      # priority=10 (catch-all de DERNIER recours) : tous les routers explicites
+      # (api/storage/minio/traefik/www à 200, ET les autres apps du VPS qui ont
+      # leur propre router en priorité par défaut, basée sur la longueur de règle)
+      # gagnent contre lui. Le wildcard ne capture donc QUE les sous-domaines
+      # sans propriétaire.
       #
-      # Quand le routing par groupement (Track 2) arrivera, ajoute les
-      # sous-domaines voulus explicitement, p.ex. :
-      #   Host(`${DOMAIN}`) || Host(`g1.${DOMAIN}`) || Host(`g2.${DOMAIN}`)
-      # ou via une variable d'env TCHOUCTI_HOSTS.
-      - traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)
+      # ⚠️ PRÉ-REQUIS avant de déployer ce wildcard :
+      #   1. DNS : enregistrement A wildcard  *.${DOMAIN} → IP du VPS.
+      #   2. TLS : Let's Encrypt génère un cert par hôte via HTTP-01 au 1er accès
+      #      HTTPS (OK avec le DNS wildcard). Pour un VRAI cert wildcard, passer
+      #      le resolver `le` en challenge DNS-01 (credentials provider requis).
+      #   3. Vérifier que les autres apps (ex. globalasset.${DOMAIN}) répondent
+      #      toujours — leur router doit l'emporter sur ce catch-all (priorité
+      #      par défaut > 10). Tester juste après déploiement.
+      - traefik.http.routers.frontend.rule=Host(`${DOMAIN}`) || HostRegexp(`^[a-z0-9-]+\.${DOMAIN}$`)
       - traefik.http.routers.frontend.priority=10
       - traefik.http.routers.frontend.entrypoints=websecure
       - traefik.http.routers.frontend.tls.certresolver=le
