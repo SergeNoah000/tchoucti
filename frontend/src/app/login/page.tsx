@@ -85,7 +85,10 @@ export default function LoginPage() {
       }
     } catch (err) {
       const e = err as { response?: { data?: { detail?: string } } };
-      setError(e.response?.data?.detail || t("invalidCredentials"));
+      // No `response` → the request never reached the API (network / CORS /
+      // wrong host). Don't mislead the user with "invalid credentials".
+      if (!e.response) setError(t("connectionError"));
+      else setError(e.response.data?.detail || t("invalidCredentials"));
     } finally {
       setIsLoading(false);
     }

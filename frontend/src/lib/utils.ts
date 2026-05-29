@@ -5,6 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Root domain the tenant subdomains hang off (e.g. myappsuite.com). Driven by
+ *  NEXT_PUBLIC_ROOT_DOMAIN so dev shows `.localhost` and prod the real domain. */
+export const ROOT_DOMAIN = (process.env.NEXT_PUBLIC_ROOT_DOMAIN || "myappsuite.com").toLowerCase();
+
+/** Public host of a groupement: `{subdomain}.{rootDomain}`. */
+export function groupementHost(g: { subdomain?: string | null; slug: string }): string {
+  return `${g.subdomain || g.slug}.${ROOT_DOMAIN}`;
+}
+
 /** Format a number as XAF currency (Cameroon default), no decimals. */
 export function formatCurrency(amount: number | string, currency = "XAF", locale = "fr-FR"): string {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;

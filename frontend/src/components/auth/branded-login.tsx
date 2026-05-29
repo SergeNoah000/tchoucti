@@ -40,7 +40,8 @@ export function BrandedLogin({ branding }: { branding: AssociationBranding }) {
       router.push(user.is_platform_admin ? "/admin" : "/dashboard");
     } catch (err) {
       const e2 = err as { response?: { data?: { detail?: string } } };
-      setError(e2.response?.data?.detail || t("invalidCredentials"));
+      if (!e2.response) setError(t("connectionError"));
+      else setError(e2.response.data?.detail || t("invalidCredentials"));
     } finally {
       setIsLoading(false);
     }

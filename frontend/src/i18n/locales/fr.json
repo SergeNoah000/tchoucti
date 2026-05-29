@@ -128,6 +128,7 @@
     "submit": "Se connecter",
     "loggingIn": "Connexion…",
     "invalidCredentials": "E-mail ou mot de passe incorrect",
+    "connectionError": "Impossible de joindre le serveur. Vérifiez votre connexion (ou que vous êtes sur la bonne adresse).",
     "sessionExpired": "Votre session a expiré, veuillez vous reconnecter.",
     "forgotPassword": "Mot de passe oublié ?",
     "noAccount": "Pas encore de compte ?",

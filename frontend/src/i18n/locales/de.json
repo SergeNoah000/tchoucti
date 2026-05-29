@@ -128,6 +128,7 @@
     "submit": "Anmelden",
     "loggingIn": "Anmeldung…",
     "invalidCredentials": "Ungültige E-Mail oder Passwort",
+    "connectionError": "Server nicht erreichbar. Prüfen Sie Ihre Verbindung (oder ob Sie auf der richtigen Adresse sind).",
     "sessionExpired": "Ihre Sitzung ist abgelaufen, bitte melden Sie sich erneut an.",
     "forgotPassword": "Passwort vergessen?",
     "noAccount": "Noch kein Konto?",

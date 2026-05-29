@@ -35,6 +35,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/common/empty-state";
 import { groupementsApi } from "@/lib/api";
 import type { Groupement } from "@/lib/types";
+import { groupementHost } from "@/lib/utils";
 
 const createSchema = z.object({
   name: z.string().min(2, "Nom trop court"),
@@ -254,7 +255,7 @@ export default function GroupementsPage() {
                   {groupements.map((g) => (
                     <tr key={g.id} className="transition-colors hover:bg-muted/50">
                       <td className="px-4 py-3 font-medium">{g.name}</td>
-                      <td className="px-4 py-3 font-mono text-xs">{g.slug}.tchoucti.cm</td>
+                      <td className="px-4 py-3 font-mono text-xs">{groupementHost(g)}</td>
                       <td className="px-4 py-3">
                         {g.is_active ? (
                           <Badge variant="success">{tCommon("active")}</Badge>

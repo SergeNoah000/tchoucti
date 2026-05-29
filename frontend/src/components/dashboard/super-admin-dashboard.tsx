@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { api, groupementsApi } from "@/lib/api";
 import type { Groupement, User } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
+import { groupementHost } from "@/lib/utils";
 
 export function SuperAdminDashboard() {
   const t = useTranslations("dashboard");
@@ -89,7 +90,7 @@ export function SuperAdminDashboard() {
                       </div>
                       <div className="min-w-0">
                         <p className="truncate font-medium">{g.name}</p>
-                        <p className="truncate font-mono text-xs text-muted-foreground">{g.slug}.tchoucti.cm</p>
+                        <p className="truncate font-mono text-xs text-muted-foreground">{groupementHost(g)}</p>
                       </div>
                     </div>
                     {g.is_active ? (

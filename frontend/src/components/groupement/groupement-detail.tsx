@@ -57,6 +57,7 @@ import { groupementsApi, associationsApi } from "@/lib/api";
 import type { Association, Groupement, GroupementAdmin } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
 import { useFormatters } from "@/lib/format";
+import { groupementHost } from "@/lib/utils";
 
 interface GroupementDetailProps {
   groupementId: string;
@@ -152,7 +153,7 @@ export function GroupementDetail({ groupementId, backHref }: GroupementDetailPro
         )}
         <Badge variant="outline" className="gap-1 font-mono">
           <Globe className="h-3 w-3" />
-          {groupement.slug}.tchoucti.cm
+          {groupementHost(groupement)}
         </Badge>
       </div>
 
