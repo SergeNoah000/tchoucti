@@ -27,8 +27,9 @@ import type { Association } from "@/lib/types";
 
 interface AidType {
   id: string;
-  source_caisse_id: string;
+  source_caisse_id?: string | null;
   source_caisse_name?: string | null;
+  auto_create_caisse?: boolean;
   name: string;
   slug: string;
   description?: string | null;
@@ -170,7 +171,10 @@ export function AidTypesManager({ association }: { association: Association }) {
                         <p className="text-sm text-muted-foreground">{at.description}</p>
                       )}
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {t("source")}: <span className="font-medium">{at.source_caisse_name}</span>
+                        {t("source")}:{" "}
+                        <span className="font-medium">
+                          {at.auto_create_caisse ? t("temporaryCaisse") : at.source_caisse_name}
+                        </span>
                         {" · "}
                         {t("contribution")}: <span className="font-medium">{at.member_contribution_amount}</span>
                         {" · "}
@@ -211,14 +215,10 @@ export function AidTypesManager({ association }: { association: Association }) {
               variant="outline"
               onClick={() => setShowForm(true)}
               className="w-full gap-2"
-              disabled={sourceCaisses.length === 0}
             >
               <Plus className="h-4 w-4" />
               {t("addType")}
             </Button>
-          )}
-          {sourceCaisses.length === 0 && (
-            <ConfigPreview intent="warning">{t("noSourceCaisse")}</ConfigPreview>
           )}
         </>
       )}
@@ -245,6 +245,8 @@ function AidTypeForm({
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  // Caisse temporaire par défaut s'il n'existe aucune caisse source utilisable.
+  const [temporary, setTemporary] = useState(caisses.length === 0);
   const [source, setSource] = useState(caisses[0]?.id ?? "");
   const [contribution, setContribution] = useState("2000");
   const [recurring, setRecurring] = useState(false);
@@ -256,7 +258,8 @@ function AidTypeForm({
     mutationFn: () =>
       aidTypesApi.create({
         association_id: associationId,
-        source_caisse_id: source,
+        auto_create_caisse: temporary,
+        source_caisse_id: temporary ? undefined : source,
         name: name.trim(),
         slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
         description: description.trim() || undefined,
@@ -279,20 +282,37 @@ function AidTypeForm({
         <HelpField label={t("typeName")} required example={t("typeNameExample")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </HelpField>
-        <HelpField label={t("sourceCaisse")} hint={t("sourceCaisseHint")} required>
-          <Select value={source} onValueChange={setSource}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {caisses.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </HelpField>
+        <div className="space-y-3 sm:col-span-2">
+          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border/50 bg-muted/20 px-3 py-2.5">
+            <div>
+              <p className="text-sm font-medium">{t("temporaryCaisseTitle")}</p>
+              <p className="text-xs text-muted-foreground">{t("temporaryCaisseHint")}</p>
+            </div>
+            <Switch checked={temporary} onCheckedChange={setTemporary} />
+          </label>
+          {!temporary && (
+            <HelpField label={t("sourceCaisse")} hint={t("sourceCaisseHint")} required>
+              {caisses.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                  {t("noSourceCaisse")}
+                </p>
+              ) : (
+                <Select value={source} onValueChange={setSource}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {caisses.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </HelpField>
+          )}
+        </div>
         <HelpField label={t("typeDescription")} className="sm:col-span-2">
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
         </HelpField>
@@ -364,7 +384,7 @@ function AidTypeForm({
         </Button>
         <Button
           onClick={() => create.mutate()}
-          disabled={create.isPending || !name.trim() || !source}
+          disabled={create.isPending || !name.trim() || (!temporary && !source)}
           className="gap-2"
         >
           {create.isPending && <Loader2 className="h-4 w-4 animate-spin" />}

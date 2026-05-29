@@ -13,9 +13,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from slugify import slugify
+
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
-from app.models.caisse import Caisse
+from app.models.caisse import Caisse, CaisseCategory
 from app.models.finance import Fund, FundKind, MovementDirection
 from app.models.role import Membership, MembershipRole, MembershipStatus, Role
 from app.models.social_aid import (
@@ -41,8 +43,68 @@ from app.models.meeting import (
     MeetingActivityEntry,
 )
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
+from app.services.meeting_agenda import upsert_caisse_activity
 
 router = APIRouter()
+
+
+async def _open_beneficiary_caisse(
+    db: AsyncSession,
+    *,
+    assoc: Association,
+    case: SocialAidCase,
+    aid_type: AidType,
+) -> Caisse:
+    """Ouvre une caisse temporaire dédiée au bénéficiaire d'une demande d'aide
+    (mode `auto_create_caisse`). Elle collecte les cotisations et finance le
+    versement de CETTE demande. Reliée au dossier via `case.source_caisse_id`."""
+    treasury = await get_or_create_treasury(db, assoc)
+    beneficiary_name = (
+        getattr(getattr(case.beneficiary, "user", None), "full_name", None) or "bénéficiaire"
+    )
+    base_slug = slugify(f"aide-{case.reference}")[:90] or f"aide-{case.id.hex[:8]}"
+
+    fund = Fund(
+        treasury_id=treasury.id,
+        kind=FundKind.CUSTOM,
+        ref_key=base_slug,
+        name=f"Aide — {beneficiary_name} ({case.reference})",
+        description=f"Caisse temporaire pour l'aide {case.reference}.",
+        is_system=False,
+    )
+    db.add(fund)
+    await db.flush()
+
+    caisse = Caisse(
+        association_id=assoc.id,
+        fund_id=fund.id,
+        name=f"Aide — {beneficiary_name} ({case.reference})",
+        slug=base_slug,
+        description="Caisse ouverte automatiquement à l'approbation de la demande d'aide.",
+        category=CaisseCategory.COLLECTIVE,
+        is_system=False,
+        is_recurring=aid_type.is_contribution_recurring,
+        recurring_amount=aid_type.member_contribution_amount,
+    )
+    db.add(caisse)
+    await db.flush()
+
+    # Si cotisation récurrente : la caisse apparaît dans les séances pour collecter.
+    if aid_type.is_contribution_recurring and aid_type.member_contribution_amount > 0:
+        await upsert_caisse_activity(
+            db,
+            association_id=assoc.id,
+            caisse_id=caisse.id,
+            name=caisse.name,
+            slug=caisse.slug,
+            is_recurring=True,
+            recurring_amount=aid_type.member_contribution_amount,
+            is_member_required=False,
+            member_required_amount=0,
+        )
+
+    case.source_caisse_id = caisse.id
+    return caisse
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -344,15 +406,20 @@ async def approve_case(
         at_res = await db.execute(select(AidType).where(AidType.id == case.aid_type_id))
         aid_type = at_res.scalar_one_or_none()
         if aid_type:
-            code = f"aid-{aid_type.slug}"
-            act_res = await db.execute(
-                select(Activity).where(
-                    Activity.association_id == assoc.id, Activity.code == code
+            # Caisse temporaire : ouvre une caisse dédiée au bénéficiaire à
+            # l'approbation (la collecte/versement passe par CETTE caisse).
+            if aid_type.auto_create_caisse and case.source_caisse_id is None:
+                await _open_beneficiary_caisse(db, assoc=assoc, case=case, aid_type=aid_type)
+            else:
+                code = f"aid-{aid_type.slug}"
+                act_res = await db.execute(
+                    select(Activity).where(
+                        Activity.association_id == assoc.id, Activity.code == code
+                    )
                 )
-            )
-            act = act_res.scalar_one_or_none()
-            if act and aid_type.is_contribution_recurring:
-                act.is_visible_in_meeting = True
+                act = act_res.scalar_one_or_none()
+                if act and aid_type.is_contribution_recurring:
+                    act.is_visible_in_meeting = True
 
     await db.commit()
     case = await _load_case(db, case_id)

@@ -264,7 +264,8 @@ export const aidTypesApi = {
     })).data,
   create: async (payload: {
     association_id: string;
-    source_caisse_id: string;
+    source_caisse_id?: string;
+    auto_create_caisse?: boolean;
     name: string;
     slug: string;
     description?: string;

@@ -81,12 +81,17 @@ class AidType(BaseModel):
         nullable=False,
         index=True,
     )
-    # Caisse qui reçoit les cotisations et finance le versement.
-    source_caisse_id: Mapped[uuid.UUID] = mapped_column(
+    # Caisse qui reçoit les cotisations et finance le versement. NULL si
+    # `auto_create_caisse` : une caisse temporaire au nom du bénéficiaire est
+    # alors créée à l'approbation de chaque demande.
+    source_caisse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("caisses.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
+    # Si True : pas de caisse source fixe ; une caisse dédiée au bénéficiaire est
+    # ouverte automatiquement quand sa demande d'aide est approuvée.
+    auto_create_caisse: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -120,7 +125,7 @@ class AidType(BaseModel):
 
     # ── Relationships ───────────────────────────────────────────────────────
     association: Mapped["Association"] = relationship("Association")
-    source_caisse: Mapped["Caisse"] = relationship("Caisse")
+    source_caisse: Mapped[Optional["Caisse"]] = relationship("Caisse")
 
 
 # ───────────────────────────────────────────────────

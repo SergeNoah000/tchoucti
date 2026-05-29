@@ -54,6 +54,7 @@ def _to_out(at: AidType, source_name: str | None = None) -> AidTypeOut:
         association_id=at.association_id,
         source_caisse_id=at.source_caisse_id,
         source_caisse_name=source_name,
+        auto_create_caisse=at.auto_create_caisse,
         name=at.name,
         slug=at.slug,
         description=at.description,
@@ -77,7 +78,8 @@ async def list_aid_types(
     await _check_access(db, current_user, association_id)
     stmt = (
         select(AidType, Caisse.name)
-        .join(Caisse, Caisse.id == AidType.source_caisse_id)
+        # Outer join : les types « caisse temporaire » n'ont pas de caisse source.
+        .outerjoin(Caisse, Caisse.id == AidType.source_caisse_id)
         .where(AidType.association_id == association_id)
         .order_by(AidType.created_at)
     )
@@ -96,25 +98,27 @@ async def create_aid_type(
     await _check_access(db, current_user, payload.association_id)
     await _require_admin(db, current_user, payload.association_id)
 
-    caisse_res = await db.execute(
-        select(Caisse).where(
-            Caisse.id == payload.source_caisse_id,
-            Caisse.association_id == payload.association_id,
+    caisse = None
+    if not payload.auto_create_caisse:
+        caisse_res = await db.execute(
+            select(Caisse).where(
+                Caisse.id == payload.source_caisse_id,
+                Caisse.association_id == payload.association_id,
+            )
         )
-    )
-    caisse = caisse_res.scalar_one_or_none()
-    if not caisse:
-        raise HTTPException(422, "Caisse source introuvable dans cette association.")
-    if caisse.category.value == "project":
-        raise HTTPException(
-            422,
-            "Une caisse projet ne peut pas servir de source pour une aide sociale.",
-        )
-    fund_res = await db.execute(select(Fund.kind).where(Fund.id == caisse.fund_id))
-    if fund_res.scalar_one_or_none() == FundKind.TONTINE:
-        raise HTTPException(
-            422, "Une caisse de tontine ne peut pas servir de source d'aide sociale."
-        )
+        caisse = caisse_res.scalar_one_or_none()
+        if not caisse:
+            raise HTTPException(422, "Caisse source introuvable dans cette association.")
+        if caisse.category.value == "project":
+            raise HTTPException(
+                422,
+                "Une caisse projet ne peut pas servir de source pour une aide sociale.",
+            )
+        fund_res = await db.execute(select(Fund.kind).where(Fund.id == caisse.fund_id))
+        if fund_res.scalar_one_or_none() == FundKind.TONTINE:
+            raise HTTPException(
+                422, "Une caisse de tontine ne peut pas servir de source d'aide sociale."
+            )
 
     dupe = await db.execute(
         select(AidType).where(
@@ -128,6 +132,7 @@ async def create_aid_type(
     at = AidType(
         association_id=payload.association_id,
         source_caisse_id=payload.source_caisse_id,
+        auto_create_caisse=payload.auto_create_caisse,
         name=payload.name,
         slug=payload.slug,
         description=payload.description,
@@ -155,7 +160,7 @@ async def create_aid_type(
 
     await db.commit()
     await db.refresh(at)
-    return _to_out(at, caisse.name)
+    return _to_out(at, caisse.name if caisse else None)
 
 
 @router.patch("/{aid_type_id}", response_model=AidTypeOut)
@@ -186,17 +191,19 @@ async def update_aid_type(
                 409,
                 "Changement de caisse source interdit : des dossiers en cours référencent ce type.",
             )
-        caisse_res = await db.execute(
-            select(Caisse).where(
-                Caisse.id == data["source_caisse_id"],
-                Caisse.association_id == at.association_id,
+        # None = bascule vers une caisse temporaire (auto) : pas de caisse à valider.
+        if data["source_caisse_id"] is not None:
+            caisse_res = await db.execute(
+                select(Caisse).where(
+                    Caisse.id == data["source_caisse_id"],
+                    Caisse.association_id == at.association_id,
+                )
             )
-        )
-        new_caisse = caisse_res.scalar_one_or_none()
-        if not new_caisse:
-            raise HTTPException(422, "Nouvelle caisse source invalide.")
-        if new_caisse.category.value == "project":
-            raise HTTPException(422, "Une caisse projet ne peut pas servir de source.")
+            new_caisse = caisse_res.scalar_one_or_none()
+            if not new_caisse:
+                raise HTTPException(422, "Nouvelle caisse source invalide.")
+            if new_caisse.category.value == "project":
+                raise HTTPException(422, "Une caisse projet ne peut pas servir de source.")
 
     for field, value in data.items():
         setattr(at, field, value)

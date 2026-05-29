@@ -2,12 +2,15 @@
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AidTypeCreate(BaseModel):
     association_id: UUID
-    source_caisse_id: UUID
+    # Caisse source fixe — requise SAUF si auto_create_caisse (caisse temporaire
+    # ouverte au nom du bénéficiaire à l'approbation).
+    source_caisse_id: Optional[UUID] = None
+    auto_create_caisse: bool = False
     name: str = Field(..., min_length=2, max_length=150)
     slug: str = Field(..., min_length=2, max_length=100, pattern=r"^[a-z0-9-]+$")
     description: Optional[str] = Field(None, max_length=1000)
@@ -23,12 +26,21 @@ class AidTypeCreate(BaseModel):
     max_claims_per_member_per_year: int = Field(1, ge=1, le=20)
     declaration_delay_days: int = Field(30, ge=0, le=365)
 
+    @model_validator(mode="after")
+    def _check_source(self):
+        if self.auto_create_caisse:
+            self.source_caisse_id = None
+        elif self.source_caisse_id is None:
+            raise ValueError("source_caisse_id requis sauf si auto_create_caisse")
+        return self
+
 
 class AidTypeUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=150)
     description: Optional[str] = Field(None, max_length=1000)
     is_active: Optional[bool] = None
     source_caisse_id: Optional[UUID] = None
+    auto_create_caisse: Optional[bool] = None
 
     member_contribution_amount: Optional[int] = Field(None, ge=0)
     is_contribution_recurring: Optional[bool] = None
@@ -42,8 +54,9 @@ class AidTypeOut(BaseModel):
 
     id: UUID
     association_id: UUID
-    source_caisse_id: UUID
+    source_caisse_id: Optional[UUID] = None
     source_caisse_name: Optional[str] = None
+    auto_create_caisse: bool = False
     name: str
     slug: str
     description: Optional[str]
