@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from app.models.groupement import Groupement
     from app.models.meeting import Activity, Meeting
     from app.models.role import Membership
-    from app.models.tontine import TontineCycle
+    from app.models.tontine import Tontine
 
 
 class Association(BaseModel):
@@ -102,8 +102,8 @@ class Association(BaseModel):
     meetings: Mapped[List["Meeting"]] = relationship(
         "Meeting", back_populates="association", cascade="all, delete-orphan"
     )
-    tontine_cycles: Mapped[List["TontineCycle"]] = relationship(
-        "TontineCycle", back_populates="association", cascade="all, delete-orphan"
+    tontines: Mapped[List["Tontine"]] = relationship(
+        "Tontine", back_populates="association", cascade="all, delete-orphan"
     )
     treasury: Mapped[Optional["Treasury"]] = relationship(
         "Treasury",

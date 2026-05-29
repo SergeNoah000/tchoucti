@@ -26,6 +26,7 @@ from app.models.meeting import (
     MeetingStatus,
 )
 from app.models.tontine import (
+    Tontine,
     TontineCycle,
     TontineMeetingLink,
     TontineParticipation,
@@ -84,19 +85,12 @@ async def _resolve_fund_for_entry(
         except (ValueError, TypeError):
             pass
 
-    # 2. Tontine cycle pin — find the dedicated TONTINE fund (ref_key=cycle.slug).
-    cycle_id_raw = cfg.get("cycle_id")
-    if cycle_id_raw:
-        try:
-            cid = UUID(cycle_id_raw) if isinstance(cycle_id_raw, str) else cycle_id_raw
-            res = await db.execute(select(TontineCycle.slug).where(TontineCycle.id == cid))
-            slug = res.scalar_one_or_none()
-            if slug:
-                for f in treasury.funds:
-                    if f.kind == FundKind.TONTINE and f.ref_key == slug:
-                        return f
-        except (ValueError, TypeError):
-            pass
+    # 2. Tontine pin — fonds dédié TONTINE par ref_key == tontine.slug.
+    tontine_slug = cfg.get("tontine_slug")
+    if tontine_slug:
+        for f in treasury.funds:
+            if f.kind == FundKind.TONTINE and f.ref_key == tontine_slug:
+                return f
 
     # 3. Aid type pin — route to the type's source caisse.
     aid_type_id_raw = cfg.get("aid_type_id")
@@ -951,15 +945,16 @@ async def meeting_agenda(
 
     # ── Rounds tontine hébergés par CETTE séance ───────────────────────────
     rnd_res = await db.execute(
-        select(TontineRound, TontineMeetingLink, TontineCycle)
+        select(TontineRound, TontineMeetingLink, TontineCycle, Tontine)
         .join(TontineMeetingLink, TontineMeetingLink.round_id == TontineRound.id)
         .join(TontineCycle, TontineCycle.id == TontineRound.cycle_id)
+        .join(Tontine, Tontine.id == TontineCycle.tontine_id)
         .where(TontineMeetingLink.meeting_id == meeting_id)
     )
     rounds_here = list(rnd_res.all())
 
     # Pour chaque cycle, on a besoin de savoir qui participe.
-    cycle_ids = {c.id for _r, _l, c in rounds_here}
+    cycle_ids = {c.id for _r, _l, c, _t in rounds_here}
     opted_out: set[tuple[UUID, UUID]] = set()  # (cycle_id, membership_id)
     if cycle_ids:
         op_res = await db.execute(
@@ -1010,20 +1005,21 @@ async def meeting_agenda(
     for mem in members:
         # Tontines : un round par cycle où mem est participant.
         tontines: list[AgendaRow] = []
-        for rnd, _link, cycle in rounds_here:
+        for rnd, _link, cycle, tontine in rounds_here:
             if (cycle.id, mem.id) in opted_out:
                 continue
-            code = f"tontine-{cycle.slug}"
+            code = f"tontine-{tontine.slug}"
             act = by_code.get(code)
             if not act:
                 continue
             tontines.append(
                 AgendaRow(
                     activity_id=act.id,
-                    label=f"Tontine {cycle.name} — Tour {rnd.round_number}",
+                    label=f"Tontine {tontine.name} — Tour {rnd.round_number}",
                     default_amount=cycle.round_amount,
                     is_required=cycle.is_mandatory,
                     context={
+                        "tontine_id": str(tontine.id),
                         "cycle_id": str(cycle.id),
                         "round_id": str(rnd.id),
                         "round_number": rnd.round_number,

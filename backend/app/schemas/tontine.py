@@ -1,4 +1,4 @@
-"""Pydantic schemas for the tontine module."""
+"""Pydantic schemas for the tontine module (Phase 6A — Tontine → Cycles)."""
 from datetime import date, datetime
 from typing import List, Optional
 from uuid import UUID
@@ -6,49 +6,42 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class TontineParticipant(BaseModel):
-    """One beneficiary slot inside a round.
+# ── Inputs ──────────────────────────────────────────────────────────────────
 
-    `share_parts` lets the admin tune unequal splits (e.g. 2+1 for 2/3 vs 1/3).
-    Default 1 = equal split among everyone in the same round.
-    """
+class TontineCreate(BaseModel):
+    """Crée une tontine (entité durable) + son 1er cycle + ses séances d'office."""
 
-    membership_id: UUID
-    share_parts: int = Field(1, ge=1, le=100)
-
-
-class TontineRoundConfig(BaseModel):
-    """The beneficiary set of one round."""
-
-    beneficiaries: List[TontineParticipant] = Field(..., min_length=1, max_length=20)
-
-
-class TontineCycleCreate(BaseModel):
     association_id: UUID
     name: str = Field(..., min_length=2, max_length=150)
     description: Optional[str] = Field(None, max_length=500)
     round_amount: int = Field(..., gt=0, description="Montant versé par participant à chaque tour")
-    start_date: date
-    rounds: List[TontineRoundConfig] = Field(..., min_length=1, max_length=50)
-    shuffle: bool = False
-    # Phase 2c — Multi-tontines + meeting binding
-    is_mandatory: bool = Field(
-        True,
-        description="Si False, l'admin peut opt-out certains membres via excluded_membership_ids.",
-    )
-    excluded_membership_ids: List[UUID] = Field(
-        default_factory=list,
-        description="Memberships exclus de ce cycle (utile uniquement si is_mandatory=False).",
-    )
-    meeting_ids: Optional[List[UUID]] = Field(
-        None,
-        description=(
-            "Mapping explicite tour → séance hôte (taille = nb de tours). "
-            "Si null : auto-pick des N prochaines séances PLANNED après start_date "
-            "(génère des séances manquantes via la cadence asso si besoin)."
-        ),
-    )
 
+    # Cadence des séances/tours
+    frequency: str = Field("monthly", pattern=r"^(weekly|biweekly|monthly|bimonthly|custom)$")
+    custom_interval_days: Optional[int] = Field(None, ge=1, le=365)
+
+    beneficiaries_per_round: int = Field(1, ge=1, le=20)
+    beneficiary_pays: bool = True
+    selection_method: str = Field("manual", pattern=r"^(manual|random|seniority|vote|auction|need)$")
+
+    start_date: date
+    is_mandatory: bool = True
+
+    # Participants dans l'ordre de passage souhaité (≥ 2).
+    participant_ids: List[UUID] = Field(..., min_length=2, max_length=200)
+    # Si is_mandatory=False : membres actifs explicitement exclus du cycle.
+    excluded_membership_ids: List[UUID] = Field(default_factory=list)
+    # Mélanger l'ordre de passage (tirage au sort).
+    shuffle: bool = False
+
+
+class NextCycleCreate(BaseModel):
+    """Génère le cycle suivant — hérite de tout, ajuste juste la date de départ."""
+
+    start_date: Optional[date] = None  # défaut : 1 cadence après la fin du cycle précédent
+
+
+# ── Outputs ─────────────────────────────────────────────────────────────────
 
 class TontineBeneficiaryOut(BaseModel):
     membership_id: UUID
@@ -69,7 +62,6 @@ class TontineRoundOut(BaseModel):
     collected_amount: int
     paid_out_amount: int
     status: str
-    # Phase 2c — séance hôte du tour (null si pas encore mappée)
     meeting_id: Optional[UUID] = None
     meeting_title: Optional[str] = None
 
@@ -78,10 +70,8 @@ class TontineCycleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    association_id: UUID
-    name: str
-    slug: str
-    description: Optional[str]
+    tontine_id: UUID
+    cycle_number: int
     round_amount: int
     rounds_count: int
     current_round_number: int
@@ -95,5 +85,32 @@ class TontineCycleOut(BaseModel):
 
 class TontineCycleDetail(TontineCycleOut):
     rounds: List[TontineRoundOut] = []
-    # round_amount × number of unique beneficiaries across the cycle
     pot_amount: int = 0
+
+
+class TontineOut(BaseModel):
+    """La tontine durable + un résumé de son cycle courant."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    association_id: UUID
+    name: str
+    slug: str
+    description: Optional[str]
+    is_active: bool
+    round_amount: int
+    frequency: str
+    custom_interval_days: Optional[int]
+    beneficiaries_per_round: int
+    beneficiary_pays: bool
+    selection_method: str
+    created_at: datetime
+    cycles_count: int = 0
+    current_cycle: Optional[TontineCycleOut] = None
+
+
+class TontineDetail(TontineOut):
+    # En détail, le cycle courant porte ses tours (TontineCycleDetail).
+    current_cycle: Optional[TontineCycleDetail] = None
+    cycles: List[TontineCycleDetail] = []

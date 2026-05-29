@@ -41,22 +41,21 @@ class TontineRoundStatus(str, Enum):
 
 
 # ───────────────────────────────────────────────────
-# Cycle
+# Tontine (entité durable, parent des cycles)
 # ───────────────────────────────────────────────────
-class TontineCycle(BaseModel):
-    """Un cycle de tontine fixe (rotation).
+class Tontine(BaseModel):
+    """Une tontine ("njangi") — entité durable d'une association.
 
-    Tous les participants versent `round_amount` à chaque tour. Le pot
-    (round_amount × n_participants) est remis au bénéficiaire désigné du tour.
-
-    Une association peut avoir plusieurs cycles concurrents (Phase 2c) —
-    chaque cycle a sa propre caisse système (slug unique) pour préserver
-    l'invariant trésorerie tout en isolant les flux.
+    Une tontine vit dans le temps et enchaîne plusieurs **cycles** (une
+    rotation complète chacun). Elle possède UNE caisse système dédiée
+    (fund ref_key = slug), réutilisée par tous ses cycles (les cycles sont
+    séquentiels, jamais simultanés). Sa config par défaut est héritée par
+    chaque nouveau cycle.
     """
 
-    __tablename__ = "tontine_cycles"
+    __tablename__ = "tontines"
     __table_args__ = (
-        UniqueConstraint("association_id", "slug", name="uq_tontine_cycles_assoc_slug"),
+        UniqueConstraint("association_id", "slug", name="uq_tontines_assoc_slug"),
     )
 
     association_id: Mapped[uuid.UUID] = mapped_column(
@@ -65,25 +64,66 @@ class TontineCycle(BaseModel):
         nullable=False,
         index=True,
     )
-
     name: Mapped[str] = mapped_column(String(150), nullable=False)
-    # Identifier used as the ref_key of the dedicated system caisse / fund
-    # created for this cycle. Generated at creation from the name; unique
-    # per association.
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # ── Config par défaut (héritée par chaque cycle) ──────────────────────────
     round_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    rounds_count: Mapped[int] = mapped_column(Integer, nullable=False)  # = nb de participants
+    # weekly | biweekly | monthly | bimonthly | custom
+    frequency: Mapped[str] = mapped_column(String(20), default="monthly", nullable=False)
+    custom_interval_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    beneficiaries_per_round: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # Le bénéficiaire d'un tour verse-t-il aussi sa cotisation à son propre tour ?
+    beneficiary_pays: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # manual | random | seniority | vote | auction | need
+    selection_method: Mapped[str] = mapped_column(String(20), default="manual", nullable=False)
+
+    association: Mapped["Association"] = relationship(
+        "Association", back_populates="tontines"
+    )
+    cycles: Mapped[List["TontineCycle"]] = relationship(
+        "TontineCycle",
+        back_populates="tontine",
+        cascade="all, delete-orphan",
+        order_by="TontineCycle.cycle_number",
+    )
+
+
+# ───────────────────────────────────────────────────
+# Cycle (une rotation complète d'une tontine)
+# ───────────────────────────────────────────────────
+class TontineCycle(BaseModel):
+    """Un cycle = une rotation complète : la période pour que TOUS les
+    participants reçoivent la cagnotte une fois. Enfant d'une `Tontine`.
+    Le cycle N+1 hérite de toute la config + participants du précédent.
+    """
+
+    __tablename__ = "tontine_cycles"
+    __table_args__ = (
+        UniqueConstraint("tontine_id", "cycle_number", name="uq_tontine_cycles_number"),
+    )
+
+    tontine_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tontines.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    cycle_number: Mapped[int] = mapped_column(Integer, nullable=False)  # 1, 2, 3…
+
+    # Snapshots de la config de la tontine au moment de la création du cycle.
+    round_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    rounds_count: Mapped[int] = mapped_column(Integer, nullable=False)
     current_round_number: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
-    # Stratégie d'ordonnancement des bénéficiaires
     order_strategy: Mapped[str] = mapped_column(
         String(20), default="manual", nullable=False
-    )  # 'manual' | 'random' | 'seniority'
+    )
 
     status: Mapped[TontineCycleStatus] = mapped_column(
         SQLEnum(TontineCycleStatus, name="tontine_cycle_status"),
@@ -91,15 +131,10 @@ class TontineCycle(BaseModel):
         nullable=False,
         index=True,
     )
-
-    # Si True : tous les membres actifs sont participants obligatoires (pas
-    # d'opt-out possible). Si False : participation par défaut mais l'admin
-    # peut opt-out un membre via TontineParticipation.
     is_mandatory: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-
     notes: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
 
-    association: Mapped["Association"] = relationship("Association", back_populates="tontine_cycles")
+    tontine: Mapped["Tontine"] = relationship("Tontine", back_populates="cycles")
     rounds: Mapped[List["TontineRound"]] = relationship(
         "TontineRound",
         back_populates="cycle",

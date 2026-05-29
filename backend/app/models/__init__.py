@@ -54,6 +54,7 @@ from app.models.meeting import (  # noqa: F401
 
 # Tontine
 from app.models.tontine import (  # noqa: F401
+    Tontine,
     TontineCycle,
     TontineCycleStatus,
     TontineRound,

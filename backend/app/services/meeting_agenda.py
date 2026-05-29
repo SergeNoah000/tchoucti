@@ -70,12 +70,13 @@ async def upsert_tontine_activity(
     db: AsyncSession,
     *,
     association_id: UUID,
-    cycle_id: UUID,
+    cycle_id: UUID,  # en pratique : l'id de la Tontine durable (Phase 6A)
     name: str,
     slug: str,
     round_amount: int,
 ) -> Activity:
-    """One Activity per tontine cycle — TONTINE_CONTRIBUTION type."""
+    """One Activity per tontine — TONTINE_CONTRIBUTION type. `config.tontine_slug`
+    sert au routage du fonds à la clôture (fund ref_key == slug)."""
     code = f"tontine-{slug}"
     res = await db.execute(
         select(Activity).where(
@@ -83,7 +84,7 @@ async def upsert_tontine_activity(
         )
     )
     act = res.scalar_one_or_none()
-    config = {"cycle_id": str(cycle_id), "amount": int(round_amount), "tontine_slug": slug}
+    config = {"tontine_id": str(cycle_id), "amount": int(round_amount), "tontine_slug": slug}
     if act is None:
         act = Activity(
             association_id=association_id,
