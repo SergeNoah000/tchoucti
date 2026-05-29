@@ -30,6 +30,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/common/page-header";
+import { DraftCycleManager } from "@/components/tontines/draft-cycle-manager";
 import { associationsApi, tontinesApi } from "@/lib/api";
 import type {
   Association,
@@ -182,7 +183,11 @@ export default function TontineDetailPage() {
         {!tontine.beneficiary_pays && <Badge variant="outline">{t("beneficiaryExempt")}</Badge>}
       </div>
 
-      {current ? (
+      {current?.status === "draft" && canConfigure && association && (
+        <DraftCycleManager tontineId={id} cycle={current} associationId={association.id} />
+      )}
+
+      {current && current.rounds.length > 0 ? (
         <CycleCard
           cycle={current}
           isCurrent
@@ -195,9 +200,9 @@ export default function TontineDetailPage() {
           t={t}
           tCommon={tCommon}
         />
-      ) : (
+      ) : !current ? (
         <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">{t("noCycle")}</CardContent></Card>
-      )}
+      ) : null}
 
       {/* Cycles passés */}
       {pastCycles.length > 0 && (

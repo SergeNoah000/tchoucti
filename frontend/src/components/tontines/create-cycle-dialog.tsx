@@ -135,10 +135,8 @@ export function CreateTontineDialog({ association }: { association: Association 
       setError(t("createError"));
       return;
     }
-    if (selected.length < 2) {
-      setError(t("minParticipants"));
-      return;
-    }
+    // Participants optionnels : on peut créer la tontine vide et ajouter les
+    // membres ensuite depuis sa config.
     setError("");
     createMutation.mutate();
   };
@@ -186,6 +184,7 @@ export function CreateTontineDialog({ association }: { association: Association 
                 onChange={(e) => setAmount(e.target.value)}
                 required
               />
+              <p className="text-xs text-muted-foreground">{t("roundAmountHint")}</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tc-date">{t("startDate")}</Label>
@@ -290,7 +289,7 @@ export function CreateTontineDialog({ association }: { association: Association 
             <Label>
               {t("selectParticipants")} ({selected.length})
             </Label>
-            <p className="text-xs text-muted-foreground">{t("participantsHint")}</p>
+            <p className="text-xs text-muted-foreground">{t("participantsOptionalHint")}</p>
             {activeMembers.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">
                 {t("noMembers")}
@@ -331,7 +330,7 @@ export function CreateTontineDialog({ association }: { association: Association 
             )}
           </div>
 
-          {nRounds > 0 && (
+          {nRounds > 0 ? (
             <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-900 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-200">
               {t("createPreview", {
                 participants: selected.length,
@@ -339,6 +338,10 @@ export function CreateTontineDialog({ association }: { association: Association 
                 rounds: nRounds,
                 pot: fmt.currency(pot),
               })}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+              {t("noParticipantsNote")}
             </div>
           )}
 

@@ -16,7 +16,7 @@ from uuid import UUID
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from slugify import slugify
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -40,6 +40,7 @@ from app.models.user import User
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.services.meeting_agenda import upsert_tontine_activity
 from app.schemas.tontine import (
+    CycleParticipantsUpdate,
     NextCycleCreate,
     TontineBeneficiaryOut,
     TontineCreate,
@@ -126,42 +127,33 @@ async def _get_tontine_fund(db: AsyncSession, treasury, tontine: Tontine) -> Fun
     )
 
 
-async def _build_cycle(
+async def _populate_cycle(
     db: AsyncSession,
     *,
+    cycle: TontineCycle,
     tontine: Tontine,
-    cycle_number: int,
-    start_date: date,
     participant_order: list[UUID],
-    is_mandatory: bool,
     excluded_ids: list[UUID],
-) -> TontineCycle:
-    """Crée un cycle + ses tours + séances d'office + bénéficiaires + opt-outs.
+    activate: bool,
+) -> None:
+    """(Re)génère tours + séances d'office + bénéficiaires + opt-outs sur un cycle
+    EXISTANT (déjà flushé).
 
     nb_tours = ceil(n_participants / bénéficiaires_par_tour). À chaque tour,
-    `beneficiaries_per_round` participants consécutifs sont bénéficiaires et se
-    partagent la cagnotte à parts égales. La cagnotte = round_amount × nb de
-    payeurs (les bénéficiaires du tour paient ou non selon beneficiary_pays).
+    `beneficiaries_per_round` participants consécutifs se partagent la cagnotte à
+    parts égales. La cagnotte = round_amount × nb de payeurs. Si `activate`, le
+    cycle passe ACTIVE et le 1er tour COLLECTING ; sinon il reste BROUILLON
+    (tous les tours PENDING) — sans participant, aucun tour n'est créé.
     """
     k = max(1, tontine.beneficiaries_per_round)
     n = len(participant_order)
     n_rounds = (n + k - 1) // k  # ceil
 
-    cycle = TontineCycle(
-        tontine_id=tontine.id,
-        cycle_number=cycle_number,
-        round_amount=tontine.round_amount,
-        rounds_count=n_rounds,
-        current_round_number=1,
-        start_date=start_date,
-        order_strategy=tontine.selection_method,
-        status=TontineCycleStatus.ACTIVE,
-        is_mandatory=is_mandatory,
-    )
-    db.add(cycle)
-    await db.flush()
+    cycle.rounds_count = n_rounds
+    cycle.current_round_number = 1
+    cycle.status = TontineCycleStatus.ACTIVE if activate else TontineCycleStatus.DRAFT
 
-    dates = _cycle_dates(tontine, start_date, n_rounds)
+    dates = _cycle_dates(tontine, cycle.start_date, n_rounds) if n_rounds else []
 
     for idx in range(n_rounds):
         beneficiaries = participant_order[idx * k : (idx + 1) * k]
@@ -174,7 +166,11 @@ async def _build_cycle(
             round_number=idx + 1,
             scheduled_date=round_date,
             expected_amount=pot,
-            status=TontineRoundStatus.COLLECTING if idx == 0 else TontineRoundStatus.PENDING,
+            status=(
+                TontineRoundStatus.COLLECTING
+                if (idx == 0 and activate)
+                else TontineRoundStatus.PENDING
+            ),
         )
         db.add(rnd)
         await db.flush()
@@ -198,12 +194,70 @@ async def _build_cycle(
                 )
             )
 
-    cycle.end_date = dates[-1]
+    cycle.end_date = dates[-1] if n_rounds else None
 
     for mid in excluded_ids:
         db.add(TontineParticipation(cycle_id=cycle.id, membership_id=mid, is_participating=False))
 
+
+async def _build_cycle(
+    db: AsyncSession,
+    *,
+    tontine: Tontine,
+    cycle_number: int,
+    start_date: date,
+    participant_order: list[UUID],
+    is_mandatory: bool,
+    excluded_ids: list[UUID],
+    activate: bool = True,
+) -> TontineCycle:
+    """Crée un cycle puis le peuple. Sans participant (`activate=False`), le cycle
+    est créé vide en BROUILLON — les membres sont ajoutés ensuite via la config."""
+    cycle = TontineCycle(
+        tontine_id=tontine.id,
+        cycle_number=cycle_number,
+        round_amount=tontine.round_amount,
+        rounds_count=0,
+        current_round_number=1,
+        start_date=start_date,
+        order_strategy=tontine.selection_method,
+        status=TontineCycleStatus.DRAFT,
+        is_mandatory=is_mandatory,
+    )
+    db.add(cycle)
+    await db.flush()
+    await _populate_cycle(
+        db,
+        cycle=cycle,
+        tontine=tontine,
+        participant_order=participant_order,
+        excluded_ids=excluded_ids,
+        activate=activate,
+    )
     return cycle
+
+
+async def _clear_cycle_content(db: AsyncSession, cycle: TontineCycle) -> None:
+    """Supprime tours + séances + opt-outs d'un cycle BROUILLON pour le régénérer."""
+    round_ids = (
+        await db.execute(select(TontineRound.id).where(TontineRound.cycle_id == cycle.id))
+    ).scalars().all()
+    if round_ids:
+        meeting_ids = (
+            await db.execute(
+                select(TontineMeetingLink.meeting_id).where(
+                    TontineMeetingLink.round_id.in_(round_ids)
+                )
+            )
+        ).scalars().all()
+        # Supprimer les tours (cascade : bénéficiaires, contributions, liens séance).
+        await db.execute(delete(TontineRound).where(TontineRound.cycle_id == cycle.id))
+        if meeting_ids:
+            await db.execute(delete(Meeting).where(Meeting.id.in_(meeting_ids)))
+    await db.execute(
+        delete(TontineParticipation).where(TontineParticipation.cycle_id == cycle.id)
+    )
+    await db.flush()
 
 
 async def _meeting_map_for_cycle(db: AsyncSession, cycle_id: UUID) -> dict[UUID, tuple[UUID, str]]:
@@ -461,6 +515,8 @@ async def create_tontine(
         round_amount=payload.round_amount,
     )
 
+    # Sans participant → 1er cycle créé en brouillon (membres ajoutés ensuite via
+    # la config de la tontine). Avec participants → cycle actif + séances d'office.
     await _build_cycle(
         db,
         tontine=tontine,
@@ -469,6 +525,7 @@ async def create_tontine(
         participant_order=order,
         is_mandatory=payload.is_mandatory,
         excluded_ids=payload.excluded_membership_ids,
+        activate=bool(order),
     )
 
     await db.commit()
@@ -526,6 +583,94 @@ async def create_next_cycle(
     )
     await db.commit()
     tontine = await _load_tontine(db, tontine_id)
+    return await _tontine_detail(db, tontine)
+
+
+@router.put("/cycles/{cycle_id}/participants", response_model=TontineDetail)
+async def set_cycle_participants(
+    cycle_id: UUID,
+    payload: CycleParticipantsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Définit/édite les participants d'un cycle BROUILLON et (re)génère ses tours
+    + séances. Permet de créer une tontine sans membre puis d'ajouter les membres
+    depuis sa config. Interdit une fois le cycle démarré (actif)."""
+    cycle = await _load_cycle(db, cycle_id)
+    tontine = await _load_tontine(db, cycle.tontine_id)
+    assoc = await _get_assoc_or_404(db, tontine.association_id)
+    _check_access(current_user, assoc)
+
+    if cycle.status != TontineCycleStatus.DRAFT:
+        raise HTTPException(409, "Seul un cycle brouillon peut être modifié.")
+
+    ids = list(payload.participant_ids)
+    if len(set(ids)) != len(ids):
+        raise HTTPException(422, "Un participant ne peut apparaître qu'une fois dans l'ordre.")
+    if ids:
+        res = await db.execute(
+            select(Membership.id).where(
+                Membership.id.in_(ids), Membership.association_id == assoc.id
+            )
+        )
+        found = set(res.scalars().all())
+        missing = [str(i) for i in ids if i not in found]
+        if missing:
+            raise HTTPException(422, f"Membres introuvables : {', '.join(missing)}")
+    if payload.is_mandatory and payload.excluded_membership_ids:
+        raise HTTPException(422, "Exclusions impossibles quand la tontine est obligatoire.")
+
+    order = ids[:]
+    if payload.shuffle:
+        random.shuffle(order)
+
+    if payload.start_date:
+        cycle.start_date = payload.start_date
+    cycle.is_mandatory = payload.is_mandatory
+
+    await _clear_cycle_content(db, cycle)
+    await _populate_cycle(
+        db,
+        cycle=cycle,
+        tontine=tontine,
+        participant_order=order,
+        excluded_ids=payload.excluded_membership_ids,
+        activate=False,
+    )
+    await db.commit()
+    # Le cycle a été pré-chargé puis vidé/régénéré via bulk delete : on détache
+    # tout pour que le rechargement reflète bien les nouveaux tours.
+    tid = cycle.tontine_id
+    db.expunge_all()
+    tontine = await _load_tontine(db, tid)
+    return await _tontine_detail(db, tontine)
+
+
+@router.post("/cycles/{cycle_id}/activate", response_model=TontineDetail)
+async def activate_cycle(
+    cycle_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Démarre un cycle BROUILLON : le 1er tour passe en collecte. Nécessite au
+    moins un participant (donc un tour)."""
+    cycle = await _load_cycle(db, cycle_id)
+    tontine = await _load_tontine(db, cycle.tontine_id)
+    assoc = await _get_assoc_or_404(db, tontine.association_id)
+    _check_access(current_user, assoc)
+
+    if cycle.status != TontineCycleStatus.DRAFT:
+        raise HTTPException(409, "Ce cycle n'est pas un brouillon.")
+    if cycle.rounds_count < 1:
+        raise HTTPException(422, "Ajoutez au moins un participant avant de démarrer le cycle.")
+
+    cycle.status = TontineCycleStatus.ACTIVE
+    cycle.current_round_number = 1
+    for r in cycle.rounds:
+        if r.round_number == 1:
+            r.status = TontineRoundStatus.COLLECTING
+    await db.commit()
+    tontine = await _load_tontine(db, cycle.tontine_id)
     return await _tontine_detail(db, tontine)
 
 

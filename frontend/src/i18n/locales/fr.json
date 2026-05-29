@@ -749,7 +749,17 @@
     "nextCycleCreated": "Cycle suivant créé",
     "cycleN": "Cycle {n}",
     "pastCycles": "Cycles passés",
-    "noCycle": "Aucun cycle en cours."
+    "noCycle": "Aucun cycle en cours.",
+    "roundAmountHint": "Montant que chaque membre cotise à chaque séance.",
+    "participantsOptionalHint": "Optionnel : créez la tontine sans membre et ajoutez-les plus tard depuis sa config. Sinon, sélectionnez-les dans l'ordre de passage souhaité.",
+    "noParticipantsNote": "Aucun participant : la tontine sera créée en brouillon. Vous ajouterez les membres ensuite depuis sa configuration.",
+    "participantsSaved": "Participants enregistrés",
+    "cycleStarted": "Cycle démarré",
+    "draftParticipantsTitle": "Participants du cycle (brouillon)",
+    "draftParticipantsHint": "Sélectionnez les membres dans l'ordre de passage, enregistrez, puis démarrez le cycle. Les séances seront alors créées d'office.",
+    "saveParticipants": "Enregistrer les participants",
+    "startCycle": "Démarrer le cycle",
+    "saveBeforeStart": "Enregistrez d'abord les participants."
   },
   "finance": {
     "title": "Finances",

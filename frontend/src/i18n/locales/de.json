@@ -749,7 +749,17 @@
     "nextCycleCreated": "Nächster Zyklus erstellt",
     "cycleN": "Zyklus {n}",
     "pastCycles": "Vergangene Zyklen",
-    "noCycle": "Kein laufender Zyklus."
+    "noCycle": "Kein laufender Zyklus.",
+    "roundAmountHint": "Betrag, den jedes Mitglied bei jeder Sitzung einzahlt.",
+    "participantsOptionalHint": "Optional: Tontine ohne Mitglieder anlegen und sie später in der Konfiguration hinzufügen. Sonst in gewünschter Reihenfolge auswählen.",
+    "noParticipantsNote": "Keine Teilnehmer: Die Tontine wird als Entwurf erstellt. Mitglieder fügen Sie später in der Konfiguration hinzu.",
+    "participantsSaved": "Teilnehmer gespeichert",
+    "cycleStarted": "Zyklus gestartet",
+    "draftParticipantsTitle": "Zyklus-Teilnehmer (Entwurf)",
+    "draftParticipantsHint": "Mitglieder in Reihenfolge auswählen, speichern, dann Zyklus starten. Die Sitzungen werden dann automatisch erstellt.",
+    "saveParticipants": "Teilnehmer speichern",
+    "startCycle": "Zyklus starten",
+    "saveBeforeStart": "Zuerst die Teilnehmer speichern."
   },
   "finance": {
     "title": "Finanzen",

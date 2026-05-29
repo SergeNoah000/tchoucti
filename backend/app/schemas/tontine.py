@@ -27,8 +27,10 @@ class TontineCreate(BaseModel):
     start_date: date
     is_mandatory: bool = True
 
-    # Participants dans l'ordre de passage souhaité (≥ 2).
-    participant_ids: List[UUID] = Field(..., min_length=2, max_length=200)
+    # Participants dans l'ordre de passage souhaité. Peut être vide : la tontine
+    # est alors créée avec un cycle brouillon, et les membres sont ajoutés ensuite
+    # depuis la config de la tontine.
+    participant_ids: List[UUID] = Field(default_factory=list, max_length=200)
     # Si is_mandatory=False : membres actifs explicitement exclus du cycle.
     excluded_membership_ids: List[UUID] = Field(default_factory=list)
     # Mélanger l'ordre de passage (tirage au sort).
@@ -39,6 +41,17 @@ class NextCycleCreate(BaseModel):
     """Génère le cycle suivant — hérite de tout, ajuste juste la date de départ."""
 
     start_date: Optional[date] = None  # défaut : 1 cadence après la fin du cycle précédent
+
+
+class CycleParticipantsUpdate(BaseModel):
+    """Définit/édite les participants d'un cycle BROUILLON, puis (re)génère ses
+    tours + séances. N'est possible que tant que le cycle est en brouillon."""
+
+    participant_ids: List[UUID] = Field(default_factory=list, max_length=200)
+    excluded_membership_ids: List[UUID] = Field(default_factory=list)
+    is_mandatory: bool = True
+    shuffle: bool = False
+    start_date: Optional[date] = None
 
 
 # ── Outputs ─────────────────────────────────────────────────────────────────

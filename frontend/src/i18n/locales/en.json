@@ -749,7 +749,17 @@
     "nextCycleCreated": "Next cycle created",
     "cycleN": "Cycle {n}",
     "pastCycles": "Past cycles",
-    "noCycle": "No cycle in progress."
+    "noCycle": "No cycle in progress.",
+    "roundAmountHint": "Amount each member contributes at every meeting.",
+    "participantsOptionalHint": "Optional: create the tontine without members and add them later from its config. Otherwise pick them in the desired payout order.",
+    "noParticipantsNote": "No participants: the tontine will be created as a draft. You'll add members later from its configuration.",
+    "participantsSaved": "Participants saved",
+    "cycleStarted": "Cycle started",
+    "draftParticipantsTitle": "Cycle participants (draft)",
+    "draftParticipantsHint": "Pick members in payout order, save, then start the cycle. The meetings are then created automatically.",
+    "saveParticipants": "Save participants",
+    "startCycle": "Start cycle",
+    "saveBeforeStart": "Save participants first."
   },
   "finance": {
     "title": "Finance",

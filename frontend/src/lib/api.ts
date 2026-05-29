@@ -394,7 +394,8 @@ export const tontinesApi = {
     selection_method?: string; // manual|random|seniority|vote|auction|need
     start_date: string;
     is_mandatory?: boolean;
-    /** Participants dans l'ordre de passage (≥ 2). */
+    /** Participants dans l'ordre de passage. Peut être vide : la tontine est
+     *  créée en brouillon, les membres sont ajoutés ensuite via sa config. */
     participant_ids: string[];
     excluded_membership_ids?: string[];
     shuffle?: boolean;
@@ -402,6 +403,20 @@ export const tontinesApi = {
   /** Phase 6A — génère le cycle suivant (hérite tout). */
   createNextCycle: async (tontineId: string, payload?: { start_date?: string }) =>
     (await api.post(`/tontines/${tontineId}/cycles`, payload ?? {})).data,
+  /** Définit/édite les participants d'un cycle BROUILLON (régénère ses tours). */
+  setParticipants: async (
+    cycleId: string,
+    payload: {
+      participant_ids: string[];
+      excluded_membership_ids?: string[];
+      is_mandatory?: boolean;
+      shuffle?: boolean;
+      start_date?: string;
+    },
+  ) => (await api.put(`/tontines/cycles/${cycleId}/participants`, payload)).data,
+  /** Démarre un cycle brouillon (le 1er tour passe en collecte). */
+  activateCycle: async (cycleId: string) =>
+    (await api.post(`/tontines/cycles/${cycleId}/activate`, {})).data,
   payout: async (cycleId: string, roundId: string) =>
     (await api.post(`/tontines/cycles/${cycleId}/rounds/${roundId}/payout`, {})).data,
   cancelCycle: async (cycleId: string) =>
