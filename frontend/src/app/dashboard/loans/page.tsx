@@ -32,8 +32,17 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
-import { associationsApi, loansApi, membersApi } from "@/lib/api";
+import { associationsApi, loansApi, loanTypesApi, membersApi } from "@/lib/api";
 import type { Association, Loan, LoanStatus, Membership } from "@/lib/types";
+
+interface LoanTypeOption {
+  id: string;
+  name: string;
+  interest_rate_pct: number | string;
+  late_fee_pct: number | string;
+  max_duration_months: number;
+  is_active: boolean;
+}
 import { useFormatters } from "@/lib/format";
 
 const LOAN_STATUS_VARIANT: Record<
@@ -148,6 +157,7 @@ function RequestLoanDialog({ association }: { association: Association }) {
 
   const [open, setOpen] = useState(false);
   const [membershipId, setMembershipId] = useState("");
+  const [loanTypeId, setLoanTypeId] = useState("custom");
   const [principal, setPrincipal] = useState("");
   const [duration, setDuration] = useState("3");
   const [rate, setRate] = useState("5");
@@ -162,11 +172,34 @@ function RequestLoanDialog({ association }: { association: Association }) {
   });
   const activeMembers = members.filter((m) => m.status === "active");
 
+  const { data: loanTypes = [] } = useQuery<LoanTypeOption[]>({
+    queryKey: ["loan-types", association.id],
+    queryFn: () => loanTypesApi.list(association.id, true),
+    enabled: open,
+  });
+
+  const usingType = loanTypeId !== "custom";
+  const selectedType = loanTypes.find((lt) => lt.id === loanTypeId);
+
+  // Choisir un type pré-remplit (et fige) le taux et la pénalité.
+  const onPickType = (id: string) => {
+    setLoanTypeId(id);
+    const lt = loanTypes.find((x) => x.id === id);
+    if (lt) {
+      setRate(String(lt.interest_rate_pct));
+      setLateFee(String(lt.late_fee_pct));
+      if (parseInt(duration, 10) > lt.max_duration_months) {
+        setDuration(String(lt.max_duration_months));
+      }
+    }
+  };
+
   const requestMutation = useMutation({
     mutationFn: () =>
       loansApi.request({
         association_id: association.id,
         borrower_membership_id: membershipId,
+        loan_type_id: usingType ? loanTypeId : undefined,
         principal: parseInt(principal, 10),
         duration_months: parseInt(duration, 10),
         interest_rate_pct: parseFloat(rate),
@@ -184,6 +217,7 @@ function RequestLoanDialog({ association }: { association: Association }) {
 
   const reset = () => {
     setMembershipId("");
+    setLoanTypeId("custom");
     setPrincipal("");
     setDuration("3");
     setRate("5");
@@ -244,6 +278,32 @@ function RequestLoanDialog({ association }: { association: Association }) {
               </Select>
             )}
           </div>
+
+          <div className="space-y-1.5">
+            <Label>{t("loanType")}</Label>
+            <Select value={loanTypeId} onValueChange={onPickType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="custom">{t("customLoan")}</SelectItem>
+                {loanTypes.map((lt) => (
+                  <SelectItem key={lt.id} value={lt.id}>
+                    {lt.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedType && (
+              <p className="text-xs text-muted-foreground">
+                {t("loanTypeHint", {
+                  rate: String(selectedType.interest_rate_pct),
+                  max: selectedType.max_duration_months,
+                })}
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="ln-principal">{`${t("principal")} (${association.currency})`}</Label>
@@ -264,7 +324,7 @@ function RequestLoanDialog({ association }: { association: Association }) {
                 type="number"
                 inputMode="numeric"
                 min={1}
-                max={120}
+                max={usingType && selectedType ? selectedType.max_duration_months : 120}
                 value={duration}
                 onChange={(e) => setDuration(e.target.value)}
                 required
@@ -280,6 +340,7 @@ function RequestLoanDialog({ association }: { association: Association }) {
                 min={0}
                 value={rate}
                 onChange={(e) => setRate(e.target.value)}
+                disabled={usingType}
                 required
               />
             </div>
@@ -293,6 +354,7 @@ function RequestLoanDialog({ association }: { association: Association }) {
                 min={0}
                 value={lateFee}
                 onChange={(e) => setLateFee(e.target.value)}
+                disabled={usingType}
               />
             </div>
           </div>

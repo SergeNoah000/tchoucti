@@ -135,8 +135,9 @@ const ASSOCIATION_NAV: NavSection[] = [
   {
     label: "config",
     items: [
+      // Tontines are created/managed from the operational "Tontines" page above
+      // (no separate type/instance split like loans & aids), so no duplicate here.
       { href: "/dashboard/config/caisses", icon: Wallet, key: "configCaisses" },
-      { href: "/dashboard/config/tontines", icon: Repeat, key: "configTontines" },
       { href: "/dashboard/config/loans", icon: Banknote, key: "configLoans" },
       { href: "/dashboard/config/aids", icon: HeartHandshake, key: "configAids" },
     ],

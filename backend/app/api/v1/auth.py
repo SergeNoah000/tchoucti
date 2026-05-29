@@ -19,8 +19,10 @@ from app.models.role import Membership, MembershipRole, MembershipStatus, Role
 from app.models.user import InviteStatus, User, UserType
 from app.schemas.auth import (
     ActivateRequest,
+    ChangePasswordRequest,
     RefreshRequest,
     TokenPair,
+    UpdateProfileRequest,
     UserPublic,
 )
 
@@ -137,6 +139,36 @@ async def me(
     db: AsyncSession = Depends(get_db),
 ):
     return await _public_user(db, user)
+
+
+@router.patch("/me", response_model=UserPublic)
+async def update_me(
+    payload: UpdateProfileRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the current user's own profile (display name, phone)."""
+    if payload.full_name is not None:
+        user.full_name = payload.full_name.strip()
+    if payload.phone is not None:
+        user.phone = payload.phone.strip() or None
+    await db.commit()
+    await db.refresh(user)
+    return await _public_user(db, user)
+
+
+@router.post("/change-password", status_code=204)
+async def change_password(
+    payload: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change the current user's password (requires the current one)."""
+    if not user.hashed_password or not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+    user.hashed_password = get_password_hash(payload.new_password)
+    await db.commit()
+    return None
 
 
 @router.post("/activate", response_model=UserPublic)

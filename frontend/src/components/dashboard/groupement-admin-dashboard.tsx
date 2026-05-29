@@ -53,7 +53,7 @@ export function GroupementAdminDashboard() {
         description={t("subGroupementAdmin")}
         actions={
           <Button asChild className="gap-2">
-            <Link href="/dashboard/members">
+            <Link href="/dashboard/associations">
               <Plus className="h-4 w-4" />
               {t("createAssociation")}
             </Link>
@@ -76,7 +76,7 @@ export function GroupementAdminDashboard() {
               <CardDescription>{t("groupementOverviewDesc")}</CardDescription>
             </div>
             <Button asChild variant="ghost" size="sm">
-              <Link href="/dashboard/members" className="gap-1">
+              <Link href="/dashboard/associations" className="gap-1">
                 {t("viewAll")} <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
@@ -89,7 +89,7 @@ export function GroupementAdminDashboard() {
                 description={t("noAssociationsYetDesc")}
                 action={
                   <Button asChild>
-                    <Link href="/dashboard/members" className="gap-2">
+                    <Link href="/dashboard/associations" className="gap-2">
                       <Plus className="h-4 w-4" />
                       {t("createAssociation")}
                     </Link>

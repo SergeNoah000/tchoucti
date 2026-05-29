@@ -113,6 +113,10 @@ export const authApi = {
     }
   },
   getMe: async () => (await api.get("/auth/me")).data,
+  updateMe: async (payload: { full_name?: string; phone?: string }) =>
+    (await api.patch("/auth/me", payload)).data,
+  changePassword: async (payload: { current_password: string; new_password: string }) =>
+    (await api.post("/auth/change-password", payload)).data,
   activate: async (token: string, password: string) =>
     (await publicApi.post("/auth/activate", { token, password })).data,
 };
@@ -503,9 +507,10 @@ export const loansApi = {
   request: async (payload: {
     association_id: string;
     borrower_membership_id: string;
+    loan_type_id?: string;
     principal: number;
     duration_months: number;
-    interest_rate_pct: number;
+    interest_rate_pct?: number;
     late_fee_pct?: number;
     purpose?: string;
   }) => (await api.post("/loans", payload)).data,
