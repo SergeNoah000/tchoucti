@@ -150,7 +150,7 @@ export const invitationsApi = {
     (await api.post(`/invitations/${invitationId}/revoke`, {})).data,
   peek: async (token: string) =>
     (await publicApi.get("/invitations/peek", { params: { token } })).data,
-  accept: async (payload: { token: string; password: string; full_name?: string }) =>
+  accept: async (payload: { token: string; password?: string; full_name?: string }) =>
     (await publicApi.post("/invitations/accept", payload)).data,
 };
 

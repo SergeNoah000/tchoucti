@@ -149,7 +149,9 @@
     "invitedBy": "{inviter} lädt Sie ein beizutreten",
     "invitedTo": "Einladung beizutreten",
     "asRole": "als {role}",
-    "expiresOn": "Dieser Link läuft am {date} ab"
+    "expiresOn": "Dieser Link läuft am {date} ab",
+    "existingAccount": "Sie haben bereits ein Konto. Bestätigen Sie, um {org} beizutreten — Ihr Passwort bleibt unverändert.",
+    "join": "Beitreten"
   },
   "dashboard": {
     "welcome": "Hallo, {name} 👋",

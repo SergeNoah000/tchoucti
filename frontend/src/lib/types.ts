@@ -455,8 +455,10 @@ export interface InvitationPeek {
   full_name?: string | null;
   kind: InvitationKind;
   groupement_name?: string | null;
+  association_name?: string | null;
   expires_at: string;
   invited_by_name?: string | null;
+  existing_active?: boolean;
 }
 
 // ── Social aid ───────────────────────────────────────────────────────────

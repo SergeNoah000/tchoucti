@@ -243,7 +243,10 @@ async def revoke_invitation(
 # ──────────────────────────────────────────────────────────────────────────
 class AcceptInvitationRequest(BaseModel):
     token: str
-    password: str = Field(min_length=8, max_length=128)
+    # Optional: required only for accounts that don't have a password yet (new or
+    # never-activated invitees). Existing active users joining another association
+    # keep their current password.
+    password: Optional[str] = Field(None, min_length=8, max_length=128)
     full_name: Optional[str] = Field(None, max_length=255)
 
 
@@ -275,6 +278,9 @@ async def accept_invitation(payload: AcceptInvitationRequest, db: AsyncSession =
     full_name = payload.full_name or inv.full_name or inv.email.split("@")[0]
 
     if user is None:
+        # New account → a password is mandatory.
+        if not payload.password:
+            raise HTTPException(400, "Mot de passe requis")
         # Decide user_type from invitation kind
         user_type = {
             InvitationKind.GROUPEMENT_ADMIN: UserType.GROUPEMENT_ADMIN,
@@ -294,11 +300,14 @@ async def accept_invitation(payload: AcceptInvitationRequest, db: AsyncSession =
         db.add(user)
         await db.flush()
     else:
-        # Existing user accepting an additional invitation — just update password if needed
+        # Existing user accepting an additional invitation. Only set a password
+        # if the account never had one (never activated); active users keep theirs.
         user.is_active = True
         user.is_verified = True
         user.invite_status = InviteStatus.ACCEPTED
         if not user.hashed_password:
+            if not payload.password:
+                raise HTTPException(400, "Mot de passe requis")
             user.hashed_password = get_password_hash(payload.password)
 
     # Apply the invitation effect
@@ -382,8 +391,12 @@ class PeekInvitationResponse(BaseModel):
     full_name: Optional[str] = None
     kind: InvitationKind
     groupement_name: Optional[str] = None
+    association_name: Optional[str] = None
     expires_at: datetime
     invited_by_name: Optional[str] = None
+    # True when the invitee already has an active account (joining another
+    # association of the groupement) → the activation page skips the password step.
+    existing_active: bool = False
 
 
 @router.get("/invitations/peek", response_model=PeekInvitationResponse)
@@ -401,17 +414,31 @@ async def peek_invitation(token: str, db: AsyncSession = Depends(get_db)):
         g = gr.scalar_one_or_none()
         groupement_name = g.name if g else None
 
+    association_name = None
+    if inv.association_id:
+        from app.models.association import Association
+
+        ar = await db.execute(select(Association).where(Association.id == inv.association_id))
+        a = ar.scalar_one_or_none()
+        association_name = a.name if a else None
+
     inviter_name = None
     if inv.invited_by_id:
         u = await db.execute(select(User).where(User.id == inv.invited_by_id))
         usr = u.scalar_one_or_none()
         inviter_name = usr.full_name if usr else None
 
+    ures = await db.execute(select(User).where(User.email == inv.email))
+    existing = ures.scalar_one_or_none()
+    existing_active = bool(existing and existing.is_active and existing.hashed_password)
+
     return PeekInvitationResponse(
         email=inv.email,
         full_name=inv.full_name,
         kind=inv.kind,
         groupement_name=groupement_name,
+        association_name=association_name,
         expires_at=inv.expires_at,
         invited_by_name=inviter_name,
+        existing_active=existing_active,
     )

@@ -146,7 +146,6 @@ async def create_membership(
 
     # Resolve user
     target_user: Optional[User] = None
-    created_new_user = False
 
     if payload.user_id:
         res = await db.execute(select(User).where(User.id == payload.user_id))
@@ -173,7 +172,6 @@ async def create_membership(
             )
             db.add(target_user)
             await db.flush()
-            created_new_user = True
     else:
         raise HTTPException(
             status_code=422, detail="Either user_id or email must be provided"
@@ -214,9 +212,12 @@ async def create_membership(
     for role in roles:
         db.add(MembershipRole(membership_id=membership.id, role_id=role.id, assigned_at=now))
 
-    # New user → spin up an invitation and email it.
+    # Invited by email → always spin up an invitation and email it, whether the
+    # account is brand-new OR an existing user being added to another association
+    # of the same groupement (without this, existing users were added silently
+    # and never received an invitation). Explicit user_id links stay email-less.
     activation_url: Optional[str] = None
-    if created_new_user and payload.email:
+    if payload.email and not payload.user_id:
         is_admin = any(c in _ADMIN_ROLE_CODES for c in payload.role_codes)
         kind = InvitationKind.ASSOCIATION_ADMIN if is_admin else InvitationKind.ASSOCIATION_MEMBER
         plain = generate_invitation_token()

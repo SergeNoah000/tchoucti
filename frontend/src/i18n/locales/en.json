@@ -149,7 +149,9 @@
     "invitedBy": "{inviter} invites you to join",
     "invitedTo": "Invitation to join",
     "asRole": "as {role}",
-    "expiresOn": "This link expires on {date}"
+    "expiresOn": "This link expires on {date}",
+    "existingAccount": "You already have an account. Confirm to join {org} — your password stays unchanged.",
+    "join": "Join"
   },
   "dashboard": {
     "welcome": "Hello, {name} 👋",
