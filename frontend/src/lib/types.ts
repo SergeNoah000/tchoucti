@@ -211,12 +211,11 @@ export interface TontineRound {
   meeting_title?: string | null;
 }
 
+/** Phase 6A : un cycle = une rotation complète, enfant d'une Tontine. */
 export interface TontineCycle {
   id: UUID;
-  association_id: UUID;
-  name: string;
-  slug: string;
-  description?: string | null;
+  tontine_id: UUID;
+  cycle_number: number;
   round_amount: number;
   rounds_count: number;
   current_round_number: number;
@@ -224,7 +223,6 @@ export interface TontineCycle {
   end_date?: string | null;
   order_strategy: string;
   status: TontineCycleStatus;
-  /** Phase 2c — si false, des membres peuvent être opt-out. */
   is_mandatory: boolean;
   created_at: string;
 }
@@ -232,6 +230,33 @@ export interface TontineCycle {
 export interface TontineCycleDetail extends TontineCycle {
   rounds: TontineRound[];
   pot_amount: number;
+}
+
+/** Phase 6A : la tontine durable, parent des cycles. */
+export interface Tontine {
+  id: UUID;
+  association_id: UUID;
+  name: string;
+  slug: string;
+  description?: string | null;
+  is_active: boolean;
+  round_amount: number;
+  frequency: string;
+  custom_interval_days?: number | null;
+  beneficiaries_per_round: number;
+  beneficiary_pays: boolean;
+  selection_method: string;
+  created_at: string;
+  cycles_count: number;
+  current_cycle?: TontineCycleOut | null;
+}
+
+/** Résumé de cycle (sans les tours) — pour la liste/le current_cycle. */
+export type TontineCycleOut = TontineCycle;
+
+export interface TontineDetail extends Tontine {
+  current_cycle?: TontineCycleDetail | null;
+  cycles: TontineCycleDetail[];
 }
 
 export type PermissionCode =

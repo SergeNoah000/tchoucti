@@ -1,42 +1,25 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   Calendar,
-  CalendarPlus,
   Plus,
   Clock,
   CheckCircle2,
   XCircle,
   PlayCircle,
   MapPin,
-  Loader2,
   type LucideIcon,
 } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { meetingsApi, associationsApi } from "@/lib/api";
 import type { Meeting, Association, MeetingStatus } from "@/lib/types";
-import { useAuthStore } from "@/lib/store";
-import { canConfigureAssociation } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -114,8 +97,6 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
 
 export default function MeetingsPage() {
   const t = useTranslations("meeting");
-  const { user } = useAuthStore();
-  const canManage = canConfigureAssociation(user);
 
   const { data: associations = [] } = useQuery<Association[]>({
     queryKey: ["associations"],
@@ -139,15 +120,12 @@ export default function MeetingsPage() {
         title={t("title")}
         description={t("subtitle")}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {canManage && associationId && <GenerateMeetingsDialog associationId={associationId} />}
-            <Button asChild>
-              <Link href="/dashboard/meetings/new" className="gap-2">
-                <Plus className="h-4 w-4" />
-                {t("create")}
-              </Link>
-            </Button>
-          </div>
+          <Button asChild>
+            <Link href="/dashboard/meetings/new" className="gap-2">
+              <Plus className="h-4 w-4" />
+              {t("create")}
+            </Link>
+          </Button>
         }
       />
 
@@ -207,82 +185,5 @@ export default function MeetingsPage() {
         </section>
       )}
     </div>
-  );
-}
-
-// ── Generate dialog ───────────────────────────────────────────────────────
-
-function GenerateMeetingsDialog({ associationId }: { associationId: string }) {
-  const t = useTranslations("meeting");
-  const tCommon = useTranslations("common");
-  const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [count, setCount] = useState("12");
-  const [startFrom, setStartFrom] = useState("");
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      meetingsApi.generate({
-        association_id: associationId,
-        count: Math.max(1, parseInt(count, 10) || 12),
-        start_from: startFrom || undefined,
-      }),
-    onSuccess: (res: { created?: unknown[]; skipped_existing?: number }) => {
-      const created = res.created?.length ?? 0;
-      const skipped = res.skipped_existing ?? 0;
-      toast.success(t("generatedToast", { created, skipped }));
-      queryClient.invalidateQueries({ queryKey: ["meetings", associationId] });
-      setOpen(false);
-    },
-    onError: () => toast.error(tCommon("error")),
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="gap-2">
-          <CalendarPlus className="h-4 w-4" />
-          {t("generate")}
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("generateTitle")}</DialogTitle>
-          <DialogDescription>{t("generateDesc")}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="gen-count">{t("generateCount")}</Label>
-            <Input
-              id="gen-count"
-              type="number"
-              min={1}
-              max={60}
-              value={count}
-              onChange={(e) => setCount(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="gen-start">{t("generateStart")}</Label>
-            <Input
-              id="gen-start"
-              type="date"
-              value={startFrom}
-              onChange={(e) => setStartFrom(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">{t("generateStartHint")}</p>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={mutation.isPending}>
-            {tCommon("cancel")}
-          </Button>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending} className="gap-2">
-            {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {t("generate")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

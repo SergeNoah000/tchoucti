@@ -10,9 +10,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
-import { CreateCycleDialog } from "@/components/tontines/create-cycle-dialog";
+import { CreateTontineDialog } from "@/components/tontines/create-cycle-dialog";
 import { associationsApi, tontinesApi } from "@/lib/api";
-import type { Association, TontineCycle, TontineCycleStatus } from "@/lib/types";
+import type { Association, Tontine, TontineCycleStatus } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
 import { canConfigureAssociation } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
@@ -23,6 +23,10 @@ const STATUS_VARIANT: Record<TontineCycleStatus, "success" | "secondary" | "info
   completed: "info",
   cancelled: "destructive",
 };
+
+function capitalize(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 export default function TontinesPage() {
   const t = useTranslations("tontine");
@@ -37,7 +41,7 @@ export default function TontinesPage() {
   const associationId = association?.id;
   const fmt = useFormatters(association?.currency);
 
-  const { data: cycles = [], isLoading } = useQuery<TontineCycle[]>({
+  const { data: tontines = [], isLoading } = useQuery<Tontine[]>({
     queryKey: ["tontines", associationId],
     queryFn: () => tontinesApi.list(associationId!),
     enabled: !!associationId,
@@ -49,9 +53,7 @@ export default function TontinesPage() {
         title={t("title")}
         description={t("subtitle")}
         actions={
-          canManage && associationId ? (
-            <CreateCycleDialog association={association!} />
-          ) : undefined
+          canManage && associationId ? <CreateTontineDialog association={association!} /> : undefined
         }
       />
 
@@ -61,7 +63,7 @@ export default function TontinesPage() {
             <Skeleton key={i} className="h-20 w-full rounded-xl" />
           ))}
         </div>
-      ) : cycles.length === 0 ? (
+      ) : tontines.length === 0 ? (
         <Card>
           <CardContent className="p-0">
             <EmptyState
@@ -73,37 +75,49 @@ export default function TontinesPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {cycles.map((c) => (
-            <Link
-              key={c.id}
-              href={`/dashboard/tontines/${c.id}`}
-              className="group flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm"
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Repeat className="h-5 w-5" />
+          {tontines.map((tt) => {
+            const cc = tt.current_cycle;
+            return (
+              <Link
+                key={tt.id}
+                href={`/dashboard/tontines/${tt.id}`}
+                className="group flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Repeat className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold leading-tight">{tt.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {t("cyclesCount", { count: tt.cycles_count })}
+                      {cc && (
+                        <>
+                          {" · "}
+                          {t("cycleProgress", {
+                            current: cc.current_round_number,
+                            total: cc.rounds_count,
+                          })}
+                          {" · "}
+                          {t("roundAmount")}: {fmt.currency(tt.round_amount)}
+                        </>
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="truncate font-semibold leading-tight">{c.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {t("cycleProgress", { current: c.current_round_number, total: c.rounds_count })}
-                    {" · "}
-                    {t("pot")}: {fmt.currency(c.round_amount * c.rounds_count)}
-                  </p>
+                <div className="flex shrink-0 items-center gap-2">
+                  {cc && (
+                    <Badge variant={STATUS_VARIANT[cc.status]}>
+                      {t(`status${capitalize(cc.status)}`)}
+                    </Badge>
+                  )}
+                  <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
                 </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Badge variant={STATUS_VARIANT[c.status]}>{t(`status${capitalize(c.status)}`)}</Badge>
-                <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
   );
-}
-
-function capitalize(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }

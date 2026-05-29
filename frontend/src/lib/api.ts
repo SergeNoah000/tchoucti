@@ -329,9 +329,6 @@ export const meetingsApi = {
       entries: Array<{ activity_id: string; amount: number; notes?: string }>;
     },
   ) => (await api.post(`/meetings/${id}/member-save`, payload)).data,
-  /** Pre-generate N future PLANNED meetings from the association cadence. */
-  generate: async (payload: { association_id: string; count?: number; start_from?: string }) =>
-    (await api.post("/meetings/generate", payload)).data,
   /** Phase 3b — per-member agenda computed from config-v2 (tontines, caisses,
    *  aids, loans) for this specific meeting. */
   agenda: async (meetingId: string) =>
@@ -370,33 +367,38 @@ export const membersApi = {
 };
 
 export const tontinesApi = {
+  // Liste des tontines (durables) de l'asso, avec résumé du cycle courant.
   list: async (associationId: string) =>
     (await api.get("/tontines", { params: { association_id: associationId } })).data,
+  // Détail tontine : config + cycles + cycle courant (avec ses tours).
   get: async (id: string) => (await api.get(`/tontines/${id}`)).data,
+  /** Phase 6A — crée la tontine + son 1er cycle + ses séances d'office. */
   create: async (payload: {
     association_id: string;
     name: string;
     description?: string;
     round_amount: number;
+    frequency: string; // weekly|biweekly|monthly|bimonthly|custom
+    custom_interval_days?: number;
+    beneficiaries_per_round?: number;
+    beneficiary_pays?: boolean;
+    selection_method?: string; // manual|random|seniority|vote|auction|need
     start_date: string;
-    /** Each round = a list of beneficiaries who share that round's pot. */
-    rounds: Array<{
-      beneficiaries: Array<{ membership_id: string; share_parts?: number }>;
-    }>;
-    shuffle?: boolean;
-    /** Phase 2c — participation obligatoire par défaut. */
     is_mandatory?: boolean;
-    /** Memberships à exclure (uniquement si is_mandatory=false). */
+    /** Participants dans l'ordre de passage (≥ 2). */
+    participant_ids: string[];
     excluded_membership_ids?: string[];
-    /** Mapping explicite tour→séance (taille = nb de tours). null = auto. */
-    meeting_ids?: string[];
+    shuffle?: boolean;
   }) => (await api.post("/tontines", payload)).data,
+  /** Phase 6A — génère le cycle suivant (hérite tout). */
+  createNextCycle: async (tontineId: string, payload?: { start_date?: string }) =>
+    (await api.post(`/tontines/${tontineId}/cycles`, payload ?? {})).data,
   payout: async (cycleId: string, roundId: string) =>
-    (await api.post(`/tontines/${cycleId}/rounds/${roundId}/payout`, {})).data,
-  cancel: async (cycleId: string) => (await api.post(`/tontines/${cycleId}/cancel`, {})).data,
-  /** Phase 2c — déplacer un tour vers une autre séance. */
+    (await api.post(`/tontines/cycles/${cycleId}/rounds/${roundId}/payout`, {})).data,
+  cancelCycle: async (cycleId: string) =>
+    (await api.post(`/tontines/cycles/${cycleId}/cancel`, {})).data,
   relinkRound: async (cycleId: string, roundId: string, meetingId: string) =>
-    (await api.patch(`/tontines/${cycleId}/rounds/${roundId}/meeting`, null, {
+    (await api.patch(`/tontines/cycles/${cycleId}/rounds/${roundId}/meeting`, null, {
       params: { meeting_id: meetingId },
     })).data,
 };

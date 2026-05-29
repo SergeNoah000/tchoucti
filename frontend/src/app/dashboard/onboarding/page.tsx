@@ -42,12 +42,12 @@ import {
 import { useAuthStore } from "@/lib/store";
 import { canConfigureAssociation } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
-import type { Association } from "@/lib/types";
+import type { Association, Tontine } from "@/lib/types";
 import { HelpField, ConfigPreview } from "@/components/onboarding/help-field";
 import { StepIndicator, WizardCard, type WizardStep } from "@/components/onboarding/wizard";
 import { LoanTypesManager } from "@/components/config/loan-types-manager";
 import { AidTypesManager } from "@/components/config/aid-types-manager";
-import { CreateCycleDialog } from "@/components/tontines/create-cycle-dialog";
+import { CreateTontineDialog } from "@/components/tontines/create-cycle-dialog";
 
 const STEP_KEYS = ["association", "caisses", "tontines", "loans", "aids"] as const;
 type StepKey = (typeof STEP_KEYS)[number];
@@ -964,9 +964,7 @@ function TontinesLinkStep({
   const t = useTranslations("onboarding");
   const tTontine = useTranslations("tontine");
   const fmt = useFormatters(association.currency);
-  const { data: cycles = [] } = useQuery<
-    { id: string; name: string; status: string; round_amount: number; rounds_count: number }[]
-  >({
+  const { data: tontines = [] } = useQuery<Tontine[]>({
     queryKey: ["tontines", association.id],
     queryFn: () => tontinesApi.list(association.id),
   });
@@ -978,11 +976,11 @@ function TontinesLinkStep({
       footer={<WizardStepFooter onBack={onBack} onSkip={onSkip} />}
     >
       <ConfigPreview intent="info">{t("stepTontinesIntro")}</ConfigPreview>
-      {cycles.length > 0 && (
+      {tontines.length > 0 && (
         <ul className="space-y-2">
-          {cycles.map((c) => (
+          {tontines.map((tt) => (
             <li
-              key={c.id}
+              key={tt.id}
               className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3"
             >
               <div className="flex min-w-0 items-center gap-3">
@@ -990,21 +988,25 @@ function TontinesLinkStep({
                   <Repeat className="h-4 w-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{c.name}</p>
+                  <p className="truncate text-sm font-semibold">{tt.name}</p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {tTontine("roundsCount")}: {c.rounds_count} · {tTontine("roundAmount")}:{" "}
-                    {fmt.currency(c.round_amount)}
+                    {t("countTontines", { active: tt.cycles_count })} · {tTontine("roundAmount")}:{" "}
+                    {fmt.currency(tt.round_amount)}
                   </p>
                 </div>
               </div>
-              <Badge variant="outline" className="shrink-0 text-[10px]">
-                {tTontine(`status${c.status.charAt(0).toUpperCase() + c.status.slice(1)}`)}
-              </Badge>
+              {tt.current_cycle && (
+                <Badge variant="outline" className="shrink-0 text-[10px]">
+                  {tTontine(
+                    `status${tt.current_cycle.status.charAt(0).toUpperCase() + tt.current_cycle.status.slice(1)}`,
+                  )}
+                </Badge>
+              )}
             </li>
           ))}
         </ul>
       )}
-      <CreateCycleDialog association={association} />
+      <CreateTontineDialog association={association} />
     </WizardCard>
   );
 }

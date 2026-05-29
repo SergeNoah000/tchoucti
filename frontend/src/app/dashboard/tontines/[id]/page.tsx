@@ -6,13 +6,11 @@ import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  Repeat,
-  Coins,
-  CircleDollarSign,
   Loader2,
   AlertCircle,
   HandCoins,
   Crown,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,7 +31,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/common/page-header";
 import { associationsApi, tontinesApi } from "@/lib/api";
-import type { Association, TontineCycleDetail, TontineCycleStatus, TontineRoundStatus } from "@/lib/types";
+import type {
+  Association,
+  TontineCycleDetail,
+  TontineCycleStatus,
+  TontineDetail,
+  TontineRoundStatus,
+} from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
 import { canConfigureAssociation, canDoBureauActions } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
@@ -60,13 +64,6 @@ const ROUND_LABEL: Record<TontineRoundStatus, string> = {
   skipped: "roundStatusSkipped",
 };
 
-const CYCLE_LABEL: Record<TontineCycleStatus, string> = {
-  draft: "statusDraft",
-  active: "statusActive",
-  completed: "statusCompleted",
-  cancelled: "statusCancelled",
-};
-
 function extractError(err: unknown): string | undefined {
   if (err && typeof err === "object" && "response" in err) {
     return (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
@@ -74,51 +71,58 @@ function extractError(err: unknown): string | undefined {
   return undefined;
 }
 
-export default function TontineCycleDetailPage() {
+export default function TontineDetailPage() {
   const { id } = useParams<{ id: string }>();
   const t = useTranslations("tontine");
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-  // Cancel a whole cycle = config (admin only). Payout an individual round =
-  // bureau operation (treasurer typically signs off).
   const canConfigure = canConfigureAssociation(user);
   const canPayout = canDoBureauActions(user);
 
-  const cycleKey = ["tontine", id];
+  const key = ["tontine", id];
 
-  const { data: cycle, isLoading } = useQuery<TontineCycleDetail>({
-    queryKey: cycleKey,
+  const { data: tontine, isLoading } = useQuery<TontineDetail>({
+    queryKey: key,
     queryFn: () => tontinesApi.get(id),
     enabled: !!id,
   });
 
-  // Pick up the cycle's association currency so amounts render correctly.
   const { data: association } = useQuery<Association>({
-    queryKey: ["association", cycle?.association_id],
-    queryFn: () => associationsApi.get(cycle!.association_id),
-    enabled: !!cycle?.association_id,
+    queryKey: ["association", tontine?.association_id],
+    queryFn: () => associationsApi.get(tontine!.association_id),
+    enabled: !!tontine?.association_id,
   });
   const fmt = useFormatters(association?.currency);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: cycleKey });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: key });
 
   const payoutMutation = useMutation({
-    mutationFn: (roundId: string) => tontinesApi.payout(id, roundId),
+    mutationFn: ({ cycleId, roundId }: { cycleId: string; roundId: string }) =>
+      tontinesApi.payout(cycleId, roundId),
     onSuccess: () => {
       toast.success(t("payoutDone"));
       refresh();
     },
-    onError: (err) => toast.error(extractError(err) ?? tCommon("noData")),
+    onError: (err) => toast.error(extractError(err) ?? tCommon("error")),
   });
 
   const cancelMutation = useMutation({
-    mutationFn: () => tontinesApi.cancel(id),
+    mutationFn: (cycleId: string) => tontinesApi.cancelCycle(cycleId),
     onSuccess: () => {
       toast.success(t("cancelled"));
       refresh();
     },
-    onError: (err) => toast.error(extractError(err) ?? tCommon("noData")),
+    onError: (err) => toast.error(extractError(err) ?? tCommon("error")),
+  });
+
+  const nextCycleMutation = useMutation({
+    mutationFn: () => tontinesApi.createNextCycle(id),
+    onSuccess: () => {
+      toast.success(t("nextCycleCreated"));
+      refresh();
+    },
+    onError: (err) => toast.error(extractError(err) ?? tCommon("error")),
   });
 
   if (isLoading) {
@@ -131,7 +135,7 @@ export default function TontineCycleDetailPage() {
     );
   }
 
-  if (!cycle) {
+  if (!tontine) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <AlertCircle className="mb-4 h-12 w-12 text-muted-foreground" />
@@ -143,7 +147,9 @@ export default function TontineCycleDetailPage() {
     );
   }
 
-  const isActive = cycle.status === "active";
+  const current = tontine.current_cycle ?? null;
+  const currentCompleted = current?.status === "completed";
+  const pastCycles = tontine.cycles.filter((c) => c.id !== current?.id);
 
   return (
     <div className="space-y-6">
@@ -155,16 +161,110 @@ export default function TontineCycleDetailPage() {
       </Button>
 
       <PageHeader
-        title={cycle.name}
-        description={t("cycleProgress", {
-          current: cycle.current_round_number,
-          total: cycle.rounds_count,
-        })}
+        title={tontine.name}
+        description={t("cyclesCount", { count: tontine.cycles_count })}
         actions={
-          canConfigure && isActive ? (
+          canConfigure && currentCompleted ? (
+            <Button onClick={() => nextCycleMutation.mutate()} disabled={nextCycleMutation.isPending} className="gap-2">
+              {nextCycleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {t("nextCycle")}
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {/* Config résumé */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">{t("roundAmount")}: {fmt.currency(tontine.round_amount)}</Badge>
+        <Badge variant="outline">{t(`freq_${tontine.frequency}`)}</Badge>
+        <Badge variant="outline">{t("beneficiariesPerRound")}: {tontine.beneficiaries_per_round}</Badge>
+        <Badge variant="outline">{t(`method_${tontine.selection_method}`)}</Badge>
+        {!tontine.beneficiary_pays && <Badge variant="outline">{t("beneficiaryExempt")}</Badge>}
+      </div>
+
+      {current ? (
+        <CycleCard
+          cycle={current}
+          isCurrent
+          canConfigure={canConfigure}
+          canPayout={canPayout}
+          onPayout={(roundId) => payoutMutation.mutate({ cycleId: current.id, roundId })}
+          payoutPending={payoutMutation.isPending}
+          onCancel={() => cancelMutation.mutate(current.id)}
+          fmt={fmt}
+          t={t}
+          tCommon={tCommon}
+        />
+      ) : (
+        <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">{t("noCycle")}</CardContent></Card>
+      )}
+
+      {/* Cycles passés */}
+      {pastCycles.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {t("pastCycles")}
+          </h2>
+          {pastCycles.map((c) => (
+            <CycleCard
+              key={c.id}
+              cycle={c}
+              isCurrent={false}
+              canConfigure={false}
+              canPayout={false}
+              onPayout={() => {}}
+              payoutPending={false}
+              onCancel={() => {}}
+              fmt={fmt}
+              t={t}
+              tCommon={tCommon}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CycleCard({
+  cycle,
+  isCurrent,
+  canConfigure,
+  canPayout,
+  onPayout,
+  payoutPending,
+  onCancel,
+  fmt,
+  t,
+  tCommon,
+}: {
+  cycle: TontineCycleDetail;
+  isCurrent: boolean;
+  canConfigure: boolean;
+  canPayout: boolean;
+  onPayout: (roundId: string) => void;
+  payoutPending: boolean;
+  onCancel: () => void;
+  fmt: ReturnType<typeof useFormatters>;
+  t: ReturnType<typeof useTranslations>;
+  tCommon: ReturnType<typeof useTranslations>;
+}) {
+  const isActive = cycle.status === "active";
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">{t("cycleN", { n: cycle.cycle_number })}</span>
+            <Badge variant={CYCLE_VARIANT[cycle.status]}>{t(`status${cap(cycle.status)}`)}</Badge>
+            <span className="text-xs text-muted-foreground">
+              {t("pot")}: {fmt.currency(cycle.pot_amount)}
+            </span>
+          </div>
+          {canConfigure && isActive && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" className="gap-2 border-destructive/40 text-destructive">
+                <Button variant="outline" size="sm" className="gap-1.5 border-destructive/40 text-destructive">
                   {t("cancelCycle")}
                 </Button>
               </AlertDialogTrigger>
@@ -177,143 +277,94 @@ export default function TontineCycleDetailPage() {
                   <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    onClick={() => cancelMutation.mutate()}
+                    onClick={onCancel}
                   >
                     {t("cancelCycle")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-          ) : undefined
-        }
-      />
+          )}
+        </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={CYCLE_VARIANT[cycle.status]}>{t(CYCLE_LABEL[cycle.status])}</Badge>
-        <Badge variant="outline">{t("startDate")}: {fmt.date(cycle.start_date)}</Badge>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard icon={Coins} label={t("pot")} value={fmt.currency(cycle.pot_amount)} />
-        <StatCard icon={CircleDollarSign} label={t("roundAmount")} value={fmt.currency(cycle.round_amount)} />
-        <StatCard icon={Repeat} label={t("roundsCount")} value={String(cycle.rounds_count)} />
-      </div>
-
-      {/* Rounds */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="divide-y divide-border">
-            {cycle.rounds.map((r) => (
-              <div key={r.id} className="flex items-start justify-between gap-3 px-4 py-3">
-                <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">
-                    {r.round_number}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      {r.status === "collecting" && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
-                      <p className="text-sm font-medium">
-                        {r.beneficiaries.length > 1
-                          ? t("sharedRound", { count: r.beneficiaries.length })
-                          : (r.beneficiaries[0]?.name ?? "—")}
-                      </p>
-                    </div>
-                    {r.beneficiaries.length > 1 && (
-                      <div className="mt-1 space-y-0.5">
-                        {r.beneficiaries.map((b) => (
-                          <p key={b.membership_id} className="flex justify-between gap-2 text-xs">
-                            <span className="truncate text-muted-foreground">• {b.name ?? "—"}</span>
-                            <span className="shrink-0 tabular-nums">{fmt.currency(b.share_amount)}</span>
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {r.paid_out_date
-                        ? `${t("paidOutDate")} ${fmt.date(r.paid_out_date)}`
-                        : r.scheduled_date
-                          ? `${t("scheduledDate")} ${fmt.date(r.scheduled_date)}`
-                          : t("beneficiary")}
-                      {" · "}
-                      {t("pot")}: {fmt.currency(r.expected_amount)}
-                    </p>
-                    {r.meeting_title && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        🗓 {r.meeting_title}
-                      </p>
-                    )}
-                  </div>
+        <div className="divide-y divide-border">
+          {cycle.rounds.map((r) => (
+            <div key={r.id} className="flex items-start justify-between gap-3 px-4 py-3">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">
+                  {r.round_number}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span
-                    className={cn(
-                      "rounded-full px-2.5 py-0.5 text-xs font-medium",
-                      ROUND_PILL[r.status]
-                    )}
-                  >
-                    {t(ROUND_LABEL[r.status])}
-                  </span>
-                  {canPayout && isActive && r.status === "collecting" && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="sm" className="gap-1.5">
-                          <HandCoins className="h-3.5 w-3.5" />
-                          {t("payout")}
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>{t("payoutConfirmTitle")}</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            {t("payoutConfirmDesc", { round: r.round_number })}
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => payoutMutation.mutate(r.id)}
-                            disabled={payoutMutation.isPending}
-                          >
-                            {payoutMutation.isPending && (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            )}
-                            {t("payout")}
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    {r.status === "collecting" && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                    <p className="text-sm font-medium">
+                      {r.beneficiaries.length > 1
+                        ? t("sharedRound", { count: r.beneficiaries.length })
+                        : (r.beneficiaries[0]?.name ?? "—")}
+                    </p>
+                  </div>
+                  {r.beneficiaries.length > 1 && (
+                    <div className="mt-1 space-y-0.5">
+                      {r.beneficiaries.map((b) => (
+                        <p key={b.membership_id} className="flex justify-between gap-2 text-xs">
+                          <span className="truncate text-muted-foreground">• {b.name ?? "—"}</span>
+                          <span className="shrink-0 tabular-nums">{fmt.currency(b.share_amount)}</span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {r.paid_out_date
+                      ? `${t("paidOutDate")} ${fmt.date(r.paid_out_date)}`
+                      : r.scheduled_date
+                        ? `${t("scheduledDate")} ${fmt.date(r.scheduled_date)}`
+                        : t("beneficiary")}
+                    {" · "}
+                    {t("pot")}: {fmt.currency(r.expected_amount)}
+                  </p>
+                  {r.meeting_title && (
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">🗓 {r.meeting_title}</p>
                   )}
                 </div>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="truncate text-lg font-bold tabular-nums">{value}</p>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", ROUND_PILL[r.status])}>
+                  {t(ROUND_LABEL[r.status])}
+                </span>
+                {canPayout && isCurrent && isActive && r.status === "collecting" && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" className="gap-1.5">
+                        <HandCoins className="h-3.5 w-3.5" />
+                        {t("payout")}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>{t("payoutConfirmTitle")}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {t("payoutConfirmDesc", { round: r.round_number })}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => onPayout(r.id)} disabled={payoutPending}>
+                          {payoutPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          {t("payout")}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>
   );
+}
+
+function cap(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

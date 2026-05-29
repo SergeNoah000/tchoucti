@@ -11,6 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -31,13 +38,14 @@ function extractError(err: unknown): string | undefined {
   return undefined;
 }
 
+const FREQUENCIES = ["weekly", "biweekly", "monthly", "bimonthly", "custom"] as const;
+const METHODS = ["manual", "random", "seniority", "vote", "auction", "need"] as const;
+
 /**
- * Dialog de création d'un cycle de tontine — sélection des participants,
- * bénéficiaires par tour, shuffle, participation obligatoire/optionnelle,
- * preview des tours. Partagé entre /dashboard/tontines, la page config
- * tontines et le wizard d'onboarding.
+ * Crée une tontine (durable) + son 1er cycle + ses séances d'office.
+ * L'ordre de sélection des participants = l'ordre de passage des tours.
  */
-export function CreateCycleDialog({ association }: { association: Association }) {
+export function CreateTontineDialog({ association }: { association: Association }) {
   const t = useTranslations("tontine");
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
@@ -48,11 +56,15 @@ export function CreateCycleDialog({ association }: { association: Association })
   const [amount, setAmount] = useState(
     association.config?.tontine?.contribution_amount?.toString() ?? "",
   );
+  const [frequency, setFrequency] = useState<string>("monthly");
+  const [customDays, setCustomDays] = useState("30");
+  const [beneficiariesPerRound, setBeneficiariesPerRound] = useState("1");
+  const [beneficiaryPays, setBeneficiaryPays] = useState(true);
+  const [selectionMethod, setSelectionMethod] = useState<string>("manual");
   const [startDate, setStartDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [shuffle, setShuffle] = useState(false);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [beneficiariesPerRound, setBeneficiariesPerRound] = useState("1");
   const [isMandatory, setIsMandatory] = useState(true);
+  const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState("");
 
   const { data: members = [] } = useQuery<Membership[]>({
@@ -62,23 +74,15 @@ export function CreateCycleDialog({ association }: { association: Association })
   });
   const activeMembers = useMemo(() => members.filter((m) => m.status === "active"), [members]);
 
-  const buildRounds = () => {
-    const k = Math.max(1, parseInt(beneficiariesPerRound, 10) || 1);
-    const rounds: Array<{ beneficiaries: Array<{ membership_id: string }> }> = [];
-    for (let i = 0; i < selected.length; i += k) {
-      const slice = selected.slice(i, i + k);
-      if (slice.length === 0) continue;
-      rounds.push({ beneficiaries: slice.map((id) => ({ membership_id: id })) });
-    }
-    return rounds;
-  };
-
-  const previewRounds = useMemo(() => buildRounds(), [selected, beneficiariesPerRound]); // eslint-disable-line react-hooks/exhaustive-deps
+  const k = Math.max(1, parseInt(beneficiariesPerRound, 10) || 1);
+  const nRounds = selected.length > 0 ? Math.ceil(selected.length / k) : 0;
+  const payers = beneficiaryPays ? selected.length : Math.max(0, selected.length - k);
+  const pot = (parseInt(amount, 10) || 0) * payers;
 
   const computedExclusions = useMemo(() => {
     if (isMandatory) return [];
-    const selectedSet = new Set(selected);
-    return activeMembers.filter((m) => !selectedSet.has(m.id)).map((m) => m.id);
+    const sel = new Set(selected);
+    return activeMembers.filter((m) => !sel.has(m.id)).map((m) => m.id);
   }, [isMandatory, selected, activeMembers]);
 
   const createMutation = useMutation({
@@ -87,11 +91,16 @@ export function CreateCycleDialog({ association }: { association: Association })
         association_id: association.id,
         name: name.trim(),
         round_amount: parseInt(amount, 10),
+        frequency,
+        custom_interval_days: frequency === "custom" ? parseInt(customDays, 10) || 30 : undefined,
+        beneficiaries_per_round: k,
+        beneficiary_pays: beneficiaryPays,
+        selection_method: selectionMethod,
         start_date: startDate,
-        rounds: buildRounds(),
-        shuffle,
         is_mandatory: isMandatory,
+        participant_ids: selected,
         excluded_membership_ids: computedExclusions,
+        shuffle,
       }),
     onSuccess: () => {
       toast.success(t("created"));
@@ -105,10 +114,14 @@ export function CreateCycleDialog({ association }: { association: Association })
   const reset = () => {
     setName("");
     setAmount(association.config?.tontine?.contribution_amount?.toString() ?? "");
-    setShuffle(false);
-    setSelected([]);
+    setFrequency("monthly");
+    setCustomDays("30");
     setBeneficiariesPerRound("1");
+    setBeneficiaryPays(true);
+    setSelectionMethod("manual");
+    setShuffle(false);
     setIsMandatory(true);
+    setSelected([]);
     setError("");
   };
 
@@ -144,12 +157,12 @@ export function CreateCycleDialog({ association }: { association: Association })
           {t("create")}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[88vh] overflow-y-auto">
+      <DialogContent className="max-h-[88vh] min-w-0 overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("createTitle")}</DialogTitle>
           <DialogDescription>{t("createDesc")}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="space-y-4 py-2">
+        <form onSubmit={submit} className="min-w-0 space-y-4 py-2">
           <div className="space-y-1.5">
             <Label htmlFor="tc-name">{t("name")}</Label>
             <Input
@@ -160,6 +173,7 @@ export function CreateCycleDialog({ association }: { association: Association })
               required
             />
           </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="tc-amount">{`${t("roundAmount")} (${association.currency})`}</Label>
@@ -183,20 +197,71 @@ export function CreateCycleDialog({ association }: { association: Association })
                 required
               />
             </div>
+            <div className="space-y-1.5">
+              <Label>{t("frequency")}</Label>
+              <Select value={frequency} onValueChange={setFrequency}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FREQUENCIES.map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {t(`freq_${f}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {frequency === "custom" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="tc-days">{t("customDays")}</Label>
+                <Input
+                  id="tc-days"
+                  type="number"
+                  min={1}
+                  value={customDays}
+                  onChange={(e) => setCustomDays(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="tc-bpr">{t("beneficiariesPerRound")}</Label>
+              <Input
+                id="tc-bpr"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={20}
+                value={beneficiariesPerRound}
+                onChange={(e) => setBeneficiariesPerRound(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("selectionMethod")}</Label>
+              <Select value={selectionMethod} onValueChange={setSelectionMethod}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {METHODS.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {t(`method_${m}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="tc-bpr">{t("beneficiariesPerRound")}</Label>
-            <Input
-              id="tc-bpr"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={20}
-              value={beneficiariesPerRound}
-              onChange={(e) => setBeneficiariesPerRound(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">{t("beneficiariesPerRoundHint")}</p>
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/50 bg-muted/20 px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">{t("beneficiaryPays")}</p>
+                <p className="text-xs text-muted-foreground">{t("beneficiaryPaysHint")}</p>
+              </div>
+            </div>
+            <Switch checked={beneficiaryPays} onCheckedChange={setBeneficiaryPays} />
           </div>
 
           <div className="flex items-center justify-between gap-4 rounded-lg border border-border/50 bg-muted/20 px-3 py-2.5">
@@ -220,11 +285,6 @@ export function CreateCycleDialog({ association }: { association: Association })
             </div>
             <Switch checked={isMandatory} onCheckedChange={setIsMandatory} />
           </div>
-          {!isMandatory && computedExclusions.length > 0 && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
-              {t("excludedHint", { count: computedExclusions.length })}
-            </div>
-          )}
 
           <div className="space-y-1.5">
             <Label>
@@ -271,34 +331,14 @@ export function CreateCycleDialog({ association }: { association: Association })
             )}
           </div>
 
-          {previewRounds.length > 0 && (
-            <div className="space-y-1.5">
-              <Label>{t("roundsPreview", { count: previewRounds.length })}</Label>
-              <div className="space-y-1 rounded-lg border border-border/60 bg-muted/20 p-2 text-xs">
-                {previewRounds.map((r, i) => {
-                  const amt = parseInt(amount, 10) || 0;
-                  const pot = amt * selected.length;
-                  const share = r.beneficiaries.length > 0 ? Math.floor(pot / r.beneficiaries.length) : 0;
-                  const names = r.beneficiaries
-                    .map((b) => activeMembers.find((m) => m.id === b.membership_id)?.user.full_name ?? "—")
-                    .join(", ");
-                  return (
-                    <div key={i} className="flex items-start justify-between gap-2">
-                      <span className="font-medium text-muted-foreground">
-                        {t("round")} {i + 1}:
-                      </span>
-                      <span className="flex-1 truncate text-right">
-                        {names}
-                        {r.beneficiaries.length > 1 && pot > 0 && (
-                          <span className="ml-1 text-muted-foreground">
-                            ({fmt.currency(share)} {t("each")})
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+          {nRounds > 0 && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-900 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-200">
+              {t("createPreview", {
+                participants: selected.length,
+                perRound: k,
+                rounds: nRounds,
+                pot: fmt.currency(pot),
+              })}
             </div>
           )}
 
