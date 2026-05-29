@@ -22,6 +22,7 @@ from app.api.deps import (
 )
 from app.models.association import Association
 from app.models.caisse import Caisse
+from app.models.finance import Fund, FundKind
 from app.models.loan import Loan, LoanType
 from app.models.user import User
 from app.schemas.loan_type import LoanTypeCreate, LoanTypeOut, LoanTypeUpdate
@@ -113,6 +114,12 @@ async def create_loan_type(
             422,
             "Une caisse projet ne peut pas servir de source — utilise une caisse "
             "collective ou la caisse générale.",
+        )
+    # Une caisse de tontine est vidée à chaque tour : jamais une source de prêt.
+    fund_res = await db.execute(select(Fund.kind).where(Fund.id == caisse.fund_id))
+    if fund_res.scalar_one_or_none() == FundKind.TONTINE:
+        raise HTTPException(
+            422, "Une caisse de tontine ne peut pas servir de source de prêt."
         )
 
     # Slug unique per association

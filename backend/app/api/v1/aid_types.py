@@ -22,6 +22,7 @@ from app.api.deps import (
 )
 from app.models.association import Association
 from app.models.caisse import Caisse
+from app.models.finance import Fund, FundKind
 from app.models.social_aid import AidType, SocialAidCase
 from app.models.user import User
 from app.schemas.aid_type import AidTypeCreate, AidTypeOut, AidTypeUpdate
@@ -108,6 +109,11 @@ async def create_aid_type(
         raise HTTPException(
             422,
             "Une caisse projet ne peut pas servir de source pour une aide sociale.",
+        )
+    fund_res = await db.execute(select(Fund.kind).where(Fund.id == caisse.fund_id))
+    if fund_res.scalar_one_or_none() == FundKind.TONTINE:
+        raise HTTPException(
+            422, "Une caisse de tontine ne peut pas servir de source d'aide sociale."
         )
 
     dupe = await db.execute(

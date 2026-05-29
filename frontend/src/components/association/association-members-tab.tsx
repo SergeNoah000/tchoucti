@@ -341,7 +341,7 @@ function InviteMemberDialog({
           e.preventDefault();
           if (email.trim() && fullName.trim()) inviteMutation.mutate();
         }}
-        className="space-y-4 py-2"
+        className="min-w-0 space-y-4 py-2"
       >
         <div className="space-y-1.5">
           <Label htmlFor="im-email">{t("email")}</Label>
@@ -421,10 +421,10 @@ function ActivationLinkBox({ link }: { link: string }) {
   };
 
   return (
-    <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/40 p-3">
+    <div className="mt-3 min-w-0 rounded-lg border border-dashed border-border bg-muted/40 p-3">
       <p className="text-xs font-semibold">{t("activationLink")}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{t("activationLinkDesc")}</p>
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex min-w-0 items-center gap-2">
         <code className="min-w-0 flex-1 truncate rounded bg-background px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
           {link}
         </code>

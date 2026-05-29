@@ -46,6 +46,7 @@ interface Caisse {
   name: string;
   slug: string;
   category: string;
+  fund_kind?: string | null;
 }
 
 /**
@@ -72,7 +73,7 @@ export function LoanTypesManager({ association }: { association: Association }) 
     queryFn: () => caissesApi.list(association.id),
   });
   const sourceCaisses = useMemo(
-    () => caisses.filter((c) => c.category !== "project"),
+    () => caisses.filter((c) => c.category !== "project" && c.fund_kind !== "tontine"),
     [caisses],
   );
 

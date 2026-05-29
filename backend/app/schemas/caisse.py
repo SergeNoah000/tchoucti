@@ -75,6 +75,10 @@ class CaisseOut(BaseModel):
     id: UUID
     association_id: UUID
     fund_id: UUID
+    # Kind of the backing fund (general/insurance/tontine/custom/…). Lets the
+    # frontend tell a tontine caisse apart from general/insurance — all SYSTEM
+    # category, but tontine caisses must never be a loan/aid source.
+    fund_kind: Optional[str] = None
     name: str
     slug: str
     description: Optional[str]

@@ -42,6 +42,12 @@ async def _check_access(db: AsyncSession, user: User, association_id: UUID) -> A
     return assoc
 
 
+def _to_out(caisse: Caisse, fund_kind: str | None) -> CaisseOut:
+    base = CaisseOut.model_validate(caisse)
+    base.fund_kind = fund_kind
+    return base
+
+
 @router.get("", response_model=List[CaisseOut])
 async def list_caisses(
     association_id: UUID = Query(...),
@@ -50,12 +56,18 @@ async def list_caisses(
     current_user: User = Depends(get_current_user),
 ):
     await _check_access(db, current_user, association_id)
-    stmt = select(Caisse).where(Caisse.association_id == association_id)
+    stmt = (
+        select(Caisse, Fund.kind)
+        .join(Fund, Fund.id == Caisse.fund_id)
+        .where(Caisse.association_id == association_id)
+    )
     if not include_inactive:
         stmt = stmt.where(Caisse.is_active.is_(True))
     stmt = stmt.order_by(Caisse.is_system.desc(), Caisse.created_at)
     res = await db.execute(stmt)
-    return list(res.scalars().all())
+    return [
+        _to_out(c, k.value if hasattr(k, "value") else k) for c, k in res.all()
+    ]
 
 
 @router.get("/{caisse_id}", response_model=CaisseOut)
@@ -64,12 +76,17 @@ async def get_caisse(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    res = await db.execute(select(Caisse).where(Caisse.id == caisse_id))
-    caisse = res.scalar_one_or_none()
-    if not caisse:
+    res = await db.execute(
+        select(Caisse, Fund.kind)
+        .join(Fund, Fund.id == Caisse.fund_id)
+        .where(Caisse.id == caisse_id)
+    )
+    row = res.first()
+    if not row:
         raise HTTPException(404, "Caisse introuvable")
+    caisse, kind = row
     await _check_access(db, current_user, caisse.association_id)
-    return caisse
+    return _to_out(caisse, kind.value if hasattr(kind, "value") else kind)
 
 
 # ── Admin-only writes ──────────────────────────────────────────────────────
