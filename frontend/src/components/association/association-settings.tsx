@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CurrencySelect } from "@/components/common/currency-select";
+import { LogoUpload } from "@/components/common/logo-upload";
 import { associationsApi } from "@/lib/api";
 import type {
   Association,
@@ -192,6 +193,15 @@ function GeneralSection({ association, canManage }: AssociationSettingsProps) {
         })
       }
     >
+      <div className="mb-4">
+        <Field label={t("logo")}>
+          <LogoUpload
+            associationId={association.id}
+            currentLogoUrl={association.logo_url}
+            disabled={!canManage}
+          />
+        </Field>
+      </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label={t("name")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} disabled={!canManage} />

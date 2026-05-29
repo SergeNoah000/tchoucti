@@ -220,6 +220,15 @@ export const setupApi = {
   },
   deleteDocument: async (associationId: string, documentId: string) =>
     (await api.delete(`/associations/${associationId}/documents/${documentId}`)).data,
+  uploadLogo: async (associationId: string, file: File): Promise<{ logo_url: string }> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return (
+      await api.post(`/associations/${associationId}/logo`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+    ).data;
+  },
 };
 
 // ── LoanType catalogue (config-v2) ────────────────────────────────────────

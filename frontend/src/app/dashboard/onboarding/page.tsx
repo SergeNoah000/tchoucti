@@ -33,6 +33,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { CurrencySelect } from "@/components/common/currency-select";
+import { LogoUpload } from "@/components/common/logo-upload";
 
 import {
   associationsApi,
@@ -280,6 +281,10 @@ function StepAssociation({
         <Building2 className="mr-1.5 inline h-4 w-4" />
         {t("introAssociation")}
       </ConfigPreview>
+
+      <HelpField label={t("logo")}>
+        <LogoUpload associationId={association.id} currentLogoUrl={association.logo_url} />
+      </HelpField>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <HelpField label={t("name")} required>

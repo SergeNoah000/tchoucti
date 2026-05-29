@@ -4,6 +4,13 @@
     "tagline": "La plateforme des associations modernes"
   },
   "common": {
+    "logoUpload": "Ajouter un logo",
+    "logoChange": "Changer le logo",
+    "logoHint": "PNG ou JPG, max 5 Mo. Affiché sur le lien de connexion partagé.",
+    "logoUploaded": "Logo mis à jour",
+    "logoError": "Échec de l'envoi du logo",
+    "logoInvalid": "Le fichier doit être une image",
+    "logoTooLarge": "Image trop volumineuse (max 5 Mo)",
     "save": "Enregistrer",
     "cancel": "Annuler",
     "delete": "Supprimer",
@@ -586,6 +593,7 @@
     "save": "Enregistrer",
     "secGeneral": "Général",
     "secGeneralDesc": "Identité et contact de l'association.",
+    "logo": "Logo de l'association",
     "secTontine": "Tontine",
     "secTontineDesc": "Règles de cotisation et d'attribution.",
     "secSocialFund": "Caisse sociale",
@@ -1102,6 +1110,7 @@
     "stepAssociationTitle": "Profil de l'association",
     "stepAssociationDesc": "Informations légales, conditions d'adhésion, frais et documents.",
     "introAssociation": "Ces informations apparaîtront aux membres et seront utilisées dans le PV de chaque séance. Vous pourrez les modifier plus tard depuis les paramètres.",
+    "logo": "Logo de l'association",
 
     "name": "Nom",
     "type": "Type",

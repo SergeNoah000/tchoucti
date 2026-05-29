@@ -9,6 +9,7 @@ from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -245,6 +246,38 @@ async def upload_document(
     await db.commit()
     await db.refresh(doc)
     return doc
+
+
+class LogoOut(BaseModel):
+    logo_url: str
+
+
+@router.post("/{association_id}/logo", response_model=LogoOut)
+async def upload_logo(
+    association_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_association_admin_for),
+):
+    """Upload the association logo (image) to MinIO and store its public URL."""
+    assoc = await _get_assoc(db, association_id)
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(422, "Fichier vide")
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(413, "Image trop volumineuse (max 5 MB)")
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(422, "Le logo doit être une image")
+
+    url, _key, _size = upload_bytes(
+        key_prefix=f"associations/{association_id}/logo",
+        filename=file.filename or "logo",
+        data=contents,
+        content_type=file.content_type,
+    )
+    assoc.logo_url = url
+    await db.commit()
+    return LogoOut(logo_url=url)
 
 
 @router.delete(
