@@ -93,6 +93,7 @@ export interface Association {
   logo_url?: string | null;
   primary_color: string;
   currency: string;
+  currency_locked?: boolean;
   timezone: string;
   address?: string | null;
   city?: string | null;

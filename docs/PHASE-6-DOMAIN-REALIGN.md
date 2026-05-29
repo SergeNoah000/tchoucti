@@ -84,32 +84,33 @@ participants, copiés depuis le cycle précédent à la génération).
 
 ---
 
-## Phase 6B — Devise (dropdown + conversion + exemples dynamiques)
+## Phase 6B — Devise (dropdown + verrou + exemples dynamiques) ✅ FAIT
+
+> **Décision client (2026-05-29)** : option **« verrouiller dès qu'il y a de
+> l'historique »** retenue (≠ conversion auto). Choix libre de la devise tant
+> qu'aucun mouvement de trésorerie n'existe ; figée ensuite. « Zéro risque
+> comptable » — pas de conversion des montants stockés (l'option « convertir la
+> config » a été explicitement écartée). Pas de service forex nécessaire.
 
 ### Sélecteur
-- Remplacer l'input texte devise par un **`<Select>`** ISO 4217 (liste curée :
-  XAF, XOF, EUR, USD, GBP, CAD, CHF, NGN, GHS, MAD, …).
+- `frontend/src/components/common/currency-select.tsx` : `<Select>` ISO 4217
+  (liste curée `src/lib/currencies.ts`), libellés localisés via `Intl.DisplayNames`.
+- Remplace les inputs texte dans onboarding, association-detail, association-settings.
 
-### Conversion
-- API libre **frankfurter.app** (sans clé, taux BCE) :
-  `GET https://api.frankfurter.app/latest?from=XAF&to=EUR`.
-- Service backend `app/services/forex.py` : `convert(amount, from, to)` avec
-  cache Redis (TTL 24h) des taux.
-- Au **changement de devise** d'une association : convertir les **montants de
-  config** (registration_fee, recurring_amount des caisses, member_required,
-  loan/aid amounts, round_amount des tontines) via l'API + arrondi.
-  ⚠️ Ne PAS convertir les soldes de trésorerie historiques (mouvements passés
-  restent dans leur devise d'origine) — afficher un avertissement clair.
+### Verrou
+- Backend `AssociationOut.currency_locked` calculé : `True` dès qu'un
+  `TreasuryMovement` existe pour l'association (`_has_financial_history`).
+- `PATCH /associations/{id}` : refuse (409 `currency_locked`) si la devise change
+  alors que `currency_locked`.
+- Validation des codes devise (`ALLOWED_CURRENCIES`) en create + update.
+- Frontend : `<CurrencySelect disabled={currency_locked}>` + hint explicatif.
 
 ### Exemples hardcodés → dynamiques
-- Les hints i18n du type « Ex : 5 000 XAF » doivent utiliser la devise de l'asso.
-  Remplacer par des clés paramétrées : `t("feeExample", { currency })` avec
-  `fmt.currency(5000)`. Auditer tous les `XAF` en dur dans les locales + composants.
+- Hints/preview i18n « Ex : 5 000 XAF » → clés paramétrées `{ amount }` calculées
+  via `fmt.currency(N)` (onboarding fee/caisses, aid contribution/ceiling/preview).
 
-### Commits estimés
-6. `Phase 6B-1 — Select devise ISO + service forex (frankfurter + cache Redis)`
-7. `Phase 6B-2 — conversion config au changement de devise + warning`
-8. `Phase 6B-3 — exemples i18n dynamiques (devise de l'asso)`
+### Commit
+- `Phase 6B — devise : dropdown ISO + verrou si historique financier + exemples dynamiques`
 
 ---
 

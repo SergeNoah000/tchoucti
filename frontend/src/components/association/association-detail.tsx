@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
+import { CurrencySelect } from "@/components/common/currency-select";
 import { AssociationMembersTab } from "./association-members-tab";
 import { AssociationSettings } from "./association-settings";
 import { associationsApi, membersApi, meetingsApi } from "@/lib/api";
@@ -349,7 +350,15 @@ function EditAssociationDialog({ association }: { association: Association }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="ea-currency">{t("fieldCurrency")}</Label>
-              <Input id="ea-currency" value={form.currency} onChange={(e) => set("currency", e.target.value)} maxLength={3} />
+              <CurrencySelect
+                id="ea-currency"
+                value={form.currency}
+                onValueChange={(v) => set("currency", v)}
+                disabled={association.currency_locked}
+              />
+              {association.currency_locked && (
+                <p className="text-xs text-muted-foreground">{t("currencyLockedHint")}</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ea-color">{t("fieldColor")}</Label>

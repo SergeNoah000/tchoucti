@@ -22,6 +22,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { HelpField, ConfigPreview } from "@/components/onboarding/help-field";
 import { aidTypesApi, associationsApi, caissesApi } from "@/lib/api";
+import { useFormatters } from "@/lib/format";
 import type { Association } from "@/lib/types";
 
 interface AidType {
@@ -197,6 +198,7 @@ export function AidTypesManager({ association }: { association: Association }) {
           {showForm ? (
             <AidTypeForm
               associationId={association.id}
+              currency={association.currency}
               caisses={sourceCaisses}
               onCancel={() => setShowForm(false)}
               onCreated={() => {
@@ -226,17 +228,20 @@ export function AidTypesManager({ association }: { association: Association }) {
 
 function AidTypeForm({
   associationId,
+  currency,
   caisses,
   onCancel,
   onCreated,
 }: {
   associationId: string;
+  currency: string;
   caisses: Caisse[];
   onCancel: () => void;
   onCreated: () => void;
 }) {
   const t = useTranslations("configAids");
   const tCommon = useTranslations("common");
+  const fmt = useFormatters(currency);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -296,7 +301,7 @@ function AidTypeForm({
       <section className="space-y-3 rounded-md border border-border bg-card p-3">
         <h3 className="text-sm font-semibold">{t("contributionTitle")}</h3>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <HelpField label={t("contribution")} example={t("contributionExample")}>
+          <HelpField label={t("contribution")} example={t("contributionExample", { amount: fmt.currency(2000) })}>
             <Input
               type="number"
               min={0}
@@ -304,7 +309,7 @@ function AidTypeForm({
               onChange={(e) => setContribution(e.target.value)}
             />
           </HelpField>
-          <HelpField label={t("ceiling")} example={t("ceilingExample")}>
+          <HelpField label={t("ceiling")} example={t("ceilingExample", { amount: fmt.currency(100000) })}>
             <Input type="number" min={0} value={ceiling} onChange={(e) => setCeiling(e.target.value)} />
           </HelpField>
         </div>
@@ -344,7 +349,12 @@ function AidTypeForm({
       <ConfigPreview intent="success">
         <p className="font-medium">{t("previewTitle")}</p>
         <p className="mt-1">
-          {t("previewText", { contribution, ceiling, year: maxClaims, delay })}
+          {t("previewText", {
+            contribution: fmt.currency(parseInt(contribution, 10) || 0),
+            ceiling: fmt.currency(parseInt(ceiling, 10) || 0),
+            year: maxClaims,
+            delay,
+          })}
         </p>
       </ConfigPreview>
 

@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CurrencySelect } from "@/components/common/currency-select";
 import { associationsApi } from "@/lib/api";
 import type {
   Association,
@@ -210,12 +211,14 @@ function GeneralSection({ association, canManage }: AssociationSettingsProps) {
           </Select>
         </Field>
         <Field label={t("currency")}>
-          <Input
+          <CurrencySelect
             value={currency}
-            onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-            maxLength={3}
-            disabled={!canManage}
+            onValueChange={setCurrency}
+            disabled={!canManage || association.currency_locked}
           />
+          {association.currency_locked && (
+            <p className="mt-1 text-xs text-muted-foreground">{t("currencyLockedHint")}</p>
+          )}
         </Field>
         <Field label={t("email")}>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canManage} />

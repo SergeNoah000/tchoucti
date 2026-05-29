@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
+from app.models.finance import Treasury, TreasuryMovement
 from app.models.role import Membership, MembershipStatus
 from app.models.user import User
 from app.schemas.association import AssociationCreate, AssociationOut, AssociationUpdate
@@ -21,6 +22,18 @@ def _check_assoc_access(user: User, assoc: Association) -> None:
         return
     if user.groupement_id != assoc.groupement_id:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+async def _has_financial_history(db: AsyncSession, association_id: UUID) -> bool:
+    """True once the association has at least one treasury movement — the
+    currency is then frozen to keep the ledger consistent."""
+    row = await db.execute(
+        select(TreasuryMovement.id)
+        .join(Treasury, TreasuryMovement.treasury_id == Treasury.id)
+        .where(Treasury.association_id == association_id)
+        .limit(1)
+    )
+    return row.first() is not None
 
 
 @router.get("", response_model=List[AssociationOut])
@@ -57,7 +70,19 @@ async def list_associations(
 
     stmt = stmt.order_by(Association.name)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    assocs = result.scalars().all()
+
+    if assocs:
+        locked_rows = await db.execute(
+            select(Treasury.association_id)
+            .join(TreasuryMovement, TreasuryMovement.treasury_id == Treasury.id)
+            .where(Treasury.association_id.in_([a.id for a in assocs]))
+            .distinct()
+        )
+        locked_ids = set(locked_rows.scalars().all())
+        for a in assocs:
+            a.currency_locked = a.id in locked_ids
+    return assocs
 
 
 @router.get("/{association_id}", response_model=AssociationOut)
@@ -71,6 +96,7 @@ async def get_association(
     if not assoc:
         raise HTTPException(status_code=404, detail="Association not found")
     _check_assoc_access(current_user, assoc)
+    assoc.currency_locked = await _has_financial_history(db, assoc.id)
     return assoc
 
 
@@ -110,6 +136,7 @@ async def create_association(
     db.add(assoc)
     await db.commit()
     await db.refresh(assoc)
+    assoc.currency_locked = False
     return assoc
 
 
@@ -126,9 +153,16 @@ async def update_association(
         raise HTTPException(status_code=404, detail="Association not found")
     _check_assoc_access(current_user, assoc)
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    new_currency = data.get("currency")
+    locked = await _has_financial_history(db, assoc.id)
+    if new_currency and new_currency != assoc.currency and locked:
+        raise HTTPException(status_code=409, detail="currency_locked")
+
+    for field, value in data.items():
         setattr(assoc, field, value)
 
     await db.commit()
     await db.refresh(assoc)
+    assoc.currency_locked = locked
     return assoc

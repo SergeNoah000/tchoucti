@@ -18,9 +18,24 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models.association import AssociationType
+
+# Curated ISO 4217 set (mirrors frontend src/lib/currencies.ts).
+ALLOWED_CURRENCIES = {
+    "XAF", "XOF", "NGN", "GHS", "KES", "ZAR", "MAD", "RWF", "CDF", "GNF",
+    "EUR", "USD", "GBP", "CAD", "CHF",
+}
+
+
+def _validate_currency(v: Optional[str]) -> Optional[str]:
+    if v is None:
+        return v
+    code = v.upper()
+    if code not in ALLOWED_CURRENCIES:
+        raise ValueError(f"Unsupported currency: {v}")
+    return code
 
 
 class AssociationBase(BaseModel):
@@ -36,6 +51,8 @@ class AssociationBase(BaseModel):
     city: Optional[str] = Field(None, max_length=100)
     primary_color: str = Field("#0F766E", pattern=r"^#[0-9A-Fa-f]{6}$")
     config: Dict[str, Any] = Field(default_factory=dict)
+
+    _norm_currency = field_validator("currency")(_validate_currency)
 
 
 class AssociationCreate(AssociationBase):
@@ -56,6 +73,8 @@ class AssociationUpdate(BaseModel):
     config: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
 
+    _norm_currency = field_validator("currency")(_validate_currency)
+
 
 class AssociationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -70,6 +89,7 @@ class AssociationOut(BaseModel):
     logo_url: Optional[str]
     primary_color: str
     currency: str
+    currency_locked: bool = False
     timezone: str
     address: Optional[str]
     city: Optional[str]

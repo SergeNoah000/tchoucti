@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { CurrencySelect } from "@/components/common/currency-select";
 
 import {
   associationsApi,
@@ -205,6 +206,7 @@ function StepAssociation({
   const [fee, setFee] = useState(
     (association.config as { registration_fee?: number })?.registration_fee?.toString() ?? "0",
   );
+  const fmt = useFormatters(currency);
 
   type Criterion = {
     id: string;
@@ -298,11 +300,7 @@ function StepAssociation({
           </Select>
         </HelpField>
         <HelpField label={t("currency")} example={t("currencyExample")}>
-          <Input
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}
-            maxLength={3}
-          />
+          <CurrencySelect value={currency} onValueChange={setCurrency} />
         </HelpField>
         <HelpField label={t("phone")}>
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
@@ -328,7 +326,7 @@ function StepAssociation({
         <HelpField
           label={t("feeAmount")}
           hint={t("feeHint")}
-          example={t("feeExample")}
+          example={t("feeExample", { amount: fmt.currency(5000) })}
         >
           <Input
             type="number"
@@ -340,7 +338,7 @@ function StepAssociation({
         </HelpField>
         {parseInt(fee, 10) > 0 && (
           <ConfigPreview intent="success">
-            {t("feePreview", { amount: parseInt(fee, 10), currency })}
+            {t("feePreview", { amount: fmt.currency(parseInt(fee, 10)) })}
           </ConfigPreview>
         )}
       </section>
@@ -708,6 +706,7 @@ function StepCaisses({
       {showForm ? (
         <CaisseForm
           associationId={association.id}
+          currency={association.currency}
           onCancel={() => setShowForm(false)}
           onCreated={() => {
             setShowForm(false);
@@ -726,15 +725,18 @@ function StepCaisses({
 
 function CaisseForm({
   associationId,
+  currency,
   onCancel,
   onCreated,
 }: {
   associationId: string;
+  currency: string;
   onCancel: () => void;
   onCreated: () => void;
 }) {
   const t = useTranslations("onboarding");
   const tCommon = useTranslations("common");
+  const fmt = useFormatters(currency);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<"collective" | "project" | "personal">("collective");
@@ -802,7 +804,7 @@ function CaisseForm({
           <Switch checked={recurring} onCheckedChange={setRecurring} />
         </label>
         {recurring && (
-          <HelpField label={t("caisseRecurringAmount")} example={t("caisseRecurringAmountExample")}>
+          <HelpField label={t("caisseRecurringAmount")} example={t("caisseRecurringAmountExample", { amount: fmt.currency(2000) })}>
             <Input
               type="number"
               min={1}
@@ -822,7 +824,7 @@ function CaisseForm({
           <Switch checked={memberRequired} onCheckedChange={setMemberRequired} />
         </label>
         {memberRequired && (
-          <HelpField label={t("caisseMemberAmount")} example={t("caisseMemberAmountExample")}>
+          <HelpField label={t("caisseMemberAmount")} example={t("caisseMemberAmountExample", { amount: fmt.currency(5000) })}>
             <Input
               type="number"
               min={1}
@@ -857,7 +859,7 @@ function CaisseForm({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <HelpField
                 label={t("caisseObjectiveAmount")}
-                example={t("caisseObjectiveAmountExample")}
+                example={t("caisseObjectiveAmountExample", { amount: fmt.currency(500000) })}
               >
                 <Input
                   type="number"
