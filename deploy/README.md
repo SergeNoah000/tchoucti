@@ -57,10 +57,17 @@ pointant vers `207.180.231.56` :
 | `storage`           | A    | 207.180.231.56    | 300   |
 | `minio`             | A    | 207.180.231.56    | 300   |
 | `traefik`           | A    | 207.180.231.56    | 300   |
+| `*`                 | A    | 207.180.231.56    | 300   |
 
-> Les futurs groupements (sous-domaines clients) seront des `A` ou des
-> `CNAME` vers l'apex. Ils sont déjà capturés par le router Traefik
-> `HostRegexp` (voir compose).
+> **Wildcard `*` (login par association `{groupement}.myappsuite.com/a/{slug}`)** :
+> ajoute l'enregistrement `*` ci-dessus chez l'hébergeur DNS. Tous les
+> sous-domaines de groupement sont alors captés par le router Traefik
+> `HostRegexp` (priorité 10, catch-all de dernier recours). ⚠️ Le domaine est
+> partagé avec d'autres apps (ex. `globalasset.myappsuite.com`) : leurs routers
+> explicites gardent la priorité — **vérifier après déploiement** qu'elles
+> répondent toujours. TLS : Let's Encrypt émet un cert par hôte au 1er accès
+> (HTTP-01, OK avec le wildcard DNS) ; pour un vrai cert wildcard, passer le
+> resolver en challenge DNS-01.
 
 Attendre que la propagation soit OK :
 ```bash

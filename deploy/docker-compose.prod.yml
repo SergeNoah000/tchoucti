@@ -252,6 +252,9 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_URL: https://api.${DOMAIN}/api
+      # SSR (login brandé + Open Graph) : fetch interne du branding via le réseau
+      # docker, sans repasser par l'API publique.
+      API_INTERNAL_URL: http://backend:8000/api
       NEXT_PUBLIC_ROOT_DOMAIN: ${DOMAIN}
       NEXT_TELEMETRY_DISABLED: "1"
     depends_on:
