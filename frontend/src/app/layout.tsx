@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+// Polices embarquées (package `geist`) au lieu de next/font/google : le build
+// Docker n'a pas besoin d'accès à fonts.gstatic.com (qui échoue sur certains
+// hôtes / VPS).
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: { default: "Tchoucti — La plateforme des associations", template: "%s · Tchoucti" },
@@ -22,7 +23,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang={locale} suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
+      <body className={`${GeistSans.variable} ${GeistMono.variable} font-sans antialiased`}>
 
         <NextIntlClientProvider messages={messages}>
           <Providers>{children}</Providers>
