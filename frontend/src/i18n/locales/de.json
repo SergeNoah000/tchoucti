@@ -340,7 +340,11 @@
     "memberTotal": "Gesamt Mitglied",
     "noActivities": "Keine sichtbare Aktivität — konfigurieren Sie sie in den Einstellungen.",
     "savingMember": "Speichern…",
-    "memberSaved": "Mitglied gespeichert"
+    "memberSaved": "Mitglied gespeichert",
+    "editConfirmTitle": "Bereits erfasste Daten bearbeiten?",
+    "editConfirmDesc": "Für {name} wurden bereits Daten erfasst. Bei Bestätigung werden die bisherigen Einträge ersetzt und die Änderung wird im Sitzungsprotokoll erfasst.",
+    "editConfirmCancel": "Abbrechen",
+    "editConfirmConfirm": "Änderung bestätigen"
   },
   "placeholder": {
     "comingSoon": "Demnächst verfügbar",

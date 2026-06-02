@@ -177,6 +177,13 @@ class Meeting(BaseModel):
     total_in: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False, server_default="0")
     total_out: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False, server_default="0")
 
+    # Journal léger des éditions a posteriori (mode « écraser des données déjà
+    # saisies »). Chaque entrée : {at, by, by_name, membership_id, member_name,
+    # before:{attendance, amounts}, after:{attendance, amounts}}.
+    edit_history: Mapped[list] = mapped_column(
+        JSONB, default=list, nullable=False, server_default=text("'[]'::jsonb")
+    )
+
     # Relationships
     association: Mapped["Association"] = relationship("Association", back_populates="meetings")
     attendances: Mapped[List["MeetingAttendance"]] = relationship(

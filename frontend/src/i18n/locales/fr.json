@@ -340,7 +340,11 @@
     "memberTotal": "Total membre",
     "noActivities": "Aucune activité visible — configurez-les dans les paramètres.",
     "savingMember": "Enregistrement…",
-    "memberSaved": "Membre enregistré"
+    "memberSaved": "Membre enregistré",
+    "editConfirmTitle": "Modifier des données déjà enregistrées ?",
+    "editConfirmDesc": "Des données ont déjà été saisies pour {name}. Si vous confirmez, l'ancienne saisie sera remplacée et la modification sera consignée dans le journal de la séance.",
+    "editConfirmCancel": "Annuler",
+    "editConfirmConfirm": "Confirmer la modification"
   },
   "placeholder": {
     "comingSoon": "Bientôt disponible",

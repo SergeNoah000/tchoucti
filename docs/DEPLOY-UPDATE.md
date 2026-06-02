@@ -101,6 +101,7 @@ $DC up -d                    # recrée tables + seed démo (init_db)
      ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
      ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE;
      ALTER TABLE users ADD COLUMN IF NOT EXISTS profession VARCHAR(150);
+     ALTER TABLE meetings ADD COLUMN IF NOT EXISTS edit_history JSONB NOT NULL DEFAULT '[]'::jsonb;
    "
    ```
 3. **Tontines (Phase 6A)** — la transformation des anciennes données tontine vers

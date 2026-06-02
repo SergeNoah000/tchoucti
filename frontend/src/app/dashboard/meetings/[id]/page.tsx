@@ -189,15 +189,17 @@ export default function MeetingDetailPage() {
     return memberships.filter((m) => m.user.full_name.toLowerCase().includes(q));
   }, [memberships, search]);
 
-  // ── Open/closed collapse tracking ────────────────────────────────────────
-  const [openMembers, setOpenMembers] = useState<Set<string>>(new Set());
-  const toggleMember = (id: string, open: boolean) =>
-    setOpenMembers((s) => {
-      const next = new Set(s);
-      if (open) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+  // ── Master-detail : un seul membre actif à la fois ──────────────────────
+  // (Avant : Collapsible par membre. Le client préfère un tab-pane : liste à
+  // gauche, panneau de saisie du membre sélectionné à droite.)
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  // Sélectionne le 1er membre filtré par défaut (ou quand la sélection sort de la liste).
+  useEffect(() => {
+    if (filteredMembers.length === 0) return;
+    if (!selectedMemberId || !filteredMembers.some((m) => m.id === selectedMemberId)) {
+      setSelectedMemberId(filteredMembers[0]!.id);
+    }
+  }, [filteredMembers, selectedMemberId]);
 
   if (isLoading) {
     return (
@@ -223,12 +225,11 @@ export default function MeetingDetailPage() {
 
   const visibleActivities = activities.filter((a) => a.is_visible_in_meeting && a.is_active);
 
-  // Open the next un-opened member in the filtered list.
+  // Sélectionne le membre suivant dans la liste filtrée.
   const advanceTo = (currentMembershipId: string) => {
     const idx = filteredMembers.findIndex((m) => m.id === currentMembershipId);
     const next = filteredMembers[idx + 1];
-    toggleMember(currentMembershipId, false);
-    if (next) toggleMember(next.id, true);
+    if (next) setSelectedMemberId(next.id);
   };
 
   return (
@@ -339,7 +340,7 @@ export default function MeetingDetailPage() {
         />
       </div>
 
-      {/* Member list */}
+      {/* Master-detail : liste de membres à gauche, panneau de saisie à droite. */}
       {memberships.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
@@ -353,21 +354,58 @@ export default function MeetingDetailPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {filteredMembers.map((m) => (
-            <MemberRow
-              key={m.id}
-              meeting={meeting}
-              member={m}
-              activities={visibleActivities}
-              memberAgenda={agenda?.members.find((ma) => ma.membership_id === m.id) ?? null}
-              canEdit={canEdit}
-              isOpen={openMembers.has(m.id)}
-              setOpen={(open) => toggleMember(m.id, open)}
-              onSavedAdvance={() => advanceTo(m.id)}
-              currency={association?.currency}
-            />
-          ))}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(220px,1fr)_2fr]">
+          <ul className="space-y-1 lg:max-h-[70vh] lg:overflow-y-auto lg:pr-1">
+            {filteredMembers.map((m) => {
+              const hasAttendance = meeting.attendances.some((a) => a.membership_id === m.id);
+              const hasEntries = meeting.entries.some(
+                (e) => e.membership_id === m.id && e.status !== "voided",
+              );
+              const isSelected = selectedMemberId === m.id;
+              return (
+                <li key={m.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMemberId(m.id)}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                      isSelected
+                        ? "border-primary/50 bg-primary/5 text-foreground"
+                        : "border-border hover:border-primary/30 hover:bg-accent/40",
+                    )}
+                  >
+                    <span className="truncate">{m.user.full_name}</span>
+                    {(hasAttendance || hasEntries) && (
+                      <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                        {t("saved")}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div>
+            {(() => {
+              const selected = filteredMembers.find((m) => m.id === selectedMemberId);
+              if (!selected) return null;
+              return (
+                <MemberRow
+                  key={selected.id}
+                  meeting={meeting}
+                  member={selected}
+                  activities={visibleActivities}
+                  memberAgenda={agenda?.members.find((ma) => ma.membership_id === selected.id) ?? null}
+                  canEdit={canEdit}
+                  isOpen={true}
+                  setOpen={() => {}}
+                  onSavedAdvance={() => advanceTo(selected.id)}
+                  currency={association?.currency}
+                />
+              );
+            })()}
+          </div>
         </div>
       )}
     </div>
@@ -572,9 +610,27 @@ function MemberRow({
     setLocal((s) => ({ ...s, amounts: { ...s.amounts, [activityId]: value } }));
   const setAttendance = (a: AttendanceStatus) => setLocal((s) => ({ ...s, attendance: a }));
 
-  const handleSave = async (andNext: boolean) => {
+  // True s'il existe DÉJÀ des données pour ce membre côté serveur — toute
+  // sauvegarde écrase et sera tracée dans le journal d'éditions de la séance.
+  const hadServerData = useMemo(
+    () => serverAttendance !== null || Object.keys(serverAmounts).length > 0,
+    [serverAttendance, serverAmounts],
+  );
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingNext, setPendingNext] = useState(false);
+
+  const doSave = async (andNext: boolean) => {
     await saveMutation.mutateAsync();
     if (andNext) onSavedAdvance();
+  };
+
+  const handleSave = async (andNext: boolean) => {
+    if (hadServerData && dirty) {
+      setPendingNext(andNext);
+      setConfirmOpen(true);
+      return;
+    }
+    await doSave(andNext);
   };
 
   return (
@@ -776,6 +832,28 @@ function MemberRow({
           )}
         </CollapsibleContent>
       </div>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("editConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("editConfirmDesc", { name: member.user.full_name })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("editConfirmCancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmOpen(false);
+                void doSave(pendingNext);
+              }}
+            >
+              {t("editConfirmConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Collapsible>
   );
 }

@@ -771,6 +771,17 @@ async def save_member(
 
     now = datetime.now(timezone.utc)
 
+    # ── Snapshot de l'état AVANT (pour le journal d'éditions) ──
+    old_att_obj = next(
+        (a for a in m.attendances if a.membership_id == payload.membership_id), None
+    )
+    old_attendance = old_att_obj.status.value if old_att_obj and old_att_obj.status else None
+    old_amounts = {
+        str(e.activity_id): e.amount
+        for e in m.entries
+        if e.membership_id == payload.membership_id and e.status == EntryStatus.DRAFT
+    }
+
     # ── Attendance ──
     if payload.attendance is not None:
         try:
@@ -818,6 +829,35 @@ async def save_member(
                 recorded_at=now,
             )
         )
+
+    # ── Journal d'éditions : si des données existaient et qu'elles ont changé. ──
+    new_attendance = payload.attendance if payload.attendance is not None else old_attendance
+    new_amounts: dict[str, int] = {
+        str(item.activity_id): item.amount for item in payload.entries if item.amount > 0
+    }
+    had_data = bool(old_attendance) or bool(old_amounts)
+    changed = (old_attendance != new_attendance) or (old_amounts != new_amounts)
+    if had_data and changed:
+        member_name = None
+        mem_res = await db.execute(
+            select(Membership).options(selectinload(Membership.user)).where(
+                Membership.id == payload.membership_id
+            )
+        )
+        mem = mem_res.scalar_one_or_none()
+        if mem and mem.user:
+            member_name = mem.user.full_name
+        m.edit_history = list(m.edit_history or []) + [
+            {
+                "at": now.isoformat(),
+                "by": str(current_user.id),
+                "by_name": current_user.full_name,
+                "membership_id": str(payload.membership_id),
+                "member_name": member_name,
+                "before": {"attendance": old_attendance, "amounts": old_amounts},
+                "after": {"attendance": new_attendance, "amounts": new_amounts},
+            }
+        ]
 
     await db.commit()
     db.expire_all()
