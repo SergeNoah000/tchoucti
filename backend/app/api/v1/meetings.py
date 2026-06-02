@@ -507,6 +507,18 @@ async def close_meeting(
     m.closed_at = now
     m.total_in = total_in
 
+    # PV auto : Document + PDF visible à tous les membres (sur MinIO). Échec
+    # silencieux — la clôture ne doit jamais bloquer.
+    from app.services.meeting_report import generate_meeting_report
+
+    await generate_meeting_report(
+        db,
+        meeting=m,
+        association=assoc,
+        activities=activities.values(),
+        recorded_by=current_user,
+    )
+
     # Rolling auto-extension: if the future-PLANNED window has fallen below the
     # configured horizon, top it up by one. Cheap (one row added).
     await _auto_extend_planning(db, assoc)
