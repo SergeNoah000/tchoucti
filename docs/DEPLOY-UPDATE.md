@@ -92,11 +92,15 @@ $DC up -d                    # recrée tables + seed démo (init_db)
    ```bash
    $DC exec -T postgres pg_dump -U $POSTGRES_USER $POSTGRES_DB | gzip > ~/backup-$(date +%F).sql.gz
    ```
-2. **Aides sociales** — migration additive sûre :
+2. **Aides sociales + profil utilisateur** — migrations additives sûres :
    ```bash
    $DC exec -T postgres psql -U $POSTGRES_USER -d $POSTGRES_DB -c "
      ALTER TABLE aid_types ALTER COLUMN source_caisse_id DROP NOT NULL;
      ALTER TABLE aid_types ADD COLUMN IF NOT EXISTS auto_create_caisse boolean NOT NULL DEFAULT false;
+     ALTER TABLE users ADD COLUMN IF NOT EXISTS address VARCHAR(500);
+     ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+     ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE;
+     ALTER TABLE users ADD COLUMN IF NOT EXISTS profession VARCHAR(150);
    "
    ```
 3. **Tontines (Phase 6A)** — la transformation des anciennes données tontine vers

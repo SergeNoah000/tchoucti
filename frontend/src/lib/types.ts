@@ -104,11 +104,18 @@ export interface Association {
   updated_at: string;
 }
 
+export type Gender = "male" | "female" | "other";
+
 export interface User {
   id: UUID;
   email: string;
   full_name: string;
   phone?: string | null;
+  /** Profil personnel — modifiable par l'utilisateur lui-même. */
+  address?: string | null;
+  gender?: Gender | null;
+  birth_date?: string | null;
+  profession?: string | null;
   is_active: boolean;
   /** Mutually exclusive role flags. `is_association_admin` is now strict: only
    *  true when the user has the `association_admin` role on a membership. */

@@ -113,8 +113,14 @@ export const authApi = {
     }
   },
   getMe: async () => (await api.get("/auth/me")).data,
-  updateMe: async (payload: { full_name?: string; phone?: string }) =>
-    (await api.patch("/auth/me", payload)).data,
+  updateMe: async (payload: {
+    full_name?: string;
+    phone?: string;
+    address?: string;
+    gender?: "male" | "female" | "other";
+    birth_date?: string | null;
+    profession?: string;
+  }) => (await api.patch("/auth/me", payload)).data,
   changePassword: async (payload: { current_password: string; new_password: string }) =>
     (await api.post("/auth/change-password", payload)).data,
   activate: async (token: string, password: string) =>

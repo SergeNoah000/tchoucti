@@ -1,10 +1,10 @@
 """User model — global identity. Scoped to platform OR a groupement."""
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, ForeignKey, String
+from sqlalchemy import Boolean, Date, DateTime, Enum as SQLEnum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -36,6 +36,14 @@ class User(BaseModel):
     phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True, index=True)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Profil personnel — modifiable par l'utilisateur lui-même.
+    address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # « male » | « female » | « other » — texte libre côté DB, valeurs canoniques
+    # imposées au schéma. Évite un enum SQL pour rester simple à étendre.
+    gender: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    profession: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
 
     # Auth
     hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

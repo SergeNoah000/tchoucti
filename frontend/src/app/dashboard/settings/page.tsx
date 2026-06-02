@@ -10,6 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PageHeader } from "@/components/common/page-header";
 import { LanguageToggle } from "@/components/common/language-toggle";
 import { ThemeToggle } from "@/components/common/theme-toggle";
@@ -32,13 +39,25 @@ export default function SettingsPage() {
 
   const [fullName, setFullName] = useState(user?.full_name ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
+  const [address, setAddress] = useState(user?.address ?? "");
+  const [gender, setGender] = useState<string>(user?.gender ?? "");
+  const [birthDate, setBirthDate] = useState(user?.birth_date ?? "");
+  const [profession, setProfession] = useState(user?.profession ?? "");
 
   const [currentPwd, setCurrentPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const [confirmPwd, setConfirmPwd] = useState("");
 
   const saveProfile = useMutation({
-    mutationFn: () => authApi.updateMe({ full_name: fullName.trim(), phone: phone.trim() }),
+    mutationFn: () =>
+      authApi.updateMe({
+        full_name: fullName.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        gender: (gender || undefined) as "male" | "female" | "other" | undefined,
+        birth_date: birthDate || null,
+        profession: profession.trim(),
+      }),
     onSuccess: (updated: User) => {
       setUser(updated);
       toast.success(t("accountUpdated"));
@@ -97,6 +116,38 @@ export default function SettingsPage() {
           <div className="space-y-1.5">
             <Label htmlFor="st-email">{t("email")}</Label>
             <Input id="st-email" value={user?.email ?? ""} disabled />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="st-address">{t("address")}</Label>
+              <Input id="st-address" value={address} onChange={(e) => setAddress(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="st-profession">{t("profession")}</Label>
+              <Input id="st-profession" value={profession} onChange={(e) => setProfession(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("gender")}</Label>
+              <Select value={gender} onValueChange={setGender}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("genderPlaceholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">{t("genderMale")}</SelectItem>
+                  <SelectItem value="female">{t("genderFemale")}</SelectItem>
+                  <SelectItem value="other">{t("genderOther")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="st-birth">{t("birthDate")}</Label>
+              <Input
+                id="st-birth"
+                type="date"
+                value={birthDate ?? ""}
+                onChange={(e) => setBirthDate(e.target.value)}
+              />
+            </div>
           </div>
           <div className="flex justify-end">
             <Button

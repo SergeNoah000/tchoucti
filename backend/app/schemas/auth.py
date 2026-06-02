@@ -1,6 +1,6 @@
 """Auth schemas — token + user payloads exposed to the frontend."""
-from datetime import datetime
-from typing import Optional
+from datetime import date, datetime
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -21,9 +21,16 @@ class ActivateRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+Gender = Literal["male", "female", "other"]
+
+
 class UpdateProfileRequest(BaseModel):
     full_name: Optional[str] = Field(None, min_length=1, max_length=255)
     phone: Optional[str] = Field(None, max_length=30)
+    address: Optional[str] = Field(None, max_length=500)
+    gender: Optional[Gender] = None
+    birth_date: Optional[date] = None
+    profession: Optional[str] = Field(None, max_length=150)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -52,6 +59,10 @@ class UserPublic(BaseModel):
     email: EmailStr
     full_name: str
     phone: Optional[str] = None
+    address: Optional[str] = None
+    gender: Optional[str] = None
+    birth_date: Optional[date] = None
+    profession: Optional[str] = None
     is_active: bool
     is_platform_admin: bool
     is_groupement_admin: bool = False

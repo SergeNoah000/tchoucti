@@ -64,6 +64,10 @@ async def _public_user(db: AsyncSession, user: User) -> dict:
         "email": user.email,
         "full_name": user.full_name,
         "phone": user.phone,
+        "address": user.address,
+        "gender": user.gender,
+        "birth_date": user.birth_date,
+        "profession": user.profession,
         "is_active": user.is_active,
         "is_platform_admin": user.user_type == UserType.SUPER_ADMIN,
         "is_groupement_admin": user.user_type == UserType.GROUPEMENT_ADMIN,
@@ -147,11 +151,19 @@ async def update_me(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update the current user's own profile (display name, phone)."""
+    """Update the current user's own profile (personal data)."""
     if payload.full_name is not None:
         user.full_name = payload.full_name.strip()
     if payload.phone is not None:
         user.phone = payload.phone.strip() or None
+    if payload.address is not None:
+        user.address = payload.address.strip() or None
+    if payload.gender is not None:
+        user.gender = payload.gender
+    if payload.birth_date is not None:
+        user.birth_date = payload.birth_date
+    if payload.profession is not None:
+        user.profession = payload.profession.strip() or None
     await db.commit()
     await db.refresh(user)
     return await _public_user(db, user)
