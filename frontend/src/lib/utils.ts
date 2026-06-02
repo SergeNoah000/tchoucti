@@ -14,6 +14,20 @@ export function groupementHost(g: { subdomain?: string | null; slug: string }): 
   return `${g.subdomain || g.slug}.${ROOT_DOMAIN}`;
 }
 
+/** Canonical login URL for an association: `{protocol}//{groupement-subdomain}.{rootDomain}[:port]/a/{slug}`.
+ *  Reads protocol + port from `window.location` so dev (localhost:13000) and prod
+ *  (https://…) sortent toujours la bonne URL. SSR-safe : retourne null hors browser. */
+export function associationLoginUrl(association: {
+  slug: string;
+  groupement_subdomain?: string | null;
+}): string | null {
+  if (typeof window === "undefined") return null;
+  const sub = association.groupement_subdomain;
+  if (!sub) return null;
+  const port = window.location.port ? `:${window.location.port}` : "";
+  return `${window.location.protocol}//${sub}.${ROOT_DOMAIN}${port}/a/${association.slug}`;
+}
+
 /** Format a number as XAF currency (Cameroon default), no decimals. */
 export function formatCurrency(amount: number | string, currency = "XAF", locale = "fr-FR"): string {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;

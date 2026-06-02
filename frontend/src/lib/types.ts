@@ -94,6 +94,7 @@ export interface Association {
   primary_color: string;
   currency: string;
   currency_locked?: boolean;
+  groupement_subdomain?: string | null;
   timezone: string;
   address?: string | null;
   city?: string | null;

@@ -96,5 +96,8 @@ class AssociationOut(BaseModel):
     config: Dict[str, Any]
     is_active: bool
     groupement_id: UUID
+    # Snapshot du sous-domaine du groupement — utilisé côté frontend pour bâtir
+    # le lien de connexion partageable {groupement}.{ROOT_DOMAIN}/a/{slug}.
+    groupement_subdomain: Optional[str] = None
     created_at: datetime
     updated_at: datetime

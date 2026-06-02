@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
 from app.models.finance import Treasury, TreasuryMovement
+from app.models.groupement import Groupement
 from app.models.role import Membership, MembershipStatus
 from app.models.user import User
 from app.schemas.association import AssociationCreate, AssociationOut, AssociationUpdate
@@ -80,8 +81,15 @@ async def list_associations(
             .distinct()
         )
         locked_ids = set(locked_rows.scalars().all())
+        sub_rows = await db.execute(
+            select(Groupement.id, Groupement.subdomain).where(
+                Groupement.id.in_([a.groupement_id for a in assocs])
+            )
+        )
+        sub_by_gid = dict(sub_rows.all())
         for a in assocs:
             a.currency_locked = a.id in locked_ids
+            a.groupement_subdomain = sub_by_gid.get(a.groupement_id)
     return assocs
 
 
@@ -97,6 +105,10 @@ async def get_association(
         raise HTTPException(status_code=404, detail="Association not found")
     _check_assoc_access(current_user, assoc)
     assoc.currency_locked = await _has_financial_history(db, assoc.id)
+    sub_row = await db.execute(
+        select(Groupement.subdomain).where(Groupement.id == assoc.groupement_id)
+    )
+    assoc.groupement_subdomain = sub_row.scalar_one_or_none()
     return assoc
 
 
@@ -137,6 +149,10 @@ async def create_association(
     await db.commit()
     await db.refresh(assoc)
     assoc.currency_locked = False
+    sub_row = await db.execute(
+        select(Groupement.subdomain).where(Groupement.id == assoc.groupement_id)
+    )
+    assoc.groupement_subdomain = sub_row.scalar_one_or_none()
     return assoc
 
 
@@ -165,4 +181,8 @@ async def update_association(
     await db.commit()
     await db.refresh(assoc)
     assoc.currency_locked = locked
+    sub_row = await db.execute(
+        select(Groupement.subdomain).where(Groupement.id == assoc.groupement_id)
+    )
+    assoc.groupement_subdomain = sub_row.scalar_one_or_none()
     return assoc

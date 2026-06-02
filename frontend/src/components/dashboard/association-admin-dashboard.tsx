@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/common/stat-card";
 import { PageHeader } from "@/components/common/page-header";
+import { AssociationLoginLink } from "@/components/association/association-login-link";
 import { EmptyState } from "@/components/common/empty-state";
 import { associationsApi, meetingsApi, membersApi } from "@/lib/api";
 import type { Association, Meeting, Membership } from "@/lib/types";
@@ -58,6 +59,8 @@ export function AssociationAdminDashboard() {
           </Button>
         }
       />
+
+      {associations[0] && <AssociationLoginLink association={associations[0]} />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label={t("membersCount")} value={activeMembers} icon={Users} accent="brand" />

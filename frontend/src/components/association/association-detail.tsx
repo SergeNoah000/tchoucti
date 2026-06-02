@@ -48,6 +48,7 @@ import {
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { CurrencySelect } from "@/components/common/currency-select";
+import { AssociationLoginLink } from "@/components/association/association-login-link";
 import { AssociationMembersTab } from "./association-members-tab";
 import { AssociationSettings } from "./association-settings";
 import { associationsApi, membersApi, meetingsApi } from "@/lib/api";
@@ -180,6 +181,9 @@ export function AssociationDetail({ associationId, backHref }: AssociationDetail
         <StatRow icon={Users} label={t("membersCount", { count: memberships.length })} />
         <StatRow icon={Calendar} label={t("meetingsCount", { count: meetings.length })} />
       </div>
+
+      <AssociationLoginLink association={association} />
+
 
       <Tabs defaultValue="overview">
         <TabsList className="flex-wrap">
