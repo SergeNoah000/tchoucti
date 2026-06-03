@@ -36,7 +36,13 @@ from app.models.finance import (  # noqa: F401
 from app.models.caisse import (  # noqa: F401
     Caisse,
     CaisseCategory,
+    CaisseContributorBalance,
+    CaisseDistribution,
+    CaisseDistributionShare,
+    DistributionPeriod,
+    InterestDistribution,
     MemberCaisseBalance,
+    WithdrawalMode,
 )
 
 # Meetings & activities

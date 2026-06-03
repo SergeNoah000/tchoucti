@@ -102,6 +102,52 @@ $DC up -d                    # recrée tables + seed démo (init_db)
      ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE;
      ALTER TABLE users ADD COLUMN IF NOT EXISTS profession VARCHAR(150);
      ALTER TABLE meetings ADD COLUMN IF NOT EXISTS edit_history JSONB NOT NULL DEFAULT '[]'::jsonb;
+     ALTER TABLE caisses  ADD COLUMN IF NOT EXISTS interest_distribution VARCHAR(30) NOT NULL DEFAULT 'kept';
+     ALTER TABLE caisses  ADD COLUMN IF NOT EXISTS distribution_period   VARCHAR(30) NOT NULL DEFAULT 'per_meeting';
+     ALTER TABLE caisses  ADD COLUMN IF NOT EXISTS withdrawal_mode       VARCHAR(30) NOT NULL DEFAULT 'never';
+     ALTER TABLE caisses  ADD COLUMN IF NOT EXISTS last_distribution_at  DATE;
+   "
+   # Phase 7 — nouvelles tables Fred :
+   $DC exec -T postgres psql -U $POSTGRES_USER -d $POSTGRES_DB -c "
+     CREATE TABLE IF NOT EXISTS caisse_contributor_balances (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       caisse_id     UUID NOT NULL REFERENCES caisses(id) ON DELETE CASCADE,
+       membership_id UUID NOT NULL REFERENCES memberships(id) ON DELETE RESTRICT,
+       apport_cum BIGINT NOT NULL DEFAULT 0,
+       apport_cum_at_period_start BIGINT NOT NULL DEFAULT 0,
+       interest_cum BIGINT NOT NULL DEFAULT 0,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+       CONSTRAINT uq_caisse_contributor_balance UNIQUE (caisse_id, membership_id)
+     );
+     CREATE INDEX IF NOT EXISTS ix_ccb_caisse_id     ON caisse_contributor_balances(caisse_id);
+     CREATE INDEX IF NOT EXISTS ix_ccb_membership_id ON caisse_contributor_balances(membership_id);
+     CREATE TABLE IF NOT EXISTS caisse_distributions (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       caisse_id     UUID NOT NULL REFERENCES caisses(id) ON DELETE CASCADE,
+       period_start  DATE NOT NULL,
+       period_end    DATE NOT NULL,
+       period_label  VARCHAR(50) NOT NULL,
+       interest_pool BIGINT NOT NULL DEFAULT 0,
+       total_base    BIGINT NOT NULL DEFAULT 0,
+       closed_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+       closed_by_id  UUID REFERENCES users(id) ON DELETE SET NULL,
+       created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+       updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+     );
+     CREATE INDEX IF NOT EXISTS ix_cdist_caisse_id ON caisse_distributions(caisse_id);
+     CREATE TABLE IF NOT EXISTS caisse_distribution_shares (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       distribution_id UUID NOT NULL REFERENCES caisse_distributions(id) ON DELETE CASCADE,
+       membership_id   UUID NOT NULL REFERENCES memberships(id) ON DELETE RESTRICT,
+       base            BIGINT NOT NULL,
+       share_amount    BIGINT NOT NULL,
+       created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+       updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+       CONSTRAINT uq_caisse_distribution_share UNIQUE (distribution_id, membership_id)
+     );
+     CREATE INDEX IF NOT EXISTS ix_cds_distribution_id ON caisse_distribution_shares(distribution_id);
+     CREATE INDEX IF NOT EXISTS ix_cds_membership_id   ON caisse_distribution_shares(membership_id);
    "
    ```
 3. **Tontines (Phase 6A)** — la transformation des anciennes données tontine vers
