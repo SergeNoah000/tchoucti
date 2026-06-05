@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
-from app.models.caisse import Caisse
+from app.models.caisse import Caisse, InterestDistribution
 from app.models.finance import Fund, FundKind, MovementDirection
 from app.models.loan import (
     Loan,
@@ -475,18 +475,30 @@ async def repay_loan(
             inst.status = LoanInstallmentStatus.PARTIALLY_PAID
 
     # Post the cash-in: principal → loan's source caisse (GENERAL fallback),
-    # interest → INSURANCE.
+    # interest → INSURANCE par défaut, OU vers la caisse source si elle est en
+    # mode SHARED_PRO_RATA (Phase 7 — modèle Fred : l'intérêt restera dans le
+    # fonds de la caisse en attendant la prochaine clôture/redistribution).
     treasury = await get_or_create_treasury(db, assoc)
     principal_fund = await _source_fund_for(db, loan, treasury)
-    insurance = next((f for f in treasury.funds if f.kind == FundKind.INSURANCE), None)
-    if insurance is None:
+
+    interest_fund = None
+    if loan.source_caisse_id is not None:
+        src_res = await db.execute(
+            select(Caisse).where(Caisse.id == loan.source_caisse_id)
+        )
+        src_caisse = src_res.scalar_one_or_none()
+        if src_caisse and src_caisse.interest_distribution == InterestDistribution.SHARED_PRO_RATA.value:
+            interest_fund = principal_fund  # même caisse que le principal
+    if interest_fund is None:
+        interest_fund = next((f for f in treasury.funds if f.kind == FundKind.INSURANCE), None)
+    if interest_fund is None:
         raise HTTPException(500, "Fonds assurance introuvable")
 
     allocations = []
     if paid_principal > 0:
         allocations.append(Allocation(fund=principal_fund, is_credit=True, amount=paid_principal))
     if paid_interest > 0:
-        allocations.append(Allocation(fund=insurance, is_credit=True, amount=paid_interest))
+        allocations.append(Allocation(fund=interest_fund, is_credit=True, amount=paid_interest))
 
     movement = await post_movement(
         db,
