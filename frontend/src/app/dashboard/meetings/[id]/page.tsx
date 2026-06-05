@@ -101,6 +101,7 @@ interface MeetingAgendaData {
 interface MemberLocalState {
   attendance: AttendanceStatus | null;
   amounts: Record<string, string>; // activity_id → amount string
+  notes: string;                   // notes personnelles sur ce membre
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -666,10 +667,12 @@ function MemberRow({
   const queryClient = useQueryClient();
 
   // ── Initialise local state from server snapshot ──
-  const serverAttendance = useMemo(
-    () => meeting.attendances.find((a) => a.membership_id === member.id)?.status ?? null,
+  const serverAttendanceObj = useMemo(
+    () => meeting.attendances.find((a) => a.membership_id === member.id),
     [meeting.attendances, member.id],
   );
+  const serverAttendance = serverAttendanceObj?.status ?? null;
+  const serverNotes = serverAttendanceObj?.notes ?? "";
   const serverEntries = useMemo(
     () => meeting.entries.filter((e) => e.membership_id === member.id && e.status !== "voided"),
     [meeting.entries, member.id],
@@ -683,6 +686,7 @@ function MemberRow({
   const [local, setLocal] = useState<MemberLocalState>({
     attendance: serverAttendance as AttendanceStatus | null,
     amounts: serverAmounts,
+    notes: serverNotes,
   });
 
   // Re-sync when the meeting snapshot changes (e.g. after a save).
@@ -690,12 +694,14 @@ function MemberRow({
     setLocal({
       attendance: serverAttendance as AttendanceStatus | null,
       amounts: serverAmounts,
+      notes: serverNotes,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverAttendance, JSON.stringify(serverAmounts)]);
+  }, [serverAttendance, serverNotes, JSON.stringify(serverAmounts)]);
 
   const dirty = useMemo(() => {
     if (local.attendance !== serverAttendance) return true;
+    if ((local.notes ?? "") !== (serverNotes ?? "")) return true;
     const keys = new Set([...Object.keys(local.amounts), ...Object.keys(serverAmounts)]);
     for (const k of keys) {
       const lv = (local.amounts[k] ?? "").trim();
@@ -707,7 +713,7 @@ function MemberRow({
       if (sv !== "" && lv !== "" && lv !== sv) return true;
     }
     return false;
-  }, [local, serverAttendance, serverAmounts]);
+  }, [local, serverAttendance, serverAmounts, serverNotes]);
 
   // Sum of locally-edited (or saved) amounts for this member.
   const memberTotal = useMemo(() => {
@@ -723,6 +729,7 @@ function MemberRow({
       meetingsApi.saveMember(meeting.id, {
         membership_id: member.id,
         attendance: local.attendance ?? undefined,
+        attendance_notes: local.notes.trim() || undefined,
         entries: Object.entries(local.amounts)
           .map(([activity_id, raw]) => {
             const amount = parseInt(raw, 10);
@@ -919,6 +926,29 @@ function MemberRow({
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Notes personnelles sur ce membre — saisies par le bureau, incluses
+              dans la section « Détail par membre » du PV PDF. */}
+          {(canEdit || local.notes) && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("memberNotes")}
+              </p>
+              {canEdit ? (
+                <Textarea
+                  value={local.notes}
+                  onChange={(e) => setLocal((s) => ({ ...s, notes: e.target.value }))}
+                  placeholder={t("memberNotesPlaceholder")}
+                  rows={3}
+                  maxLength={500}
+                />
+              ) : (
+                <p className="whitespace-pre-wrap rounded-md border border-border/40 bg-muted/30 px-3 py-2 text-sm">
+                  {local.notes}
+                </p>
               )}
             </div>
           )}

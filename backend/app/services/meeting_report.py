@@ -73,7 +73,7 @@ def _render_pdf(
 
     story: list = []
 
-    # ── En-tête ────────────────────────────────────────────────────────────
+    # ── 1. TITRE ───────────────────────────────────────────────────────────
     story.append(Paragraph(association.name, h2))
     story.append(Paragraph(f"PV — {meeting.title}", h1))
     story.append(
@@ -83,33 +83,43 @@ def _render_pdf(
             small,
         )
     )
+
+    # ── 2. RÉSUMÉ ──────────────────────────────────────────────────────────
+    story.append(Spacer(1, 0.5 * cm))
+    story.append(Paragraph("Résumé", h2))
+
+    by_status: dict[str, int] = {}
+    for a in meeting.attendances:
+        key = a.status.value if hasattr(a.status, "value") else str(a.status)
+        by_status[key] = by_status.get(key, 0) + 1
+    present_n = by_status.get("present", 0) + by_status.get("late", 0)
+    absent_n = by_status.get("absent", 0)
+    excused_n = by_status.get("excused", 0)
+    total_collected = sum(
+        e.amount for e in meeting.entries
+        if (e.status.value if hasattr(e.status, "value") else str(e.status)) != "voided"
+    )
+    summary_rows = [
+        ["Présents (incl. en retard)", str(present_n)],
+        ["Excusés", str(excused_n)],
+        ["Absents", str(absent_n)],
+        ["Total encaissé", f"{total_collected:,}".replace(",", " ") + f" {association.currency}"],
+    ]
+    summary_t = Table(summary_rows, colWidths=[8 * cm, 5 * cm])
+    summary_t.setStyle(_table_style())
+    story.append(summary_t)
+
     if meeting.description:
-        story.append(Spacer(1, 0.4 * cm))
+        story.append(Spacer(1, 0.35 * cm))
         story.append(Paragraph("<b>Ordre du jour :</b> " + meeting.description, body))
 
     if meeting.notes:
         story.append(Spacer(1, 0.4 * cm))
         story.append(Paragraph("Compte-rendu / Notes de séance", h2))
-        # Préserve les sauts de ligne.
         for paragraph in meeting.notes.replace("\r\n", "\n").split("\n\n"):
             if paragraph.strip():
                 story.append(Paragraph(paragraph.replace("\n", "<br/>"), body))
                 story.append(Spacer(1, 0.15 * cm))
-
-    # ── Présences ──────────────────────────────────────────────────────────
-    by_status: dict[str, int] = {}
-    for a in meeting.attendances:
-        key = a.status.value if hasattr(a.status, "value") else str(a.status)
-        by_status[key] = by_status.get(key, 0) + 1
-    if by_status:
-        story.append(Spacer(1, 0.5 * cm))
-        story.append(Paragraph("Présences", h2))
-        rows = [
-            [_ATTENDANCE_FR.get(k, k), str(v)] for k, v in sorted(by_status.items())
-        ]
-        t = Table([["Statut", "Nombre"], *rows], colWidths=[6 * cm, 3 * cm])
-        t.setStyle(_table_style())
-        story.append(t)
 
     # ── Détail par membre ──────────────────────────────────────────────────
     member_ids: set[UUID] = set()
@@ -120,7 +130,7 @@ def _render_pdf(
 
     if member_ids:
         story.append(Spacer(1, 0.6 * cm))
-        story.append(Paragraph("Détail par membre", h2))
+        story.append(Paragraph("3. Actions par membre", h2))
 
     att_by_member: dict[UUID, MeetingAttendance] = {a.membership_id: a for a in meeting.attendances}
     entries_by_member: dict[UUID, list[MeetingActivityEntry]] = {}
@@ -153,7 +163,14 @@ def _render_pdf(
         header_text = f"<b>{name}</b> &nbsp;&nbsp; <font color='#666'>{att_label}</font>"
         story.append(Paragraph(header_text, body))
         if att and att.notes:
-            story.append(Paragraph(f"<i>Note présence :</i> {att.notes}", small))
+            for paragraph in att.notes.replace("\r\n", "\n").split("\n\n"):
+                if paragraph.strip():
+                    story.append(
+                        Paragraph(
+                            "<i>Notes :</i> " + paragraph.replace("\n", "<br/>"),
+                            small,
+                        )
+                    )
         if att and att.excuse_reason:
             story.append(Paragraph(f"<i>Motif d'excuse :</i> {att.excuse_reason}", small))
 

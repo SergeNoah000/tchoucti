@@ -360,7 +360,9 @@
     "notesSave": "Enregistrer les notes",
     "notesSaved": "Notes enregistrées",
     "notesError": "Erreur lors de l'enregistrement des notes",
-    "notesEmpty": "Aucune note pour cette séance."
+    "notesEmpty": "Aucune note pour cette séance.",
+    "memberNotes": "Notes sur ce membre",
+    "memberNotesPlaceholder": "Décisions, échanges ou observations spécifiques à ce membre. Incluses dans le PV à la clôture."
   },
   "placeholder": {
     "comingSoon": "Bientôt disponible",

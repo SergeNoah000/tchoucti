@@ -360,7 +360,9 @@
     "notesSave": "Save notes",
     "notesSaved": "Notes saved",
     "notesError": "Could not save notes",
-    "notesEmpty": "No notes for this meeting."
+    "notesEmpty": "No notes for this meeting.",
+    "memberNotes": "Notes on this member",
+    "memberNotesPlaceholder": "Decisions, exchanges or observations specific to this member. Included in the minutes upon closing."
   },
   "placeholder": {
     "comingSoon": "Coming soon",

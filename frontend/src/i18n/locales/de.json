@@ -360,7 +360,9 @@
     "notesSave": "Notizen speichern",
     "notesSaved": "Notizen gespeichert",
     "notesError": "Notizen konnten nicht gespeichert werden",
-    "notesEmpty": "Keine Notizen zu dieser Sitzung."
+    "notesEmpty": "Keine Notizen zu dieser Sitzung.",
+    "memberNotes": "Notizen zu diesem Mitglied",
+    "memberNotesPlaceholder": "Entscheidungen, Austausche oder Beobachtungen zu diesem Mitglied. Werden beim Abschluss in das Protokoll übernommen."
   },
   "placeholder": {
     "comingSoon": "Demnächst verfügbar",
