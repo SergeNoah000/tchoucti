@@ -346,7 +346,21 @@
     "editConfirmTitle": "Bereits erfasste Daten bearbeiten?",
     "editConfirmDesc": "Für {name} wurden bereits Daten erfasst. Bei Bestätigung werden die bisherigen Einträge ersetzt und die Änderung wird im Sitzungsprotokoll erfasst.",
     "editConfirmCancel": "Abbrechen",
-    "editConfirmConfirm": "Änderung bestätigen"
+    "editConfirmConfirm": "Änderung bestätigen",
+    "recapTitle": "Sitzungs-Zusammenfassung",
+    "recapPresent": "Anwesend",
+    "recapLate": "Verspätet",
+    "recapExcused": "Entschuldigt",
+    "recapAbsent": "Abwesend",
+    "recapNoStatus": "Nicht gesetzt",
+    "recapAgenda": "Tagesordnung",
+    "notesTitle": "Sitzungsnotizen (Protokoll)",
+    "notesPlaceholder": "Beschlüsse, Diskussionen, nächste Schritte… Wird beim Abschluss in das PDF-Protokoll übernommen.",
+    "notesHint": "Sichtbar für alle Mitglieder, sobald die Sitzung geschlossen und das Protokoll erstellt ist.",
+    "notesSave": "Notizen speichern",
+    "notesSaved": "Notizen gespeichert",
+    "notesError": "Notizen konnten nicht gespeichert werden",
+    "notesEmpty": "Keine Notizen zu dieser Sitzung."
   },
   "placeholder": {
     "comingSoon": "Demnächst verfügbar",

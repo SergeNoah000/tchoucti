@@ -346,7 +346,21 @@
     "editConfirmTitle": "Modifier des données déjà enregistrées ?",
     "editConfirmDesc": "Des données ont déjà été saisies pour {name}. Si vous confirmez, l'ancienne saisie sera remplacée et la modification sera consignée dans le journal de la séance.",
     "editConfirmCancel": "Annuler",
-    "editConfirmConfirm": "Confirmer la modification"
+    "editConfirmConfirm": "Confirmer la modification",
+    "recapTitle": "Récap de la séance",
+    "recapPresent": "Présents",
+    "recapLate": "En retard",
+    "recapExcused": "Excusés",
+    "recapAbsent": "Absents",
+    "recapNoStatus": "Non renseigné",
+    "recapAgenda": "Ordre du jour",
+    "notesTitle": "Notes de séance (compte-rendu)",
+    "notesPlaceholder": "Décisions prises, débats, prochaines actions… Cette saisie est incluse dans le PV PDF à la clôture.",
+    "notesHint": "Visible par tous les membres une fois la séance clôturée et le PV généré.",
+    "notesSave": "Enregistrer les notes",
+    "notesSaved": "Notes enregistrées",
+    "notesError": "Erreur lors de l'enregistrement des notes",
+    "notesEmpty": "Aucune note pour cette séance."
   },
   "placeholder": {
     "comingSoon": "Bientôt disponible",

@@ -167,6 +167,10 @@ class Meeting(BaseModel):
         JSONB, default=dict, nullable=False, server_default=text("'{}'::jsonb")
     )
 
+    # Compte-rendu / minutes : texte libre saisi pendant ou après la séance
+    # (distinct de `description` qui sert d'ordre du jour). Inclus dans le PV PDF.
+    notes: Mapped[Optional[str]] = mapped_column(String(10000), nullable=True)
+
     # PDF du procès-verbal (URL MinIO)
     report_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     report_generated_at: Mapped[Optional[datetime]] = mapped_column(

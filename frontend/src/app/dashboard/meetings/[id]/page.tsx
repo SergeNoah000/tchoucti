@@ -22,6 +22,8 @@ import {
   Save,
   ArrowRight,
   XCircle,
+  FileText,
+  MessageSquare,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -181,6 +184,37 @@ export default function MeetingDetailPage() {
     [meeting?.entries],
   );
 
+  // ── Récap : breakdown des présences ──────────────────────────────────────
+  const recap = useMemo(() => {
+    const out = { present: 0, absent: 0, excused: 0, late: 0 };
+    for (const a of meeting?.attendances ?? []) {
+      if (a.status in out) out[a.status as keyof typeof out]++;
+    }
+    return out;
+  }, [meeting?.attendances]);
+  const noStatus = (meeting && memberships.length)
+    ? memberships.length - recap.present - recap.absent - recap.excused - recap.late
+    : 0;
+
+  // ── Notes de séance (compte-rendu) ───────────────────────────────────────
+  const [notesDraft, setNotesDraft] = useState<string>("");
+  const [notesInitialised, setNotesInitialised] = useState(false);
+  useEffect(() => {
+    if (meeting && !notesInitialised) {
+      setNotesDraft(meeting.notes ?? "");
+      setNotesInitialised(true);
+    }
+  }, [meeting, notesInitialised]);
+  const notesDirty = (meeting?.notes ?? "") !== notesDraft;
+  const saveNotes = useMutation({
+    mutationFn: () => meetingsApi.update(meeting!.id, { notes: notesDraft }),
+    onSuccess: () => {
+      toast.success(t("notesSaved"));
+      queryClient.invalidateQueries({ queryKey: meetingKey });
+    },
+    onError: () => toast.error(t("notesError")),
+  });
+
   // ── Member search ────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
   const filteredMembers = useMemo(() => {
@@ -329,6 +363,75 @@ export default function MeetingDetailPage() {
         />
       </div>
 
+      {/* Récap de la séance — breakdown des présences */}
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <FileText className="h-3.5 w-3.5" />
+            {t("recapTitle")}
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <RecapPill label={t("recapPresent")} value={recap.present} tone="emerald" />
+            <RecapPill label={t("recapLate")} value={recap.late} tone="amber" />
+            <RecapPill label={t("recapExcused")} value={recap.excused} tone="sky" />
+            <RecapPill label={t("recapAbsent")} value={recap.absent} tone="rose" />
+            <RecapPill label={t("recapNoStatus")} value={noStatus} tone="slate" />
+          </div>
+          {meeting.description && (
+            <p className="border-l-2 border-primary/30 pl-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{t("recapAgenda")} :</span>{" "}
+              {meeting.description}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Notes de séance — compte-rendu (bureau seulement) */}
+      {(canEdit || meeting.notes) && (
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <MessageSquare className="h-3.5 w-3.5" />
+                {t("notesTitle")}
+              </p>
+              {canEdit && notesDirty && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => saveNotes.mutate()}
+                  disabled={saveNotes.isPending}
+                >
+                  {saveNotes.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Save className="h-3.5 w-3.5" />
+                  )}
+                  {t("notesSave")}
+                </Button>
+              )}
+            </div>
+            {canEdit ? (
+              <>
+                <Textarea
+                  value={notesDraft}
+                  onChange={(e) => setNotesDraft(e.target.value)}
+                  placeholder={t("notesPlaceholder")}
+                  rows={6}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">{t("notesHint")}</p>
+              </>
+            ) : (
+              <p className="whitespace-pre-wrap text-sm text-foreground">
+                {meeting.notes || t("notesEmpty")}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Search */}
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -408,6 +511,33 @@ export default function MeetingDetailPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Recap pill (breakdown des présences) ─────────────────────────────────────
+
+const _PILL_TONES = {
+  emerald: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+  amber: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  sky: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200",
+  rose: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
+  slate: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+} as const;
+
+function RecapPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: keyof typeof _PILL_TONES;
+}) {
+  return (
+    <div className={`rounded-lg px-3 py-2 ${_PILL_TONES[tone]}`}>
+      <p className="text-[10px] uppercase tracking-wider opacity-80">{label}</p>
+      <p className="text-xl font-bold tabular-nums leading-tight">{value}</p>
     </div>
   );
 }

@@ -187,6 +187,7 @@ def _meeting_to_out(m: Meeting) -> MeetingOut:
         facilitator_id=m.facilitator_id,
         created_by_id=m.created_by_id,
         agenda=m.agenda,
+        notes=m.notes,
         report_url=m.report_url,
         total_in=m.total_in,
         total_out=m.total_out,

@@ -72,6 +72,7 @@ class MeetingUpdate(BaseModel):
     scheduled_on: Optional[date] = None
     location: Optional[str] = Field(None, max_length=255)
     agenda: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = Field(None, max_length=10000)
     facilitator_id: Optional[UUID] = None
     status: Optional[str] = None  # planned|ongoing|closed|cancelled
 
@@ -91,6 +92,7 @@ class MeetingOut(BaseModel):
     facilitator_id: Optional[UUID]
     created_by_id: Optional[UUID]
     agenda: Dict[str, Any]
+    notes: Optional[str] = None
     report_url: Optional[str]
     total_in: int
     total_out: int

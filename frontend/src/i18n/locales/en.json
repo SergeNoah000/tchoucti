@@ -346,7 +346,21 @@
     "editConfirmTitle": "Edit data already recorded?",
     "editConfirmDesc": "Data was already entered for {name}. If you confirm, the previous entry will be replaced and this change will be logged in the meeting log.",
     "editConfirmCancel": "Cancel",
-    "editConfirmConfirm": "Confirm edit"
+    "editConfirmConfirm": "Confirm edit",
+    "recapTitle": "Meeting recap",
+    "recapPresent": "Present",
+    "recapLate": "Late",
+    "recapExcused": "Excused",
+    "recapAbsent": "Absent",
+    "recapNoStatus": "Not set",
+    "recapAgenda": "Agenda",
+    "notesTitle": "Meeting notes (minutes)",
+    "notesPlaceholder": "Decisions made, debates, next actions… This is included in the PDF minutes upon closing.",
+    "notesHint": "Visible to all members once the meeting is closed and the report is generated.",
+    "notesSave": "Save notes",
+    "notesSaved": "Notes saved",
+    "notesError": "Could not save notes",
+    "notesEmpty": "No notes for this meeting."
   },
   "placeholder": {
     "comingSoon": "Coming soon",

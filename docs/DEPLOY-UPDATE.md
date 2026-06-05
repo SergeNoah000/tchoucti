@@ -102,6 +102,7 @@ $DC up -d                    # recrée tables + seed démo (init_db)
      ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date DATE;
      ALTER TABLE users ADD COLUMN IF NOT EXISTS profession VARCHAR(150);
      ALTER TABLE meetings ADD COLUMN IF NOT EXISTS edit_history JSONB NOT NULL DEFAULT '[]'::jsonb;
+     ALTER TABLE meetings ADD COLUMN IF NOT EXISTS notes VARCHAR(10000);
      ALTER TABLE caisses  ADD COLUMN IF NOT EXISTS interest_distribution VARCHAR(30) NOT NULL DEFAULT 'kept';
      ALTER TABLE caisses  ADD COLUMN IF NOT EXISTS distribution_period   VARCHAR(30) NOT NULL DEFAULT 'per_meeting';
      ALTER TABLE caisses  ADD COLUMN IF NOT EXISTS withdrawal_mode       VARCHAR(30) NOT NULL DEFAULT 'never';

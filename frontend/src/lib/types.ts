@@ -443,6 +443,7 @@ export interface Meeting {
   facilitator_id?: UUID | null;
   created_by_id?: UUID | null;
   agenda: Record<string, unknown>;
+  notes?: string | null;
   report_url?: string | null;
   total_in: number;
   total_out: number;

@@ -85,7 +85,16 @@ def _render_pdf(
     )
     if meeting.description:
         story.append(Spacer(1, 0.4 * cm))
-        story.append(Paragraph(meeting.description, body))
+        story.append(Paragraph("<b>Ordre du jour :</b> " + meeting.description, body))
+
+    if meeting.notes:
+        story.append(Spacer(1, 0.4 * cm))
+        story.append(Paragraph("Compte-rendu / Notes de séance", h2))
+        # Préserve les sauts de ligne.
+        for paragraph in meeting.notes.replace("\r\n", "\n").split("\n\n"):
+            if paragraph.strip():
+                story.append(Paragraph(paragraph.replace("\n", "<br/>"), body))
+                story.append(Spacer(1, 0.15 * cm))
 
     # ── Présences ──────────────────────────────────────────────────────────
     by_status: dict[str, int] = {}
