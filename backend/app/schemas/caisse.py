@@ -156,3 +156,16 @@ class CaisseDistributionOut(BaseModel):
     closed_at: datetime
     closed_by_id: Optional[UUID] = None
     shares: List[CaisseDistributionShareOut] = []
+
+
+class CaisseWithdrawRequest(BaseModel):
+    membership_id: UUID
+    amount: int = Field(..., gt=0)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class CaisseWithdrawResponse(BaseModel):
+    movement_id: UUID
+    amount: int
+    apport_cum_after: int
+    fund_balance_after: int

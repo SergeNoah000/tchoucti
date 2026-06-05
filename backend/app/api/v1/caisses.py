@@ -30,7 +30,10 @@ from app.models.caisse import (
     CaisseDistribution,
     CaisseDistributionShare,
     InterestDistribution,
+    WithdrawalMode,
 )
+from app.models.finance import MovementDirection
+from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.models.finance import Fund, FundKind, Treasury
 from app.models.role import Membership
 from app.models.user import User
@@ -41,6 +44,8 @@ from app.schemas.caisse import (
     CaisseDistributionShareOut,
     CaisseOut,
     CaisseUpdate,
+    CaisseWithdrawRequest,
+    CaisseWithdrawResponse,
 )
 from app.services.caisse_distribution import close_distribution_period
 from app.services.meeting_agenda import upsert_caisse_activity
@@ -464,4 +469,107 @@ async def close_distribution(
         closed_at=dist.closed_at,
         closed_by_id=dist.closed_by_id,
         shares=shares,
+    )
+
+
+@router.post("/{caisse_id}/withdraw", response_model=CaisseWithdrawResponse)
+async def withdraw(
+    caisse_id: UUID,
+    payload: CaisseWithdrawRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retrait d'apport d'un cotisant selon le `withdrawal_mode` de la caisse :
+    - `never`              : refusé.
+    - `anytime_if_liquid`  : autorisé tant que fund.balance ≥ montant ET
+                             apport_cum ≥ montant.
+    - `end_of_period_only` : autorisé uniquement si aucun nouvel apport
+                             depuis la dernière distribution
+                             (apport_cum_at_period_start == apport_cum) ET
+                             last_distribution_at non null.
+
+    Les `interest_cum` ne sont jamais retirables (rendement « papier »)."""
+    cres = await db.execute(select(Caisse).where(Caisse.id == caisse_id))
+    caisse = cres.scalar_one_or_none()
+    if not caisse:
+        raise HTTPException(404, "Caisse introuvable")
+    assoc = await _check_access(db, current_user, caisse.association_id)
+
+    # Auth : un membre retire pour lui-même ; un admin peut retirer pour un autre.
+    mem_res = await db.execute(
+        select(Membership).where(
+            Membership.id == payload.membership_id,
+            Membership.association_id == caisse.association_id,
+        )
+    )
+    membership = mem_res.scalar_one_or_none()
+    if not membership:
+        raise HTTPException(422, "Membre introuvable dans cette association")
+    is_admin = current_user.is_super_admin or current_user.is_groupement_admin
+    if not is_admin:
+        from app.api.deps import _user_is_association_admin
+        is_admin = await _user_is_association_admin(db, current_user, caisse.association_id)
+    if not is_admin and membership.user_id != current_user.id:
+        raise HTTPException(403, "Vous ne pouvez retirer que vos propres apports.")
+
+    # Mode
+    if caisse.withdrawal_mode == WithdrawalMode.NEVER.value:
+        raise HTTPException(409, "Cette caisse n'autorise pas les retraits.")
+
+    # Solde cotisant
+    bal_res = await db.execute(
+        select(CaisseContributorBalance).where(
+            CaisseContributorBalance.caisse_id == caisse.id,
+            CaisseContributorBalance.membership_id == payload.membership_id,
+        )
+    )
+    bal = bal_res.scalar_one_or_none()
+    if bal is None or bal.apport_cum < payload.amount:
+        raise HTTPException(409, "Apport cumulé insuffisant pour ce retrait.")
+
+    # Mode end_of_period_only
+    if caisse.withdrawal_mode == WithdrawalMode.END_OF_PERIOD_ONLY.value:
+        if caisse.last_distribution_at is None:
+            raise HTTPException(409, "Aucune période clôturée — retrait non disponible.")
+        if bal.apport_cum_at_period_start != bal.apport_cum:
+            raise HTTPException(
+                409,
+                "Retrait possible uniquement en fin de période, avant tout nouvel apport.",
+            )
+
+    # Liquidité (pour les deux modes autorisés)
+    fund_res = await db.execute(select(Fund).where(Fund.id == caisse.fund_id))
+    fund = fund_res.scalar_one_or_none()
+    if not fund or fund.balance < payload.amount:
+        raise HTTPException(409, "Solde de la caisse insuffisant pour ce retrait.")
+
+    # Mouvement OUT
+    treasury = await get_or_create_treasury(db, assoc)
+    movement = await post_movement(
+        db,
+        treasury=treasury,
+        direction=MovementDirection.OUT,
+        amount=payload.amount,
+        allocations=[Allocation(fund=fund, is_credit=False, amount=payload.amount)],
+        occurred_on=_date.today(),
+        source_type="caisse_withdrawal",
+        source_id=caisse.id,
+        recorded_by_id=current_user.id,
+        related_membership_id=membership.id,
+        description=payload.note or f"Retrait apport — {caisse.name}",
+        commit=False,
+    )
+
+    # Décrémente apport_cum + snapshot (pour ne pas surévaluer la prochaine base).
+    bal.apport_cum -= payload.amount
+    bal.apport_cum_at_period_start = max(
+        0, bal.apport_cum_at_period_start - payload.amount
+    )
+    await db.commit()
+    await db.refresh(fund)
+    return CaisseWithdrawResponse(
+        movement_id=movement.id,
+        amount=payload.amount,
+        apport_cum_after=bal.apport_cum,
+        fund_balance_after=fund.balance,
     )
