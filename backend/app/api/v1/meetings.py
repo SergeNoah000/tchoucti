@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
-from app.models.caisse import Caisse
+from app.models.caisse import Caisse, CaisseContributorBalance
 from app.models.finance import Fund, FundKind, MovementDirection
 from app.models.loan import Loan, LoanInstallment, LoanInstallmentStatus, LoanStatus
 from app.models.role import Membership, MembershipStatus
@@ -476,6 +476,18 @@ async def close_meeting(
     )
     activities = {a.id: a for a in act_res.scalars().all()}
 
+    # Phase 7 (Fred) — tracking apport_cum par cotisant. On garde la valeur pour
+    # toutes les caisses (sauf TONTINE qui a sa logique cycle/tour). L'admin
+    # peut basculer la caisse en mode SHARED_PRO_RATA quand il veut : le
+    # compteur est déjà à jour.
+    caisses_by_fund_id: dict = {}
+    caisse_rows = await db.execute(
+        select(Caisse).where(Caisse.association_id == m.association_id)
+    )
+    for c in caisse_rows.scalars().all():
+        caisses_by_fund_id[c.fund_id] = c
+    ccb_cache: dict[tuple, CaisseContributorBalance] = {}
+
     total_in = 0
     for entry in m.entries:
         if entry.status == EntryStatus.VOIDED or entry.movement_id is not None:
@@ -502,6 +514,32 @@ async def close_meeting(
         )
         entry.movement_id = movement.id
         total_in += entry.amount
+
+        # apport_cum tracking (Phase 7).
+        caisse = caisses_by_fund_id.get(fund.id)
+        if caisse and fund.kind != FundKind.TONTINE:
+            key = (caisse.id, entry.membership_id)
+            bal = ccb_cache.get(key)
+            if bal is None:
+                res = await db.execute(
+                    select(CaisseContributorBalance).where(
+                        CaisseContributorBalance.caisse_id == caisse.id,
+                        CaisseContributorBalance.membership_id == entry.membership_id,
+                    )
+                )
+                bal = res.scalar_one_or_none()
+                if bal is None:
+                    bal = CaisseContributorBalance(
+                        caisse_id=caisse.id,
+                        membership_id=entry.membership_id,
+                        apport_cum=0,
+                        apport_cum_at_period_start=0,
+                        interest_cum=0,
+                    )
+                    db.add(bal)
+                    await db.flush()
+                ccb_cache[key] = bal
+            bal.apport_cum += entry.amount
 
     m.status = MeetingStatus.CLOSED
     m.closed_at = now
