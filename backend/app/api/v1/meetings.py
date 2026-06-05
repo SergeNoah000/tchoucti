@@ -557,6 +557,27 @@ async def close_meeting(
         recorded_by=current_user,
     )
 
+    # Phase 7 (Fred) — auto-trigger des distributions sur les caisses SHARED_PRO_RATA
+    # dont la cadence est due (per_meeting / fin de mois / fin de trimestre / fin
+    # d'année). Échec individuel silencieux pour ne pas bloquer la clôture.
+    from app.services.caisse_distribution import close_distribution_period, is_period_due
+
+    for caisse in caisses_by_fund_id.values():
+        try:
+            if is_period_due(caisse, m.scheduled_on):
+                await close_distribution_period(
+                    db,
+                    caisse=caisse,
+                    period_end=m.scheduled_on,
+                    closed_by=current_user,
+                    meeting_title=m.title,
+                )
+        except Exception:  # pragma: no cover — best effort.
+            import logging
+            logging.getLogger(__name__).exception(
+                "Échec de l'auto-distribution pour la caisse %s", caisse.id
+            )
+
     # Rolling auto-extension: if the future-PLANNED window has fallen below the
     # configured horizon, top it up by one. Cheap (one row added).
     await _auto_extend_planning(db, assoc)
