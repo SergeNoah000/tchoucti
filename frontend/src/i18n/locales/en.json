@@ -362,7 +362,15 @@
     "notesError": "Could not save notes",
     "notesEmpty": "No notes for this meeting.",
     "memberNotes": "Notes on this member",
-    "memberNotesPlaceholder": "Decisions, exchanges or observations specific to this member. Included in the minutes upon closing."
+    "memberNotesPlaceholder": "Decisions, exchanges or observations specific to this member. Included in the minutes upon closing.",
+    "attachMeetingTitle": "Meeting attachments",
+    "attachMemberTitle": "Member attachments",
+    "attachEmpty": "No attachment.",
+    "attachAdd": "Add a file / photo",
+    "attachDownload": "Download",
+    "attachUploaded": "File uploaded",
+    "attachError": "Upload failed",
+    "attachTooLarge": "{name} exceeds the 20 MB limit."
   },
   "placeholder": {
     "comingSoon": "Coming soon",

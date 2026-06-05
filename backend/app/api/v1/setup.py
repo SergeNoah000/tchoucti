@@ -181,17 +181,21 @@ async def delete_criterion(
 @router.get("/{association_id}/documents", response_model=List[DocumentOut])
 async def list_documents(
     association_id: UUID,
+    meeting_id: UUID | None = None,
+    membership_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     assoc = await _get_assoc(db, association_id)
     if not current_user.is_super_admin and current_user.groupement_id != assoc.groupement_id:
         raise HTTPException(403, "Forbidden")
-    res = await db.execute(
-        select(Document)
-        .where(Document.association_id == association_id)
-        .order_by(Document.created_at.desc())
-    )
+    stmt = select(Document).where(Document.association_id == association_id)
+    if meeting_id is not None:
+        stmt = stmt.where(Document.meeting_id == meeting_id)
+    if membership_id is not None:
+        stmt = stmt.where(Document.membership_id == membership_id)
+    stmt = stmt.order_by(Document.created_at.desc())
+    res = await db.execute(stmt)
     return list(res.scalars().all())
 
 
@@ -207,10 +211,14 @@ async def upload_document(
     kind: str = Form("autre"),
     description: str | None = Form(None),
     visibility: str = Form("members"),
+    meeting_id: UUID | None = Form(None),
+    membership_id: UUID | None = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_association_admin_for),
 ):
-    """Upload a legal document to MinIO and attach it to the association."""
+    """Upload un document (statut, photo, pièce jointe de séance...). Si
+    meeting_id et/ou membership_id sont fournis, le document est rattaché à
+    cette séance / ce membre."""
     await _get_assoc(db, association_id)
     contents = await file.read()
     if not contents:
@@ -218,8 +226,11 @@ async def upload_document(
     if len(contents) > 20 * 1024 * 1024:
         raise HTTPException(413, "Fichier trop volumineux (max 20 MB)")
 
+    key_prefix = f"associations/{association_id}/documents"
+    if meeting_id:
+        key_prefix = f"associations/{association_id}/meetings/{meeting_id}"
     url, _key, size = upload_bytes(
-        key_prefix=f"associations/{association_id}/documents",
+        key_prefix=key_prefix,
         filename=file.filename or "document",
         data=contents,
         content_type=file.content_type,
@@ -241,6 +252,8 @@ async def upload_document(
         file_size=size,
         visibility=vis,
         uploaded_by_id=current_user.id,
+        meeting_id=meeting_id,
+        membership_id=membership_id,
     )
     db.add(doc)
     await db.commit()

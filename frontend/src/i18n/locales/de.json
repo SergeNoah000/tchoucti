@@ -362,7 +362,15 @@
     "notesError": "Notizen konnten nicht gespeichert werden",
     "notesEmpty": "Keine Notizen zu dieser Sitzung.",
     "memberNotes": "Notizen zu diesem Mitglied",
-    "memberNotesPlaceholder": "Entscheidungen, Austausche oder Beobachtungen zu diesem Mitglied. Werden beim Abschluss in das Protokoll übernommen."
+    "memberNotesPlaceholder": "Entscheidungen, Austausche oder Beobachtungen zu diesem Mitglied. Werden beim Abschluss in das Protokoll übernommen.",
+    "attachMeetingTitle": "Sitzungs-Anhänge",
+    "attachMemberTitle": "Mitglieder-Anhänge",
+    "attachEmpty": "Kein Anhang.",
+    "attachAdd": "Datei / Foto hinzufügen",
+    "attachDownload": "Herunterladen",
+    "attachUploaded": "Datei hochgeladen",
+    "attachError": "Upload fehlgeschlagen",
+    "attachTooLarge": "{name} überschreitet das 20-MB-Limit."
   },
   "placeholder": {
     "comingSoon": "Demnächst verfügbar",

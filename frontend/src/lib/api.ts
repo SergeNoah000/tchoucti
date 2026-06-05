@@ -207,21 +207,28 @@ export const setupApi = {
   deleteCriterion: async (associationId: string, criterionId: string) =>
     (await api.delete(`/associations/${associationId}/criteria/${criterionId}`)).data,
 
-  // Documents légaux
-  listDocuments: async (associationId: string) =>
-    (await api.get(`/associations/${associationId}/documents`)).data,
+  // Documents (statuts, ROI, pièces jointes de séance, photos…)
+  listDocuments: async (
+    associationId: string,
+    filters?: { meeting_id?: string; membership_id?: string },
+  ) =>
+    (await api.get(`/associations/${associationId}/documents`, {
+      params: filters,
+    })).data,
   uploadDocument: async (
     associationId: string,
     file: File,
     title: string,
     kind: string,
-    description?: string,
+    opts?: { description?: string; meeting_id?: string; membership_id?: string },
   ) => {
     const fd = new FormData();
     fd.append("file", file);
     fd.append("title", title);
     fd.append("kind", kind);
-    if (description) fd.append("description", description);
+    if (opts?.description) fd.append("description", opts.description);
+    if (opts?.meeting_id) fd.append("meeting_id", opts.meeting_id);
+    if (opts?.membership_id) fd.append("membership_id", opts.membership_id);
     return (
       await api.post(`/associations/${associationId}/documents`, fd, {
         headers: { "Content-Type": "multipart/form-data" },

@@ -66,4 +66,6 @@ class DocumentOut(BaseModel):
     file_size: int
     visibility: str
     uploaded_by_id: Optional[UUID] = None
+    meeting_id: Optional[UUID] = None
+    membership_id: Optional[UUID] = None
     created_at: datetime

@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { MeetingAttachments } from "@/components/meetings/meeting-attachments";
 import {
   Dialog,
   DialogContent,
@@ -384,6 +385,17 @@ export default function MeetingDetailPage() {
               {meeting.description}
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Pièces jointes globales à la séance */}
+      <Card>
+        <CardContent className="p-4">
+          <MeetingAttachments
+            associationId={meeting.association_id}
+            meetingId={meeting.id}
+            canUpload={canEdit}
+          />
         </CardContent>
       </Card>
 
@@ -952,6 +964,14 @@ function MemberRow({
               )}
             </div>
           )}
+
+          {/* Pièces jointes spécifiques à ce membre dans cette séance. */}
+          <MeetingAttachments
+            associationId={meeting.association_id}
+            meetingId={meeting.id}
+            membershipId={member.id}
+            canUpload={canEdit}
+          />
 
           {/* Footer actions */}
           {canEdit && (

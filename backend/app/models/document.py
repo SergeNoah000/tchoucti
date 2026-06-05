@@ -55,6 +55,11 @@ class Document(BaseModel):
     meeting_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("meetings.id", ondelete="SET NULL"), nullable=True
     )
+    # Per-member attachment within a meeting (pièce jointe sur un membre lors
+    # d'une séance). Combiné à meeting_id quand applicable.
+    membership_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True
+    )
     loan_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("loans.id", ondelete="SET NULL"), nullable=True
     )
