@@ -212,3 +212,78 @@ async def send_invitation_email(
     """)
 
     await send_email(to=to, subject=subject, text_body=text_body, html_body=html_body)
+
+
+async def send_meeting_recap_email(
+    *,
+    to: str,
+    member_name: Optional[str],
+    association_name: str,
+    meeting_title: str,
+    meeting_date: str,
+    presents: int,
+    absents: int,
+    excused: int,
+    total_collected: str,
+    agenda: Optional[str],
+    notes: Optional[str],
+    report_url: Optional[str],
+) -> None:
+    """Récap envoyé à chaque membre à la clôture d'une séance."""
+    greet = f"Bonjour {member_name}," if member_name else "Bonjour,"
+    subject = f"Récap — {meeting_title} ({association_name})"
+
+    agenda_block = f"Ordre du jour : {agenda}\n" if agenda else ""
+    notes_excerpt = ""
+    if notes:
+        excerpt = notes if len(notes) <= 600 else notes[:600].rstrip() + "…"
+        notes_excerpt = f"\nCompte-rendu :\n{excerpt}\n"
+    report_line = (
+        f"\nProcès-verbal complet : {report_url}\n" if report_url else ""
+    )
+
+    text_body = (
+        f"{greet}\n\n"
+        f"La séance « {meeting_title} » du {meeting_date} vient d'être clôturée.\n\n"
+        f"Présents : {presents}  |  Excusés : {excused}  |  Absents : {absents}\n"
+        f"Total encaissé : {total_collected}\n\n"
+        f"{agenda_block}"
+        f"{notes_excerpt}"
+        f"{report_line}"
+        f"\n— {association_name}\n"
+    )
+
+    agenda_html = (
+        f"<p style='margin:0 0 8px;'><strong>Ordre du jour :</strong> {agenda}</p>"
+        if agenda else ""
+    )
+    notes_html = ""
+    if notes:
+        excerpt_html = (notes if len(notes) <= 600 else notes[:600].rstrip() + "…").replace("\n", "<br/>")
+        notes_html = (
+            "<p style='margin:16px 0 4px;font-weight:600;'>Compte-rendu</p>"
+            f"<p style='margin:0 0 12px;color:#334155;'>{excerpt_html}</p>"
+        )
+    report_html = (
+        f"<p style='margin:16px 0 0;text-align:center;'>"
+        f"<a href='{report_url}' style='display:inline-block;background:#0d9488;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;'>Télécharger le PV complet</a>"
+        f"</p>" if report_url else ""
+    )
+
+    html_body = _wrap_html(
+        f"<p style='margin:0 0 12px;font-size:18px;font-weight:600;'>{greet}</p>"
+        f"<p style='margin:0 0 16px;'>La séance <strong>{meeting_title}</strong> du <strong>{meeting_date}</strong> vient d'être clôturée.</p>"
+        "<table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='border-collapse:separate;border-spacing:8px 0;margin:0 0 12px;'>"
+        f"<tr>"
+        f"<td style='background:#ecfdf5;border-radius:8px;padding:10px;'><div style='font-size:11px;color:#065f46;text-transform:uppercase;letter-spacing:0.05em;'>Présents</div><div style='font-size:20px;font-weight:700;color:#065f46;'>{presents}</div></td>"
+        f"<td style='background:#eff6ff;border-radius:8px;padding:10px;'><div style='font-size:11px;color:#1e40af;text-transform:uppercase;letter-spacing:0.05em;'>Excusés</div><div style='font-size:20px;font-weight:700;color:#1e40af;'>{excused}</div></td>"
+        f"<td style='background:#fef2f2;border-radius:8px;padding:10px;'><div style='font-size:11px;color:#991b1b;text-transform:uppercase;letter-spacing:0.05em;'>Absents</div><div style='font-size:20px;font-weight:700;color:#991b1b;'>{absents}</div></td>"
+        "</tr></table>"
+        f"<p style='margin:0 0 16px;font-size:15px;'><strong>Total encaissé :</strong> {total_collected}</p>"
+        f"{agenda_html}"
+        f"{notes_html}"
+        f"{report_html}"
+        f"<p style='margin:24px 0 0;color:#64748b;'>— {association_name}</p>"
+    )
+
+    await send_email(to=to, subject=subject, text_body=text_body, html_body=html_body)

@@ -579,12 +579,70 @@ async def close_meeting(
                 "Échec de l'auto-distribution pour la caisse %s", caisse.id
             )
 
+    # ── Email de récap envoyé à tous les membres actifs ──────────────────────
+    # Calculé maintenant pour pouvoir passer les chiffres au mailer après commit.
+    by_status: dict[str, int] = {}
+    for a in m.attendances:
+        key = a.status.value if hasattr(a.status, "value") else str(a.status)
+        by_status[key] = by_status.get(key, 0) + 1
+    recap_present = by_status.get("present", 0) + by_status.get("late", 0)
+    recap_absent = by_status.get("absent", 0)
+    recap_excused = by_status.get("excused", 0)
+    recap_total_str = f"{total_in:,}".replace(",", " ") + f" {assoc.currency}"
+    recap_title = m.title
+    recap_notes = m.notes
+    recap_agenda = m.description
+    recap_report_url = m.report_url
+    recap_date_str = m.scheduled_on.strftime("%d/%m/%Y")
+
     # Rolling auto-extension: if the future-PLANNED window has fallen below the
     # configured horizon, top it up by one. Cheap (one row added).
     await _auto_extend_planning(db, assoc)
 
     await db.commit()
     await db.refresh(m)
+
+    # ── Notification email de récap (post-commit, best effort) ──────────────
+    try:
+        from app.services.mailer import MailError, send_meeting_recap_email
+        from app.models.user import User as _User
+
+        members_res = await db.execute(
+            select(Membership, _User)
+            .join(_User, _User.id == Membership.user_id)
+            .where(
+                Membership.association_id == assoc.id,
+                Membership.status == MembershipStatus.ACTIVE,
+                _User.is_active.is_(True),
+                _User.email.is_not(None),
+            )
+        )
+        for mem, usr in members_res.all():
+            if not usr.email:
+                continue
+            try:
+                await send_meeting_recap_email(
+                    to=usr.email,
+                    member_name=usr.full_name,
+                    association_name=assoc.name,
+                    meeting_title=recap_title,
+                    meeting_date=recap_date_str,
+                    presents=recap_present,
+                    absents=recap_absent,
+                    excused=recap_excused,
+                    total_collected=recap_total_str,
+                    agenda=recap_agenda,
+                    notes=recap_notes,
+                    report_url=recap_report_url,
+                )
+            except MailError:
+                pass  # SMTP down → on continue avec les autres membres
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "Échec de l'envoi du récap de clôture (séance %s)", m.id
+        )
+
     return _meeting_to_out(m)
 
 
