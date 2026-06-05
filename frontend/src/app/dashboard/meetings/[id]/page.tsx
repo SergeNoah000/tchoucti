@@ -831,29 +831,33 @@ function MemberRow({
             </div>
           )}
         </CollapsibleContent>
-      </div>
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("editConfirmTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("editConfirmDesc", { name: member.user.full_name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("editConfirmCancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setConfirmOpen(false);
-                void doSave(pendingNext);
-              }}
-            >
-              {t("editConfirmConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* L'AlertDialog DOIT rester à l'intérieur du <div> parent : Collapsible
+            est utilisé avec `asChild` (cf. ligne ouvrante) et n'accepte qu'un
+            seul enfant — Radix Slot appelle React.Children.only(). Le dialog
+            étant rendu via portail, sa position DOM n'a pas d'impact visuel. */}
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("editConfirmTitle")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("editConfirmDesc", { name: member.user.full_name })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t("editConfirmCancel")}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  setConfirmOpen(false);
+                  void doSave(pendingNext);
+                }}
+              >
+                {t("editConfirmConfirm")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </Collapsible>
   );
 }
