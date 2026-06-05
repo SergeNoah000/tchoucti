@@ -23,10 +23,26 @@ from app.api.deps import (
     require_association_admin_for,
 )
 from app.models.association import Association
-from app.models.caisse import Caisse, CaisseCategory
+from app.models.caisse import (
+    Caisse,
+    CaisseCategory,
+    CaisseContributorBalance,
+    CaisseDistribution,
+    CaisseDistributionShare,
+    InterestDistribution,
+)
 from app.models.finance import Fund, FundKind, Treasury
+from app.models.role import Membership
 from app.models.user import User
-from app.schemas.caisse import CaisseCreate, CaisseOut, CaisseUpdate
+from app.schemas.caisse import (
+    CaisseContributorBalanceOut,
+    CaisseCreate,
+    CaisseDistributionOut,
+    CaisseDistributionShareOut,
+    CaisseOut,
+    CaisseUpdate,
+)
+from app.services.caisse_distribution import close_distribution_period
 from app.services.meeting_agenda import upsert_caisse_activity
 
 router = APIRouter()
@@ -166,6 +182,9 @@ async def create_caisse(
         has_objective=payload.has_objective,
         objective_amount=payload.objective_amount,
         objective_deadline=payload.objective_deadline,
+        interest_distribution=payload.interest_distribution.value,
+        distribution_period=payload.distribution_period.value,
+        withdrawal_mode=payload.withdrawal_mode.value,
     )
     db.add(caisse)
     await db.flush()
@@ -283,3 +302,166 @@ async def delete_caisse(
     if fund:
         await db.delete(fund)
     await db.commit()
+
+
+# ── Phase 7 (Fred) ──────────────────────────────────────────────────────────
+
+from datetime import date as _date  # local pour ne pas polluer le haut
+from sqlalchemy.orm import selectinload  # local pour le chargement des shares
+
+
+@router.get("/{caisse_id}/contributors", response_model=List[CaisseContributorBalanceOut])
+async def list_contributors(
+    caisse_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Sous-soldes (apport_cum, interest_cum) par cotisant d'une caisse.
+    Accessible à toute personne ayant accès à l'association."""
+    cres = await db.execute(select(Caisse).where(Caisse.id == caisse_id))
+    caisse = cres.scalar_one_or_none()
+    if not caisse:
+        raise HTTPException(404, "Caisse introuvable")
+    await _check_access(db, current_user, caisse.association_id)
+
+    res = await db.execute(
+        select(CaisseContributorBalance, Membership)
+        .join(Membership, Membership.id == CaisseContributorBalance.membership_id)
+        .options(selectinload(Membership.user))
+        .where(CaisseContributorBalance.caisse_id == caisse_id)
+        .order_by(CaisseContributorBalance.created_at.asc())
+    )
+    out: List[CaisseContributorBalanceOut] = []
+    for bal, mem in res.all():
+        out.append(
+            CaisseContributorBalanceOut(
+                membership_id=bal.membership_id,
+                member_name=mem.user.full_name if mem and mem.user else None,
+                apport_cum=bal.apport_cum,
+                apport_cum_at_period_start=bal.apport_cum_at_period_start,
+                interest_cum=bal.interest_cum,
+            )
+        )
+    return out
+
+
+@router.get("/{caisse_id}/distributions", response_model=List[CaisseDistributionOut])
+async def list_distributions(
+    caisse_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Historique des distributions d'intérêts sur une caisse (mode partagé)."""
+    cres = await db.execute(select(Caisse).where(Caisse.id == caisse_id))
+    caisse = cres.scalar_one_or_none()
+    if not caisse:
+        raise HTTPException(404, "Caisse introuvable")
+    await _check_access(db, current_user, caisse.association_id)
+
+    res = await db.execute(
+        select(CaisseDistribution)
+        .options(
+            selectinload(CaisseDistribution.shares)
+            .selectinload(CaisseDistributionShare.membership)
+            .selectinload(Membership.user)
+        )
+        .where(CaisseDistribution.caisse_id == caisse_id)
+        .order_by(CaisseDistribution.closed_at.desc())
+    )
+    out: List[CaisseDistributionOut] = []
+    for dist in res.scalars().all():
+        shares = []
+        for s in dist.shares:
+            name = None
+            if s.membership and s.membership.user:
+                name = s.membership.user.full_name
+            shares.append(
+                CaisseDistributionShareOut(
+                    membership_id=s.membership_id,
+                    member_name=name,
+                    base=s.base,
+                    share_amount=s.share_amount,
+                )
+            )
+        out.append(
+            CaisseDistributionOut(
+                id=dist.id,
+                caisse_id=dist.caisse_id,
+                period_start=dist.period_start,
+                period_end=dist.period_end,
+                period_label=dist.period_label,
+                interest_pool=dist.interest_pool,
+                total_base=dist.total_base,
+                closed_at=dist.closed_at,
+                closed_by_id=dist.closed_by_id,
+                shares=shares,
+            )
+        )
+    return out
+
+
+@router.post("/{caisse_id}/close-distribution", response_model=CaisseDistributionOut)
+async def close_distribution(
+    caisse_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Clôture manuelle de la période courante d'une caisse en mode SHARED_PRO_RATA :
+    calcule l'intérêt encaissé sur la période et redistribue au prorata."""
+    cres = await db.execute(select(Caisse).where(Caisse.id == caisse_id))
+    caisse = cres.scalar_one_or_none()
+    if not caisse:
+        raise HTTPException(404, "Caisse introuvable")
+    await _check_access(db, current_user, caisse.association_id)
+    if not (current_user.is_super_admin or current_user.is_groupement_admin):
+        from app.api.deps import _user_is_association_admin
+        if not await _user_is_association_admin(db, current_user, caisse.association_id):
+            raise HTTPException(403, "Réservé à l'admin de cette association")
+
+    if caisse.interest_distribution != InterestDistribution.SHARED_PRO_RATA.value:
+        raise HTTPException(409, "La caisse n'est pas en mode rendement partagé.")
+
+    dist = await close_distribution_period(
+        db,
+        caisse=caisse,
+        period_end=_date.today(),
+        closed_by=current_user,
+    )
+    await db.commit()
+
+    # Recharger pour les shares avec nom
+    res = await db.execute(
+        select(CaisseDistribution)
+        .options(
+            selectinload(CaisseDistribution.shares)
+            .selectinload(CaisseDistributionShare.membership)
+            .selectinload(Membership.user)
+        )
+        .where(CaisseDistribution.id == dist.id)
+    )
+    dist = res.scalar_one()
+    shares = []
+    for s in dist.shares:
+        name = None
+        if s.membership and s.membership.user:
+            name = s.membership.user.full_name
+        shares.append(
+            CaisseDistributionShareOut(
+                membership_id=s.membership_id,
+                member_name=name,
+                base=s.base,
+                share_amount=s.share_amount,
+            )
+        )
+    return CaisseDistributionOut(
+        id=dist.id,
+        caisse_id=dist.caisse_id,
+        period_start=dist.period_start,
+        period_end=dist.period_end,
+        period_label=dist.period_label,
+        interest_pool=dist.interest_pool,
+        total_base=dist.total_base,
+        closed_at=dist.closed_at,
+        closed_by_id=dist.closed_by_id,
+        shares=shares,
+    )

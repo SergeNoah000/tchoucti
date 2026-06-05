@@ -1,11 +1,16 @@
 """Pydantic schemas for Caisse (config-v2 layer over Fund)."""
-from datetime import date
-from typing import Optional
+from datetime import date, datetime
+from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.caisse import CaisseCategory
+from app.models.caisse import (
+    CaisseCategory,
+    DistributionPeriod,
+    InterestDistribution,
+    WithdrawalMode,
+)
 
 
 class CaisseCreate(BaseModel):
@@ -30,6 +35,11 @@ class CaisseCreate(BaseModel):
     has_objective: bool = False
     objective_amount: int = Field(0, ge=0)
     objective_deadline: Optional[date] = None
+
+    # Phase 7 (Fred) — mode rendement partagé. Défauts neutres.
+    interest_distribution: InterestDistribution = InterestDistribution.KEPT
+    distribution_period: DistributionPeriod = DistributionPeriod.PER_MEETING
+    withdrawal_mode: WithdrawalMode = WithdrawalMode.NEVER
 
     @model_validator(mode="after")
     def _validate(self) -> "CaisseCreate":
@@ -68,6 +78,11 @@ class CaisseUpdate(BaseModel):
     objective_amount: Optional[int] = Field(None, ge=0)
     objective_deadline: Optional[date] = None
 
+    # Phase 7 (Fred)
+    interest_distribution: Optional[InterestDistribution] = None
+    distribution_period: Optional[DistributionPeriod] = None
+    withdrawal_mode: Optional[WithdrawalMode] = None
+
 
 class CaisseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -98,3 +113,46 @@ class CaisseOut(BaseModel):
     has_objective: bool
     objective_amount: int
     objective_deadline: Optional[date]
+
+    # Phase 7 (Fred)
+    interest_distribution: str = InterestDistribution.KEPT.value
+    distribution_period: str = DistributionPeriod.PER_MEETING.value
+    withdrawal_mode: str = WithdrawalMode.NEVER.value
+    last_distribution_at: Optional[date] = None
+
+
+# ── Phase 7 (Fred) — sous-soldes, distributions ─────────────────────────────
+
+
+class CaisseContributorBalanceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    membership_id: UUID
+    member_name: Optional[str] = None
+    apport_cum: int
+    apport_cum_at_period_start: int
+    interest_cum: int
+
+
+class CaisseDistributionShareOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    membership_id: UUID
+    member_name: Optional[str] = None
+    base: int
+    share_amount: int
+
+
+class CaisseDistributionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    caisse_id: UUID
+    period_start: date
+    period_end: date
+    period_label: str
+    interest_pool: int
+    total_base: int
+    closed_at: datetime
+    closed_by_id: Optional[UUID] = None
+    shares: List[CaisseDistributionShareOut] = []
