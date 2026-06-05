@@ -55,27 +55,7 @@ import { associationsApi, caissesApi, financeApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { canConfigureAssociation } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
-import type { Association } from "@/lib/types";
-
-interface Caisse {
-  id: string;
-  fund_id: string;
-  name: string;
-  slug: string;
-  description?: string | null;
-  category: "system" | "collective" | "project" | "personal";
-  is_system: boolean;
-  is_active: boolean;
-  is_recurring: boolean;
-  recurring_amount: number;
-  is_member_required: boolean;
-  member_required_amount: number;
-  has_ceiling: boolean;
-  ceiling_amount: number;
-  has_objective: boolean;
-  objective_amount: number;
-  objective_deadline?: string | null;
-}
+import type { Association, Caisse, DistributionPeriodT, WithdrawalModeT } from "@/lib/types";
 
 interface Treasury {
   balance: number;
@@ -166,123 +146,51 @@ function ConfigCaissesInner({ association }: { association: Association }) {
       {isLoading ? (
         <Skeleton className="h-40 w-full rounded-xl" />
       ) : (
-        <ul className="space-y-2">
-          {caisses.map((c) => {
-            const balance = fundBalances.get(c.fund_id) ?? 0;
-            const progress =
-              c.has_objective && c.objective_amount > 0
-                ? Math.min(100, Math.round((balance / c.objective_amount) * 100))
-                : null;
+        <div className="space-y-6">
+          {(() => {
+            const shared = caisses.filter((c) => c.interest_distribution === "shared_pro_rata");
+            const regular = caisses.filter((c) => c.interest_distribution !== "shared_pro_rata");
+            const rowProps = (c: Caisse) => ({
+              c,
+              balance: fundBalances.get(c.fund_id) ?? 0,
+              fmt,
+              t,
+              tCommon,
+              onEdit: () => setEditing(c),
+              onDelete: () => removeMutation.mutate(c.id),
+            });
             return (
-              <li
-                key={c.id}
-                className="rounded-lg border border-border bg-card p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      {c.is_system ? <Lock className="h-5 w-5" /> : <Wallet className="h-5 w-5" />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold">{c.name}</p>
-                        <Badge variant="outline" className="text-[10px]">
-                          {t(`cat_${c.category}`)}
-                        </Badge>
-                        {c.is_system && (
-                          <Badge variant="secondary" className="text-[10px]">
-                            {t("system")}
-                          </Badge>
-                        )}
-                        {!c.is_active && (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                            {t("inactive")}
-                          </Badge>
-                        )}
-                      </div>
-                      {c.description && (
-                        <p className="text-sm text-muted-foreground">{c.description}</p>
-                      )}
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {c.is_recurring && (
-                          <>
-                            {t("recurring")}: <span className="font-medium">{fmt.currency(c.recurring_amount)}/séance</span>
-                          </>
-                        )}
-                        {c.is_member_required && (
-                          <>
-                            {c.is_recurring && " · "}
-                            {t("required")}: <span className="font-medium">{fmt.currency(c.member_required_amount)}/membre</span>
-                          </>
-                        )}
-                        {c.has_ceiling && (
-                          <>
-                            {(c.is_recurring || c.is_member_required) && " · "}
-                            {t("ceiling")}: <span className="font-medium">{fmt.currency(c.ceiling_amount)}</span>
-                          </>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-3">
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">{t("balance")}</p>
-                      <p className="text-lg font-bold tabular-nums">{fmt.currency(balance)}</p>
-                    </div>
-                    <Button variant="ghost" size="icon" onClick={() => setEditing(c)}>
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    {!c.is_system && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>{t("deleteConfirmTitle")}</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              {t("deleteConfirmDesc", { name: c.name })}
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              onClick={() => removeMutation.mutate(c.id)}
-                            >
-                              {tCommon("delete")}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
-                  </div>
-                </div>
-
-                {progress !== null && (
-                  <div className="mt-3">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>
-                        {t("objective")}: {fmt.currency(c.objective_amount)}
-                        {c.objective_deadline && ` · ${fmt.date(c.objective_deadline)}`}
-                      </span>
-                      <span className="font-medium">{progress}%</span>
-                    </div>
-                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full bg-primary transition-all"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </li>
+              <>
+                <section className="space-y-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {t("sectionOperational")} ({regular.length})
+                  </h2>
+                  {regular.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">{t("sectionEmpty")}</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {regular.map((c) => <CaisseRow key={c.id} {...rowProps(c)} />)}
+                    </ul>
+                  )}
+                </section>
+                <section className="space-y-2">
+                  <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {t("sectionShared")} ({shared.length})
+                    <Badge variant="secondary" className="text-[10px]">{t("sharedBadge")}</Badge>
+                  </h2>
+                  <p className="text-xs text-muted-foreground">{t("sectionSharedHint")}</p>
+                  {shared.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">{t("sectionEmpty")}</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {shared.map((c) => <CaisseRow key={c.id} {...rowProps(c)} />)}
+                    </ul>
+                  )}
+                </section>
+              </>
             );
-          })}
-        </ul>
+          })()}
+        </div>
       )}
 
       <Button variant="outline" onClick={() => setCreating(true)} className="w-full gap-2">
@@ -313,6 +221,111 @@ function ConfigCaissesInner({ association }: { association: Association }) {
         />
       )}
     </div>
+  );
+}
+
+// ── Row de la liste ──────────────────────────────────────────────────────
+
+function CaisseRow({
+  c,
+  balance,
+  fmt,
+  t,
+  tCommon,
+  onEdit,
+  onDelete,
+}: {
+  c: Caisse;
+  balance: number;
+  fmt: ReturnType<typeof useFormatters>;
+  t: ReturnType<typeof useTranslations>;
+  tCommon: ReturnType<typeof useTranslations>;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const progress =
+    c.has_objective && c.objective_amount > 0
+      ? Math.min(100, Math.round((balance / c.objective_amount) * 100))
+      : null;
+  return (
+    <li className="rounded-lg border border-border bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            {c.is_system ? <Lock className="h-5 w-5" /> : <Wallet className="h-5 w-5" />}
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href={`/dashboard/config/caisses/${c.id}`} className="font-semibold hover:underline">
+                {c.name}
+              </Link>
+              <Badge variant="outline" className="text-[10px]">{t(`cat_${c.category}`)}</Badge>
+              {c.is_system && (
+                <Badge variant="secondary" className="text-[10px]">{t("system")}</Badge>
+              )}
+              {!c.is_active && (
+                <Badge variant="outline" className="text-[10px] text-muted-foreground">{t("inactive")}</Badge>
+              )}
+            </div>
+            {c.description && <p className="text-sm text-muted-foreground">{c.description}</p>}
+            <p className="mt-1 text-xs text-muted-foreground">
+              {c.is_recurring && <>{t("recurring")}: <span className="font-medium">{fmt.currency(c.recurring_amount)}/séance</span></>}
+              {c.is_member_required && <>{c.is_recurring && " · "}{t("required")}: <span className="font-medium">{fmt.currency(c.member_required_amount)}/membre</span></>}
+              {c.has_ceiling && <>{(c.is_recurring || c.is_member_required) && " · "}{t("ceiling")}: <span className="font-medium">{fmt.currency(c.ceiling_amount)}</span></>}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          <div className="text-right">
+            <p className="text-xs text-muted-foreground">{t("balance")}</p>
+            <p className="text-lg font-bold tabular-nums">{fmt.currency(balance)}</p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onEdit}>
+            <Edit2 className="h-4 w-4" />
+          </Button>
+          {!c.is_system && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t("deleteConfirmTitle")}</AlertDialogTitle>
+                  <AlertDialogDescription>{t("deleteConfirmDesc", { name: c.name })}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={onDelete}
+                  >
+                    {tCommon("delete")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
+      </div>
+
+      {progress !== null && (
+        <div className="mt-3">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>
+              {t("objective")}: {fmt.currency(c.objective_amount)}
+              {c.objective_deadline && ` · ${fmt.date(c.objective_deadline)}`}
+            </span>
+            <span className="font-medium">{progress}%</span>
+          </div>
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      )}
+    </li>
   );
 }
 
@@ -354,6 +367,15 @@ function CaisseFormDialog({
   const [objectiveDeadline, setObjectiveDeadline] = useState(caisse?.objective_deadline ?? "");
   const [isActive, setIsActive] = useState(caisse?.is_active ?? true);
 
+  // Phase 7 (Fred) — config rendement partagé
+  const [shared, setShared] = useState(caisse?.interest_distribution === "shared_pro_rata");
+  const [period, setPeriod] = useState<DistributionPeriodT>(
+    caisse?.distribution_period ?? "per_meeting",
+  );
+  const [withdraw, setWithdraw] = useState<WithdrawalModeT>(
+    caisse?.withdrawal_mode ?? "never",
+  );
+
   const mutation = useMutation({
     mutationFn: () => {
       const payload = {
@@ -368,6 +390,11 @@ function CaisseFormDialog({
         objective_amount:
           hasObjective || category === "project" ? parseInt(objectiveAmount, 10) || 0 : 0,
         objective_deadline: objectiveDeadline || undefined,
+        interest_distribution: (shared ? "shared_pro_rata" : "kept") as
+          | "kept"
+          | "shared_pro_rata",
+        distribution_period: period,
+        withdrawal_mode: withdraw,
       };
       if (isEdit) {
         return caissesApi.update(caisse!.id, payload);
@@ -521,6 +548,48 @@ function CaisseFormDialog({
                           value={objectiveDeadline ?? ""}
                           onChange={(e) => setObjectiveDeadline(e.target.value)}
                         />
+                      </HelpField>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Phase 7 (Fred) — Mode rendement partagé */}
+              {category !== "personal" && (
+                <div className="space-y-3 rounded-md border border-border bg-card p-3">
+                  <label className="flex cursor-pointer items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">{t("sharedMode")}</p>
+                      <p className="text-xs text-muted-foreground">{t("sharedModeHint")}</p>
+                    </div>
+                    <Switch checked={shared} onCheckedChange={setShared} />
+                  </label>
+                  {shared && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <HelpField label={t("distributionPeriod")} hint={t("distributionPeriodHint")}>
+                        <Select value={period} onValueChange={(v) => setPeriod(v as DistributionPeriodT)}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="per_meeting">{t("period_per_meeting")}</SelectItem>
+                            <SelectItem value="monthly">{t("period_monthly")}</SelectItem>
+                            <SelectItem value="quarterly">{t("period_quarterly")}</SelectItem>
+                            <SelectItem value="annually">{t("period_annually")}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </HelpField>
+                      <HelpField label={t("withdrawalMode")} hint={t("withdrawalModeHint")}>
+                        <Select value={withdraw} onValueChange={(v) => setWithdraw(v as WithdrawalModeT)}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="never">{t("withdraw_never")}</SelectItem>
+                            <SelectItem value="anytime_if_liquid">{t("withdraw_anytime")}</SelectItem>
+                            <SelectItem value="end_of_period_only">{t("withdraw_end_of_period")}</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </HelpField>
                     </div>
                   )}

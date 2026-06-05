@@ -192,6 +192,67 @@ export interface Membership {
   association_name?: string | null;
 }
 
+// ── Caisse ───────────────────────────────────────────────────────────────
+
+export type CaisseCategoryT = "system" | "collective" | "project" | "personal";
+export type InterestDistributionT = "kept" | "shared_pro_rata";
+export type DistributionPeriodT = "per_meeting" | "monthly" | "quarterly" | "annually";
+export type WithdrawalModeT = "never" | "anytime_if_liquid" | "end_of_period_only";
+
+export interface Caisse {
+  id: UUID;
+  fund_id: UUID;
+  fund_kind?: string | null;
+  name: string;
+  slug: string;
+  description?: string | null;
+  category: CaisseCategoryT;
+  is_system: boolean;
+  is_active: boolean;
+  is_recurring: boolean;
+  recurring_amount: number;
+  is_member_required: boolean;
+  member_required_amount: number;
+  has_ceiling: boolean;
+  ceiling_amount: number;
+  has_objective: boolean;
+  objective_amount: number;
+  objective_deadline?: string | null;
+  // Phase 7 (Fred)
+  interest_distribution: InterestDistributionT;
+  distribution_period: DistributionPeriodT;
+  withdrawal_mode: WithdrawalModeT;
+  last_distribution_at?: string | null;
+}
+
+export interface CaisseContributorBalance {
+  membership_id: UUID;
+  member_name?: string | null;
+  apport_cum: number;
+  apport_cum_at_period_start: number;
+  interest_cum: number;
+}
+
+export interface CaisseDistributionShare {
+  membership_id: UUID;
+  member_name?: string | null;
+  base: number;
+  share_amount: number;
+}
+
+export interface CaisseDistribution {
+  id: UUID;
+  caisse_id: UUID;
+  period_start: string;
+  period_end: string;
+  period_label: string;
+  interest_pool: number;
+  total_base: number;
+  closed_at: string;
+  closed_by_id?: UUID | null;
+  shares: CaisseDistributionShare[];
+}
+
 // ── Tontine ──────────────────────────────────────────────────────────────
 
 export type TontineCycleStatus = "draft" | "active" | "completed" | "cancelled";

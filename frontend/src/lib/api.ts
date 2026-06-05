@@ -312,10 +312,25 @@ export const caissesApi = {
     has_objective?: boolean;
     objective_amount?: number;
     objective_deadline?: string;
+    // Phase 7 (Fred)
+    interest_distribution?: "kept" | "shared_pro_rata";
+    distribution_period?: "per_meeting" | "monthly" | "quarterly" | "annually";
+    withdrawal_mode?: "never" | "anytime_if_liquid" | "end_of_period_only";
   }) => (await api.post("/caisses", payload)).data,
   update: async (id: string, payload: Record<string, unknown>) =>
     (await api.patch(`/caisses/${id}`, payload)).data,
   remove: async (id: string) => (await api.delete(`/caisses/${id}`)).data,
+  // Phase 7 (Fred)
+  contributors: async (caisseId: string) =>
+    (await api.get(`/caisses/${caisseId}/contributors`)).data,
+  distributions: async (caisseId: string) =>
+    (await api.get(`/caisses/${caisseId}/distributions`)).data,
+  closeDistribution: async (caisseId: string) =>
+    (await api.post(`/caisses/${caisseId}/close-distribution`, {})).data,
+  withdraw: async (
+    caisseId: string,
+    payload: { membership_id: string; amount: number; note?: string },
+  ) => (await api.post(`/caisses/${caisseId}/withdraw`, payload)).data,
 };
 
 export const meetingsApi = {
