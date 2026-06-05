@@ -253,6 +253,18 @@ export interface CaisseDistribution {
   shares: CaisseDistributionShare[];
 }
 
+export interface MyShareItem {
+  caisse_id: UUID;
+  caisse_name: string;
+  caisse_slug: string;
+  category: CaisseCategoryT;
+  interest_distribution: InterestDistributionT;
+  apport_cum: number;
+  interest_cum: number;
+  total_apport: number;
+  last_distribution_at?: string | null;
+}
+
 // ── Tontine ──────────────────────────────────────────────────────────────
 
 export type TontineCycleStatus = "draft" | "active" | "completed" | "cancelled";

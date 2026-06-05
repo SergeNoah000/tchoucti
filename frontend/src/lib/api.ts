@@ -321,6 +321,8 @@ export const caissesApi = {
     (await api.patch(`/caisses/${id}`, payload)).data,
   remove: async (id: string) => (await api.delete(`/caisses/${id}`)).data,
   // Phase 7 (Fred)
+  myShares: async (associationId: string) =>
+    (await api.get("/caisses/my-shares", { params: { association_id: associationId } })).data,
   contributors: async (caisseId: string) =>
     (await api.get(`/caisses/${caisseId}/contributors`)).data,
   distributions: async (caisseId: string) =>

@@ -14,7 +14,7 @@ from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -46,6 +46,7 @@ from app.schemas.caisse import (
     CaisseUpdate,
     CaisseWithdrawRequest,
     CaisseWithdrawResponse,
+    MyShareItem,
 )
 from app.services.caisse_distribution import close_distribution_period
 from app.services.meeting_agenda import upsert_caisse_activity
@@ -88,6 +89,68 @@ async def list_caisses(
     res = await db.execute(stmt)
     return [
         _to_out(c, k.value if hasattr(k, "value") else k) for c, k in res.all()
+    ]
+
+
+@router.get("/my-shares", response_model=List[MyShareItem])
+async def my_shares(
+    association_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Vue « mes parts » pour le membre courant : pour chaque caisse de
+    l'association où il a un apport, son apport_cum + interest_cum + le total
+    des apports pour calculer son % côté UI.
+
+    NOTE : déclaré AVANT GET /{caisse_id} pour éviter que FastAPI interprète
+    « my-shares » comme un UUID (sinon → 422)."""
+    await _check_access(db, current_user, association_id)
+    mem_res = await db.execute(
+        select(Membership).where(
+            Membership.user_id == current_user.id,
+            Membership.association_id == association_id,
+        )
+    )
+    membership = mem_res.scalar_one_or_none()
+    if not membership:
+        return []
+
+    res = await db.execute(
+        select(CaisseContributorBalance, Caisse).join(
+            Caisse, Caisse.id == CaisseContributorBalance.caisse_id
+        ).where(
+            CaisseContributorBalance.membership_id == membership.id,
+            Caisse.association_id == association_id,
+        )
+    )
+    rows = res.all()
+    if not rows:
+        return []
+
+    caisse_ids = [c.id for _b, c in rows]
+    totals_res = await db.execute(
+        select(
+            CaisseContributorBalance.caisse_id,
+            func.coalesce(func.sum(CaisseContributorBalance.apport_cum), 0),
+        )
+        .where(CaisseContributorBalance.caisse_id.in_(caisse_ids))
+        .group_by(CaisseContributorBalance.caisse_id)
+    )
+    totals = {cid: int(s) for cid, s in totals_res.all()}
+
+    return [
+        MyShareItem(
+            caisse_id=caisse.id,
+            caisse_name=caisse.name,
+            caisse_slug=caisse.slug,
+            category=(caisse.category.value if hasattr(caisse.category, "value") else str(caisse.category)),
+            interest_distribution=caisse.interest_distribution,
+            apport_cum=bal.apport_cum,
+            interest_cum=bal.interest_cum,
+            total_apport=totals.get(caisse.id, 0),
+            last_distribution_at=caisse.last_distribution_at,
+        )
+        for bal, caisse in rows
     ]
 
 
@@ -573,3 +636,5 @@ async def withdraw(
         apport_cum_after=bal.apport_cum,
         fund_balance_after=fund.balance,
     )
+
+

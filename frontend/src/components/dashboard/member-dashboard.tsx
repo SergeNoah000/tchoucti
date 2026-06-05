@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Wallet, ArrowRight, HandCoins, HeartHandshake, FileText, Plus } from "lucide-react";
+import { Calendar, Wallet, ArrowRight, HandCoins, HeartHandshake, FileText, Plus, PiggyBank } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/common/stat-card";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
-import { associationsApi, meetingsApi } from "@/lib/api";
-import type { Association, Meeting } from "@/lib/types";
+import { associationsApi, caissesApi, meetingsApi } from "@/lib/api";
+import type { Association, Meeting, MyShareItem } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
 import { useFormatters } from "@/lib/format";
 
@@ -42,6 +42,14 @@ export function MemberDashboard() {
   const upcoming = meetings
     .filter((m) => m.status === "planned" || m.status === "ongoing")
     .sort((a, b) => new Date(a.scheduled_on).getTime() - new Date(b.scheduled_on).getTime());
+
+  const association = associations[0];
+  const { data: myShares = [] } = useQuery<MyShareItem[]>({
+    queryKey: ["my-shares", association?.id],
+    queryFn: () => caissesApi.myShares(association!.id),
+    enabled: !!association,
+  });
+  const sharedShares = myShares.filter((s) => s.interest_distribution === "shared_pro_rata");
 
   return (
     <div className="space-y-6">
@@ -135,6 +143,50 @@ export function MemberDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {sharedShares.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <PiggyBank className="h-4 w-4 text-primary" />
+                {t("mySharesTitle")}
+              </CardTitle>
+              <CardDescription>{t("mySharesDesc")}</CardDescription>
+            </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/dashboard/my-share" className="gap-1">
+                {t("viewAll")} <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {sharedShares.slice(0, 3).map((s) => {
+                const pct = s.total_apport > 0
+                  ? Math.round((s.apport_cum / s.total_apport) * 1000) / 10
+                  : 0;
+                return (
+                  <li key={s.caisse_id}>
+                    <Link
+                      href={`/dashboard/my-share/${s.caisse_id}`}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-sm transition-colors hover:bg-accent/50"
+                    >
+                      <span className="min-w-0 truncate font-medium">{s.caisse_name}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {fmt.currency(s.apport_cum)} ({pct}%) ·
+                        <span className="ml-1 text-emerald-700 dark:text-emerald-400">
+                          +{fmt.currency(s.interest_cum)}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

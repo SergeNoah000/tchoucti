@@ -169,3 +169,17 @@ class CaisseWithdrawResponse(BaseModel):
     amount: int
     apport_cum_after: int
     fund_balance_after: int
+
+
+class MyShareItem(BaseModel):
+    """Vue agrégée « ma part dans une caisse » pour un membre."""
+
+    caisse_id: UUID
+    caisse_name: str
+    caisse_slug: str
+    category: str
+    interest_distribution: str
+    apport_cum: int
+    interest_cum: int
+    total_apport: int  # Σ apport_cum de la caisse (pour calculer ma %)
+    last_distribution_at: Optional[date] = None
