@@ -10,6 +10,25 @@ vérifications).
 
 ---
 
+## Lot « Notifications + permissions » (2026-06-06)
+
+> Commits `9deca3b` (bump Next), `ef7d1fa`, `8a07c6c`, `b34f12e`.
+> **Aucune migration DB requise** — la table `notifications` existe déjà
+> (modèle pré-existant, recréé au dernier `down -v`). Déploiement = **code seul**.
+
+- **Navigation** : Next.js 15.1.3 → **15.5.19** (corrige le double-clic). Le
+  build prod (`deploy.sh`) réinstalle les deps → prend le nouveau Next
+  automatiquement. Rien à faire côté DB.
+- Notifications in-app (API `/notifications` + cloche), permissions prêts/aides
+  (demande membre = self, approbation = admin/bureau, notifs), permissions
+  séance (bureau only), visibilité séance configurable, récap par membre.
+
+**Procédure** : `git pull --ff-only` puis `bash deploy/deploy.sh`. Vérifier
+ensuite la cloche de notifications + qu'un membre simple ne peut pas créer de
+séance.
+
+---
+
 ## 1. État — ce qui a changé
 
 | Commit | Changement | Impact déploiement |
