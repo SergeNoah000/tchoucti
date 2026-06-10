@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from slugify import slugify
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import _user_has_bureau_role, get_current_user, get_db
 from app.core.config import settings
 from app.models.association import Association
 from app.models.caisse import Caisse, CaisseCategory
@@ -390,7 +390,8 @@ async def approve_case(
     case = await _load_case(db, case_id)
     assoc = await _get_assoc_or_404(db, case.association_id)
     _check_access(current_user, assoc)
-    _require_admin(current_user)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Réservé aux admins et membres du bureau.")
 
     if case.status not in (SocialAidCaseStatus.REQUESTED, SocialAidCaseStatus.REVIEWING):
         raise HTTPException(409, "Le dossier ne peut plus être approuvé")
@@ -469,7 +470,8 @@ async def reject_case(
     case = await _load_case(db, case_id)
     assoc = await _get_assoc_or_404(db, case.association_id)
     _check_access(current_user, assoc)
-    _require_admin(current_user)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Réservé aux admins et membres du bureau.")
 
     if case.status in (SocialAidCaseStatus.PAID, SocialAidCaseStatus.REJECTED):
         raise HTTPException(409, "Le dossier ne peut plus être rejeté")

@@ -350,7 +350,8 @@ async def approve_loan(
     loan = await _load_loan(db, loan_id)
     assoc = await _get_assoc_or_404(db, loan.association_id)
     _check_access(current_user, assoc)
-    _require_admin(current_user)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Réservé aux admins et membres du bureau.")
 
     if loan.status != LoanStatus.REQUESTED:
         raise HTTPException(409, "Seule une demande peut être approuvée")
@@ -418,7 +419,8 @@ async def reject_loan(
     loan = await _load_loan(db, loan_id)
     assoc = await _get_assoc_or_404(db, loan.association_id)
     _check_access(current_user, assoc)
-    _require_admin(current_user)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Réservé aux admins et membres du bureau.")
 
     if loan.status not in (LoanStatus.REQUESTED, LoanStatus.APPROVED):
         raise HTTPException(409, "Le prêt ne peut plus être rejeté")
