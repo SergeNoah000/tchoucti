@@ -67,6 +67,8 @@ import type {
 } from "@/lib/types";
 import { useFormatters } from "@/lib/format";
 import { cn, initials } from "@/lib/utils";
+import { useAuthStore } from "@/lib/store";
+import { canDoBureauActions } from "@/lib/roles";
 
 const ATTENDANCE_PILLS: Record<AttendanceStatus, string> = {
   present: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
@@ -112,6 +114,8 @@ export default function MeetingDetailPage() {
   const t = useTranslations("meeting");
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const isBureau = canDoBureauActions(user);
 
   const meetingKey = ["meeting", id];
 
@@ -152,7 +156,8 @@ export default function MeetingDetailPage() {
     enabled: !!associationId,
   });
 
-  const canEdit = meeting?.status === "ongoing";
+  // Seuls les admins/bureau peuvent saisir pendant une séance en cours.
+  const canEdit = meeting?.status === "ongoing" && isBureau;
 
   const openMutation = useMutation({
     mutationFn: () => meetingsApi.open(meeting!.id),
@@ -219,11 +224,19 @@ export default function MeetingDetailPage() {
 
   // ── Member search ────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
+  // Visibilité : si l'asso restreint (member_sees_all === false) et que je ne
+  // suis pas du bureau, je ne vois que ma propre ligne dans la liste.
+  const memberSeesAll = association?.config?.meetings?.member_sees_all ?? true;
+  const visibleMembers = useMemo(() => {
+    if (isBureau || memberSeesAll) return memberships;
+    return memberships.filter((m) => m.user_id === user?.id);
+  }, [memberships, isBureau, memberSeesAll, user?.id]);
+
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return memberships;
-    return memberships.filter((m) => m.user.full_name.toLowerCase().includes(q));
-  }, [memberships, search]);
+    if (!q) return visibleMembers;
+    return visibleMembers.filter((m) => m.user.full_name.toLowerCase().includes(q));
+  }, [visibleMembers, search]);
 
   // ── Master-detail : un seul membre actif à la fois ──────────────────────
   // (Avant : Collapsible par membre. Le client préfère un tab-pane : liste à
@@ -294,9 +307,9 @@ export default function MeetingDetailPage() {
           </div>
         </div>
 
-        {/* Lifecycle actions */}
+        {/* Lifecycle actions — bureau seulement */}
         <div className="flex shrink-0 items-center gap-2">
-          {meeting.status === "planned" && (
+          {isBureau && meeting.status === "planned" && (
             <>
               <RescheduleDialog meetingId={meeting.id} currentDate={meeting.scheduled_on} />
               <CancelDialog meetingId={meeting.id} />
@@ -310,7 +323,7 @@ export default function MeetingDetailPage() {
               </Button>
             </>
           )}
-          {meeting.status === "ongoing" && (
+          {isBureau && meeting.status === "ongoing" && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
@@ -609,12 +622,16 @@ function AgendaSection({
   amounts,
   setAmount,
   canEdit,
+  fmt,
+  t,
 }: {
   title: string;
   rows: AgendaRow[];
   amounts: Record<string, string>;
   setAmount: (activityId: string, value: string) => void;
   canEdit: boolean;
+  fmt: ReturnType<typeof useFormatters>;
+  t: ReturnType<typeof useTranslations>;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -623,7 +640,42 @@ function AgendaSection({
         {title}
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {rows.map((r) => (
+        {rows.map((r) => {
+          // Mode récap (lecture seule) : donné vs attendu + statut.
+          if (!canEdit) {
+            const given = parseInt(amounts[r.activity_id] ?? "", 10) || 0;
+            const due = r.default_amount || 0;
+            const status =
+              due > 0 && given >= due
+                ? "paid"
+                : given > 0
+                  ? "partial"
+                  : "missing";
+            const statusClass =
+              status === "paid"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : status === "partial"
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-muted-foreground";
+            return (
+              <div
+                key={`${r.activity_id}-${JSON.stringify(r.context)}`}
+                className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm">{r.label}</span>
+                <span className="shrink-0 text-right text-sm tabular-nums">
+                  <span className="font-medium">{fmt.currency(given)}</span>
+                  {due > 0 && (
+                    <span className="text-muted-foreground"> / {fmt.currency(due)}</span>
+                  )}
+                  <span className={cn("ml-2 text-[10px] uppercase", statusClass)}>
+                    {t(`recapStatus_${status}`)}
+                  </span>
+                </span>
+              </div>
+            );
+          }
+          return (
           <div
             key={`${r.activity_id}-${JSON.stringify(r.context)}`}
             className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2"
@@ -647,7 +699,8 @@ function AgendaSection({
               className="h-8 w-28 text-right text-sm"
             />
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -881,6 +934,8 @@ function MemberRow({
                 amounts={local.amounts}
                 setAmount={setAmount}
                 canEdit={canEdit}
+                fmt={fmt}
+                t={t}
               />
               <AgendaSection
                 title={t("sectionCaisses")}
@@ -888,6 +943,8 @@ function MemberRow({
                 amounts={local.amounts}
                 setAmount={setAmount}
                 canEdit={canEdit}
+                fmt={fmt}
+                t={t}
               />
               <AgendaSection
                 title={t("sectionLoans")}
@@ -895,6 +952,8 @@ function MemberRow({
                 amounts={local.amounts}
                 setAmount={setAmount}
                 canEdit={canEdit}
+                fmt={fmt}
+                t={t}
               />
               <AgendaSection
                 title={t("sectionAids")}
@@ -902,6 +961,8 @@ function MemberRow({
                 amounts={local.amounts}
                 setAmount={setAmount}
                 canEdit={canEdit}
+                fmt={fmt}
+                t={t}
               />
             </>
           ) : (

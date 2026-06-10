@@ -370,7 +370,10 @@
     "attachDownload": "Herunterladen",
     "attachUploaded": "Datei hochgeladen",
     "attachError": "Upload fehlgeschlagen",
-    "attachTooLarge": "{name} überschreitet das 20-MB-Limit."
+    "attachTooLarge": "{name} überschreitet das 20-MB-Limit.",
+    "recapStatus_paid": "bezahlt",
+    "recapStatus_partial": "teilweise",
+    "recapStatus_missing": "offen"
   },
   "placeholder": {
     "comingSoon": "Demnächst verfügbar",
@@ -645,7 +648,7 @@
     "accountDesc": "Ihre persönlichen Daten.",
     "fullName": "Vollständiger Name",
     "phone": "Telefon",
-    "email": "E-Mail",
+    "email": "Kontakt-E-Mail",
     "address": "Adresse",
     "profession": "Beruf",
     "gender": "Geschlecht",
@@ -688,8 +691,6 @@
     "type": "Vereinstyp",
     "currency": "Währung",
     "currencyLockedHint": "Die Währung ist gesperrt, da der Verein bereits Finanzbewegungen hat.",
-    "email": "Kontakt-E-Mail",
-    "phone": "Telefon",
     "type_tontine": "Tontine",
     "type_mutuelle": "Gegenseitigkeitsverein",
     "type_cooperative": "Genossenschaft",
@@ -742,7 +743,9 @@
     "notif_penalty": "Strafe",
     "notif_tour_allocation": "Tourzuteilung",
     "notif_birthday": "Geburtstag",
-    "notif_loan_due": "Darlehensfälligkeit"
+    "notif_loan_due": "Darlehensfälligkeit",
+    "memberSeesAll": "Aktivität aller sehen",
+    "memberSeesAllDesc": "Wenn aktiviert, sieht ein Mitglied Anwesenheit und Einträge aller Mitglieder auf einer Sitzungsseite. Sonst nur die eigenen und den Bericht."
   },
   "memberCategory": {
     "active": "Aktives Mitglied",
@@ -1022,7 +1025,8 @@
     "inst_paid": "Bezahlt",
     "inst_late": "Verspätet",
     "inst_waived": "Erlassen",
-    "requestedOn": "Eingereicht am {date}"
+    "requestedOn": "Eingereicht am {date}",
+    "borrowerSelf": "Sie"
   },
   "roles": {
     "super_admin": "Superadministrator",
@@ -1385,5 +1389,10 @@
     "colPeriod": "Periode",
     "colBaseMine": "Meine Einlage (Basis)",
     "colReceived": "Erhalten"
+  },
+  "notifications": {
+    "title": "Benachrichtigungen",
+    "markAllRead": "Alle als gelesen markieren",
+    "empty": "Keine Benachrichtigung."
   }
 }

@@ -22,6 +22,8 @@ import { meetingsApi, associationsApi } from "@/lib/api";
 import type { Meeting, Association, MeetingStatus } from "@/lib/types";
 import { useFormatters } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/store";
+import { canDoBureauActions } from "@/lib/roles";
 
 const STATUS_CLASSES: Record<MeetingStatus, { icon: LucideIcon; pill: string }> = {
   planned: {
@@ -98,6 +100,9 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
 export default function MeetingsPage() {
   const t = useTranslations("meeting");
 
+  const { user } = useAuthStore();
+  const isBureau = canDoBureauActions(user);
+
   const { data: associations = [] } = useQuery<Association[]>({
     queryKey: ["associations"],
     queryFn: () => associationsApi.list(),
@@ -120,12 +125,14 @@ export default function MeetingsPage() {
         title={t("title")}
         description={t("subtitle")}
         actions={
-          <Button asChild>
-            <Link href="/dashboard/meetings/new" className="gap-2">
-              <Plus className="h-4 w-4" />
-              {t("create")}
-            </Link>
-          </Button>
+          isBureau ? (
+            <Button asChild>
+              <Link href="/dashboard/meetings/new" className="gap-2">
+                <Plus className="h-4 w-4" />
+                {t("create")}
+              </Link>
+            </Button>
+          ) : undefined
         }
       />
 
@@ -145,12 +152,14 @@ export default function MeetingsPage() {
               title={t("empty")}
               description={t("emptyDesc")}
               action={
-                <Button asChild>
-                  <Link href="/dashboard/meetings/new" className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    {t("create")}
-                  </Link>
-                </Button>
+                isBureau ? (
+                  <Button asChild>
+                    <Link href="/dashboard/meetings/new" className="gap-2">
+                      <Plus className="h-4 w-4" />
+                      {t("create")}
+                    </Link>
+                  </Button>
+                ) : undefined
               }
             />
           </CardContent>

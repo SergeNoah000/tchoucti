@@ -497,6 +497,9 @@ function MeetingsSection({ association, canManage }: AssociationSettingsProps) {
   const [daysBefore, setDaysBefore] = useState<string>(
     (remindersCfg.days_before ?? [7, 1]).join(", ")
   );
+  const [memberSeesAll, setMemberSeesAll] = useState<boolean>(
+    (cfg as { member_sees_all?: boolean }).member_sees_all ?? true
+  );
 
   const MODES: MeetingMode[] = ["physical", "virtual", "hybrid"];
 
@@ -527,6 +530,7 @@ function MeetingsSection({ association, canManage }: AssociationSettingsProps) {
               default_title: defaultTitle.trim() || undefined,
               default_location: defaultLocation.trim() || undefined,
               horizon: Math.max(1, Math.min(60, parseInt(horizon, 10) || 12)),
+              member_sees_all: memberSeesAll,
             },
             notifications: {
               ...(association.config.notifications ?? {}),
@@ -604,6 +608,13 @@ function MeetingsSection({ association, canManage }: AssociationSettingsProps) {
           />
         </Field>
       </div>
+      <ToggleRow
+        label={t("memberSeesAll")}
+        description={t("memberSeesAllDesc")}
+        checked={memberSeesAll}
+        onChange={setMemberSeesAll}
+        disabled={!canManage}
+      />
       <ToggleRow
         label={t("autoNotify")}
         description={t("autoNotifyDesc")}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,6 +33,8 @@ import {
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { associationsApi, loansApi, loanTypesApi, membersApi } from "@/lib/api";
+import { useAuthStore } from "@/lib/store";
+import { canDoBureauActions } from "@/lib/roles";
 import type { Association, Loan, LoanStatus, Membership } from "@/lib/types";
 
 interface LoanTypeOption {
@@ -154,6 +156,8 @@ function RequestLoanDialog({ association }: { association: Association }) {
   const t = useTranslations("loan");
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const isBureau = canDoBureauActions(user);
 
   const [open, setOpen] = useState(false);
   const [membershipId, setMembershipId] = useState("");
@@ -171,6 +175,14 @@ function RequestLoanDialog({ association }: { association: Association }) {
     enabled: open,
   });
   const activeMembers = members.filter((m) => m.status === "active");
+  const myMembership = members.find((m) => m.user_id === user?.id);
+
+  // Membre simple : la demande est forcément pour lui-même.
+  useEffect(() => {
+    if (open && !isBureau && myMembership && !membershipId) {
+      setMembershipId(myMembership.id);
+    }
+  }, [open, isBureau, myMembership, membershipId]);
 
   const { data: loanTypes = [] } = useQuery<LoanTypeOption[]>({
     queryKey: ["loan-types", association.id],
@@ -259,7 +271,13 @@ function RequestLoanDialog({ association }: { association: Association }) {
         <form onSubmit={submit} className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label>{t("borrower")}</Label>
-            {activeMembers.length === 0 ? (
+            {!isBureau ? (
+              // Membre simple : demande pour soi-même uniquement.
+              <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                {myMembership?.user.full_name ?? user?.full_name}{" "}
+                <span className="text-muted-foreground">({t("borrowerSelf")})</span>
+              </p>
+            ) : activeMembers.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border px-3 py-3 text-center text-sm text-muted-foreground">
                 {t("noMembers")}
               </p>

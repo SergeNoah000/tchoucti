@@ -370,7 +370,10 @@
     "attachDownload": "Télécharger",
     "attachUploaded": "Fichier ajouté",
     "attachError": "Échec de l'envoi du fichier",
-    "attachTooLarge": "{name} dépasse la limite de 20 Mo."
+    "attachTooLarge": "{name} dépasse la limite de 20 Mo.",
+    "recapStatus_paid": "payé",
+    "recapStatus_partial": "partiel",
+    "recapStatus_missing": "non rempli"
   },
   "placeholder": {
     "comingSoon": "Bientôt disponible",
@@ -645,7 +648,7 @@
     "accountDesc": "Vos informations personnelles.",
     "fullName": "Nom complet",
     "phone": "Téléphone",
-    "email": "E-mail",
+    "email": "E-mail de contact",
     "address": "Adresse",
     "profession": "Profession",
     "gender": "Sexe",
@@ -688,8 +691,6 @@
     "type": "Type d'association",
     "currency": "Devise",
     "currencyLockedHint": "La devise est verrouillée car l'association a déjà des opérations financières.",
-    "email": "E-mail de contact",
-    "phone": "Téléphone",
     "type_tontine": "Tontine",
     "type_mutuelle": "Mutuelle",
     "type_cooperative": "Coopérative",
@@ -742,7 +743,9 @@
     "notif_penalty": "Pénalité",
     "notif_tour_allocation": "Attribution de tour",
     "notif_birthday": "Anniversaire",
-    "notif_loan_due": "Échéance de prêt"
+    "notif_loan_due": "Échéance de prêt",
+    "memberSeesAll": "Voir l'activité de tous",
+    "memberSeesAllDesc": "Si activé, un membre voit les présences et saisies de tous les membres sur la page d'une séance. Sinon, il ne voit que les siennes et le rapport."
   },
   "memberCategory": {
     "active": "Membre actif",
@@ -1022,7 +1025,8 @@
     "inst_paid": "Payé",
     "inst_late": "En retard",
     "inst_waived": "Remis",
-    "requestedOn": "Déposé le {date}"
+    "requestedOn": "Déposé le {date}",
+    "borrowerSelf": "vous"
   },
   "roles": {
     "super_admin": "Super Administrateur",
@@ -1231,18 +1235,15 @@
     "finish": "Terminer la configuration",
     "welcome": "Configuration terminée — bienvenue !",
     "errorName": "Le nom doit faire au moins 2 caractères.",
-
     "stepAssociation": "Association",
     "stepCaisses": "Caisses",
     "stepTontines": "Tontines",
     "stepLoans": "Prêts",
     "stepAids": "Aides sociales",
-
     "stepAssociationTitle": "Profil de l'association",
     "stepAssociationDesc": "Informations légales, conditions d'adhésion, frais et documents.",
     "introAssociation": "Ces informations apparaîtront aux membres et seront utilisées dans le PV de chaque séance. Vous pourrez les modifier plus tard depuis les paramètres.",
     "logo": "Logo de l'association",
-
     "name": "Nom",
     "type": "Type",
     "typeHint": "La nature juridique influence certains libellés (cotisation, capital social…).",
@@ -1257,13 +1258,11 @@
     "city": "Ville",
     "address": "Adresse",
     "description": "Description",
-
     "feeTitle": "Frais d'inscription",
     "feeAmount": "Montant",
     "feeHint": "Montant qu'un nouveau membre doit verser pour rejoindre l'association.",
     "feeExample": "Ex : {amount} — facturé une fois à l'activation du compte.",
     "feePreview": "Chaque nouveau membre devra verser {amount} pour rejoindre — visible sur son historique.",
-
     "criteriaTitle": "Conditions d'adhésion",
     "criteriaHint": "Plusieurs critères possibles : âge, sexe, localisation, profession… Tous sont vérifiés au moment de l'invitation.",
     "criterionType": "Type",
@@ -1282,7 +1281,6 @@
     "criterion_location_example": "Ex : Douala, Cameroun",
     "criterion_profession_example": "Ex : enseignant, commerçant",
     "criterion_other_example": "Texte libre",
-
     "docsTitle": "Documents légaux",
     "docsHint": "Statuts, règlement intérieur, récépissé, autres pièces justificatives.",
     "docKind": "Type",
@@ -1296,7 +1294,6 @@
     "doc_roi": "Règlement intérieur",
     "doc_recepisse": "Récépissé",
     "doc_autre": "Autre",
-
     "stepCaissesTitle": "Caisses",
     "stepCaissesDesc": "La caisse générale existe déjà. Ajoutez des caisses pour vos projets, l'épargne personnelle, ou les fonds collectifs.",
     "introCaisses": "Une caisse est un compte virtuel à l'intérieur de votre trésorerie. Les caisses système (caisse générale, caisse tontine) sont créées automatiquement. Vous ajoutez les vôtres ci-dessous.",
@@ -1337,7 +1334,6 @@
     "caissePreviewMemberText": "Chaque membre devra cotiser {amount}.",
     "caissePreviewObjectiveText": "Objectif à atteindre : {amount}.",
     "caissePreviewFreeText": "Cotisations libres, sans plafond ni obligation.",
-
     "stepTontinesTitle": "Tontines",
     "stepTontinesDesc": "Configurez les tontines de l'association (rotation, montant, méthode de sélection).",
     "stepLoansTitle": "Prêts",
@@ -1393,5 +1389,10 @@
     "colPeriod": "Période",
     "colBaseMine": "Mon apport (base)",
     "colReceived": "Reçu"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Tout marquer comme lu",
+    "empty": "Aucune notification."
   }
 }

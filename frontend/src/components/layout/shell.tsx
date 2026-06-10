@@ -39,6 +39,7 @@ import {
 import { BrandMark } from "@/components/common/brand-mark";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { LanguageToggle } from "@/components/common/language-toggle";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import { useAuthStore, usePermissionStore } from "@/lib/store";
 import { authApi } from "@/lib/api";
 import { cn, initials } from "@/lib/utils";
@@ -370,6 +371,7 @@ export function Shell({ children, forceRole, homeHref }: ShellProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationBell />
             <LanguageToggle />
             <ThemeToggle />
             <DropdownMenu>

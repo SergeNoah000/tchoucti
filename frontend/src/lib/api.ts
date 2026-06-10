@@ -173,6 +173,16 @@ export const associationsApi = {
     (await api.patch(`/associations/${id}`, payload)).data,
 };
 
+// ── Notifications in-app ───────────────────────────────────────────────────
+export const notificationsApi = {
+  list: async (params?: { only_unread?: boolean; limit?: number }) =>
+    (await api.get("/notifications", { params })).data,
+  unreadCount: async (): Promise<{ unread: number }> =>
+    (await api.get("/notifications/unread-count")).data,
+  markRead: async (id: string) => (await api.post(`/notifications/${id}/read`, {})).data,
+  markAllRead: async () => (await api.post("/notifications/read-all", {})).data,
+};
+
 // ── Setup wizard (config-v2, admin only) ───────────────────────────────────
 export const setupApi = {
   /** Where the admin is in the onboarding wizard. */

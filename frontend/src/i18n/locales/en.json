@@ -370,7 +370,10 @@
     "attachDownload": "Download",
     "attachUploaded": "File uploaded",
     "attachError": "Upload failed",
-    "attachTooLarge": "{name} exceeds the 20 MB limit."
+    "attachTooLarge": "{name} exceeds the 20 MB limit.",
+    "recapStatus_paid": "paid",
+    "recapStatus_partial": "partial",
+    "recapStatus_missing": "not filled"
   },
   "placeholder": {
     "comingSoon": "Coming soon",
@@ -645,7 +648,7 @@
     "accountDesc": "Your personal information.",
     "fullName": "Full name",
     "phone": "Phone",
-    "email": "Email",
+    "email": "Contact email",
     "address": "Address",
     "profession": "Profession",
     "gender": "Gender",
@@ -688,8 +691,6 @@
     "type": "Association type",
     "currency": "Currency",
     "currencyLockedHint": "Currency is locked because the association already has financial activity.",
-    "email": "Contact email",
-    "phone": "Phone",
     "type_tontine": "Tontine",
     "type_mutuelle": "Mutual",
     "type_cooperative": "Cooperative",
@@ -742,7 +743,9 @@
     "notif_penalty": "Penalty",
     "notif_tour_allocation": "Tour allocation",
     "notif_birthday": "Birthday",
-    "notif_loan_due": "Loan due date"
+    "notif_loan_due": "Loan due date",
+    "memberSeesAll": "See everyone's activity",
+    "memberSeesAllDesc": "If on, a member sees all members' attendance and entries on a meeting page. Otherwise they only see their own and the report."
   },
   "memberCategory": {
     "active": "Active member",
@@ -1022,7 +1025,8 @@
     "inst_paid": "Paid",
     "inst_late": "Late",
     "inst_waived": "Waived",
-    "requestedOn": "Filed on {date}"
+    "requestedOn": "Filed on {date}",
+    "borrowerSelf": "you"
   },
   "roles": {
     "super_admin": "Super Administrator",
@@ -1385,5 +1389,10 @@
     "colPeriod": "Period",
     "colBaseMine": "My deposit (base)",
     "colReceived": "Received"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all as read",
+    "empty": "No notification."
   }
 }

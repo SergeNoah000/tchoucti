@@ -70,6 +70,11 @@ export interface AssociationConfig {
     mode?: MeetingMode;
     quorum?: number;
     auto_notify?: boolean;
+    default_title?: string;
+    default_location?: string;
+    horizon?: number;
+    /** Si false, un membre non-bureau ne voit que ses propres lignes en séance. */
+    member_sees_all?: boolean;
   };
   notifications?: {
     contribution_reminder?: boolean;
@@ -102,6 +107,19 @@ export interface Association {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface AppNotification {
+  id: UUID;
+  kind: string;
+  title: string;
+  body?: string | null;
+  action_url?: string | null;
+  data: Record<string, unknown>;
+  read_at?: string | null;
+  is_archived: boolean;
+  association_id?: UUID | null;
+  created_at: string;
 }
 
 export type Gender = "male" | "female" | "other";
