@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import _user_has_bureau_role, get_current_user, get_db
 from app.models.association import Association
 from app.models.caisse import Caisse, InterestDistribution
 from app.models.finance import Fund, FundKind, MovementDirection
@@ -38,8 +38,11 @@ from app.schemas.loan import (
     LoanRepay,
     RepaymentOut,
 )
+from app.core.config import settings
+from app.models.notification import NotificationKind
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.services.loan_calculator import compute_schedule
+from app.services.notify import bureau_users_of, notify_user, notify_users
 
 router = APIRouter()
 
@@ -198,8 +201,17 @@ async def request_loan(
             Membership.association_id == payload.association_id,
         )
     )
-    if not res.scalar_one_or_none():
+    borrower_mem = res.scalar_one_or_none()
+    if not borrower_mem:
         raise HTTPException(422, "Emprunteur introuvable dans l'association")
+
+    # Un membre simple ne peut demander un prêt QUE pour lui-même. Seuls les
+    # admins / membres du bureau peuvent déposer une demande pour autrui.
+    is_bureau = await _user_has_bureau_role(db, current_user, payload.association_id)
+    if not is_bureau and borrower_mem.user_id != current_user.id:
+        raise HTTPException(
+            403, "Vous ne pouvez demander un prêt que pour vous-même."
+        )
 
     # Phase 2d — résolution du LoanType : snapshot des règles + caisse source.
     loan_type: LoanType | None = None
@@ -305,6 +317,25 @@ async def request_loan(
     db.add(loan)
     await db.commit()
     loan = await _load_loan(db, loan.id)
+
+    # Notifie le bureau/admins qu'une demande de prêt est à traiter.
+    borrower_name = (
+        getattr(getattr(loan.borrower, "user", None), "full_name", None) or "Un membre"
+    )
+    action_url = f"{settings.FRONTEND_URL.rstrip('/')}/dashboard/loans/{loan.id}"
+    deciders = await bureau_users_of(db, assoc.id)
+    await notify_users(
+        db,
+        users=deciders,
+        kind=NotificationKind.INFO,
+        title=f"Nouvelle demande de prêt — {assoc.name}",
+        body=f"{borrower_name} a déposé une demande de prêt ({loan.reference}) de "
+        f"{loan.principal:,}".replace(",", " ") + f" {assoc.currency}.",
+        action_url=action_url,
+        association_id=assoc.id,
+        send_mail=True,
+    )
+    await db.commit()
     return _loan_detail(loan)
 
 
@@ -357,6 +388,23 @@ async def approve_loan(
     await db.commit()
     db.expire_all()  # drop stale collections so the reload sees new installments
     loan = await _load_loan(db, loan_id)
+
+    # Notifie l'emprunteur de l'approbation.
+    borrower_user = getattr(loan.borrower, "user", None)
+    if borrower_user:
+        await notify_user(
+            db,
+            user=borrower_user,
+            kind=NotificationKind.LOAN_APPROVED,
+            title="Votre demande de prêt a été approuvée",
+            body=f"Votre prêt {loan.reference} de "
+            + f"{loan.principal:,}".replace(",", " ")
+            + f" {assoc.currency} a été approuvé.",
+            action_url=f"{settings.FRONTEND_URL.rstrip('/')}/dashboard/loans/{loan.id}",
+            association_id=assoc.id,
+            send_mail=True,
+            commit=True,
+        )
     return _loan_detail(loan)
 
 
@@ -379,6 +427,21 @@ async def reject_loan(
     loan.notes = payload.reason
     await db.commit()
     loan = await _load_loan(db, loan_id)
+
+    borrower_user = getattr(loan.borrower, "user", None)
+    if borrower_user:
+        await notify_user(
+            db,
+            user=borrower_user,
+            kind=NotificationKind.INFO,
+            title="Votre demande de prêt a été refusée",
+            body=f"Votre demande de prêt {loan.reference} n'a pas été retenue."
+            + (f" Motif : {payload.reason}" if payload.reason else ""),
+            action_url=f"{settings.FRONTEND_URL.rstrip('/')}/dashboard/loans/{loan.id}",
+            association_id=assoc.id,
+            send_mail=True,
+            commit=True,
+        )
     return _loan_detail(loan)
 
 

@@ -20,6 +20,7 @@ from app.api.v1 import (
     loan_types,
     aid_types,
     public,
+    notifications,
 )
 
 api_router = APIRouter()
@@ -69,4 +70,7 @@ api_router.include_router(aid_types.router, prefix="/aid-types", tags=["aid-type
 
 # Public (no auth) — shareable branded pages
 api_router.include_router(public.router, prefix="/public", tags=["public"])
+
+# In-app notifications
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 

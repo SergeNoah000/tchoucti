@@ -76,6 +76,31 @@ async def _user_is_association_admin(
     return res.first() is not None
 
 
+async def _user_has_bureau_role(
+    db: AsyncSession, user: User, association_id: UUID | None = None
+) -> bool:
+    """True si l'utilisateur tient un rôle de bureau (tout rôle != 'member') sur
+    au moins une adhésion ACTIVE. Inclut les admins plateforme/groupement.
+    Sert à gater les actions opérationnelles (séances, approbations, demandes
+    de prêt pour autrui)."""
+    if user.user_type in (UserType.SUPER_ADMIN, UserType.GROUPEMENT_ADMIN):
+        return True
+    stmt = (
+        select(Role.code)
+        .join(MembershipRole, MembershipRole.role_id == Role.id)
+        .join(Membership, Membership.id == MembershipRole.membership_id)
+        .where(
+            Membership.user_id == user.id,
+            Membership.status == MembershipStatus.ACTIVE,
+            Role.code != "member",
+        )
+    )
+    if association_id is not None:
+        stmt = stmt.where(Membership.association_id == association_id)
+    res = await db.execute(stmt)
+    return res.first() is not None
+
+
 async def require_association_admin(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

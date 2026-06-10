@@ -16,8 +16,10 @@ from sqlalchemy.orm import selectinload
 from slugify import slugify
 
 from app.api.deps import get_current_user, get_db
+from app.core.config import settings
 from app.models.association import Association
 from app.models.caisse import Caisse, CaisseCategory
+from app.models.notification import NotificationKind
 from app.models.finance import Fund, FundKind, MovementDirection
 from app.models.role import Membership, MembershipRole, MembershipStatus, Role
 from app.models.social_aid import (
@@ -44,6 +46,7 @@ from app.models.meeting import (
 )
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.services.meeting_agenda import upsert_caisse_activity
+from app.services.notify import bureau_users_of, notify_user, notify_users
 
 router = APIRouter()
 
@@ -359,6 +362,21 @@ async def declare_case(
     db.add(case)
     await db.commit()
     case = await _load_case(db, case.id)
+
+    # Notifie le bureau qu'une demande d'aide est à examiner.
+    bname = getattr(getattr(case.beneficiary, "user", None), "full_name", None) or "Un membre"
+    deciders = await bureau_users_of(db, assoc.id)
+    await notify_users(
+        db,
+        users=deciders,
+        kind=NotificationKind.INFO,
+        title=f"Nouvelle demande d'aide — {assoc.name}",
+        body=f"{bname} a déposé une demande d'aide ({case.reference}) : {case.title}.",
+        action_url=f"{settings.FRONTEND_URL.rstrip('/')}/dashboard/social-aid",
+        association_id=assoc.id,
+        send_mail=True,
+    )
+    await db.commit()
     return _case_detail(case)
 
 
@@ -423,6 +441,21 @@ async def approve_case(
 
     await db.commit()
     case = await _load_case(db, case_id)
+
+    bene_user = getattr(case.beneficiary, "user", None)
+    if bene_user:
+        await notify_user(
+            db,
+            user=bene_user,
+            kind=NotificationKind.AID_DECIDED,
+            title="Votre demande d'aide a été approuvée",
+            body=f"Votre demande d'aide {case.reference} ({case.title}) a été approuvée"
+            + (f" pour {case.approved_amount:,}".replace(",", " ") + f" {assoc.currency}." if case.approved_amount else "."),
+            action_url=f"{settings.FRONTEND_URL.rstrip('/')}/dashboard/social-aid",
+            association_id=assoc.id,
+            send_mail=True,
+            commit=True,
+        )
     return _case_detail(case)
 
 
@@ -447,6 +480,21 @@ async def reject_case(
     case.decided_by_id = current_user.id
     await db.commit()
     case = await _load_case(db, case_id)
+
+    bene_user = getattr(case.beneficiary, "user", None)
+    if bene_user:
+        await notify_user(
+            db,
+            user=bene_user,
+            kind=NotificationKind.AID_DECIDED,
+            title="Votre demande d'aide a été refusée",
+            body=f"Votre demande d'aide {case.reference} ({case.title}) n'a pas été retenue."
+            + (f" Motif : {payload.reason}" if payload.reason else ""),
+            action_url=f"{settings.FRONTEND_URL.rstrip('/')}/dashboard/social-aid",
+            association_id=assoc.id,
+            send_mail=True,
+            commit=True,
+        )
     return _case_detail(case)
 
 

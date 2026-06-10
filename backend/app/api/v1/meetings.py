@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import _user_has_bureau_role, get_current_user, get_db
 from app.models.association import Association
 from app.models.caisse import Caisse, CaisseContributorBalance
 from app.models.finance import Fund, FundKind, MovementDirection
@@ -150,6 +150,17 @@ def _check_access(user: User, assoc: Association) -> None:
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+async def _require_bureau(db: AsyncSession, user: User, assoc: Association) -> None:
+    """Gate les actions opérationnelles de séance (créer / ouvrir / clôturer /
+    annuler une séance, saisir des données). Réservé aux admins et membres du
+    bureau ; un membre simple ne peut pas agir."""
+    if not await _user_has_bureau_role(db, user, assoc.id):
+        raise HTTPException(
+            status_code=403,
+            detail="Réservé au bureau de l'association (admin, trésorier, secrétaire…).",
+        )
+
+
 async def _get_meeting_or_404(db: AsyncSession, meeting_id: UUID) -> Meeting:
     result = await db.execute(select(Meeting).where(Meeting.id == meeting_id))
     m = result.scalar_one_or_none()
@@ -257,10 +268,27 @@ async def get_meeting(
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_access(current_user, assoc)
 
+    attendances = m.attendances
+    entries = m.entries
+
+    # Visibilité : si l'asso restreint la vue (meetings.member_sees_all == False)
+    # et que le demandeur n'est pas du bureau, il ne voit QUE ses propres lignes.
+    member_sees_all = ((assoc.config or {}).get("meetings") or {}).get("member_sees_all", True)
+    if not member_sees_all and not await _user_has_bureau_role(db, current_user, assoc.id):
+        own = await db.execute(
+            select(Membership.id).where(
+                Membership.user_id == current_user.id,
+                Membership.association_id == assoc.id,
+            )
+        )
+        own_ids = set(own.scalars().all())
+        attendances = [a for a in attendances if a.membership_id in own_ids]
+        entries = [e for e in entries if e.membership_id in own_ids]
+
     return MeetingDetail(
         **_meeting_to_out(m).model_dump(),
-        attendances=[_attendance_to_out(a) for a in m.attendances],
-        entries=[_entry_to_out(e) for e in m.entries],
+        attendances=[_attendance_to_out(a) for a in attendances],
+        entries=[_entry_to_out(e) for e in entries],
     )
 
 
@@ -272,6 +300,7 @@ async def create_meeting(
 ):
     assoc = await _get_assoc_or_404(db, payload.association_id)
     _check_access(current_user, assoc)
+    await _require_bureau(db, current_user, assoc)
 
     meeting = Meeting(
         association_id=payload.association_id,
@@ -300,6 +329,7 @@ async def update_meeting(
     m = await _get_meeting_or_404(db, meeting_id)
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_access(current_user, assoc)
+    await _require_bureau(db, current_user, assoc)
 
     if m.status == MeetingStatus.CLOSED:
         raise HTTPException(status_code=409, detail="Cannot edit a closed meeting")
@@ -358,6 +388,7 @@ async def cancel_meeting(
     m = await _get_meeting_or_404(db, meeting_id)
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_access(current_user, assoc)
+    await _require_bureau(db, current_user, assoc)
 
     if m.status == MeetingStatus.CLOSED:
         raise HTTPException(409, "Une séance clôturée ne peut plus être annulée.")
@@ -429,6 +460,7 @@ async def open_meeting(
     m = await _get_meeting_or_404(db, meeting_id)
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_access(current_user, assoc)
+    await _require_bureau(db, current_user, assoc)
 
     if m.status != MeetingStatus.PLANNED:
         raise HTTPException(status_code=409, detail=f"Meeting is already {m.status.value}")
@@ -450,6 +482,7 @@ async def close_meeting(
     m = await _load_meeting_detail(db, meeting_id)
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_access(current_user, assoc)
+    await _require_bureau(db, current_user, assoc)
 
     if m.status != MeetingStatus.ONGOING:
         raise HTTPException(status_code=409, detail=f"Meeting is not ongoing (status={m.status.value})")
@@ -717,6 +750,7 @@ async def upsert_attendances(
     m = await _get_meeting_or_404(db, meeting_id)
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_access(current_user, assoc)
+    await _require_bureau(db, current_user, assoc)
 
     if m.status == MeetingStatus.CLOSED:
         raise HTTPException(status_code=409, detail="Cannot edit attendances of a closed meeting")
@@ -781,6 +815,7 @@ async def create_entry(
     m = await _get_meeting_or_404(db, meeting_id)
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_access(current_user, assoc)
+    await _require_bureau(db, current_user, assoc)
 
     if m.status == MeetingStatus.CLOSED:
         raise HTTPException(status_code=409, detail="Cannot add entries to a closed meeting")
@@ -817,6 +852,7 @@ async def update_entry(
     m = await _get_meeting_or_404(db, meeting_id)
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_access(current_user, assoc)
+    await _require_bureau(db, current_user, assoc)
 
     res = await db.execute(
         select(MeetingActivityEntry).where(
@@ -893,6 +929,7 @@ async def save_member(
     m = await _load_meeting_detail(db, meeting_id)
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_access(current_user, assoc)
+    await _require_bureau(db, current_user, assoc)
 
     if m.status == MeetingStatus.CLOSED:
         raise HTTPException(409, "Réunion clôturée — saisies verrouillées")
@@ -1015,6 +1052,7 @@ async def generate_meetings(
     """
     assoc = await _get_assoc_or_404(db, payload.association_id)
     _check_access(current_user, assoc)
+    await _require_bureau(db, current_user, assoc)
 
     start = payload.start_from
     if start is None:
