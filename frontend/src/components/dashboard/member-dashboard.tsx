@@ -14,6 +14,7 @@ import { associationsApi, caissesApi, meetingsApi } from "@/lib/api";
 import type { Association, Meeting, MyShareItem } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
 import { useFormatters } from "@/lib/format";
+import { MeetingPrepCard } from "@/components/dashboard/meeting-prep-card";
 
 export function MemberDashboard() {
   const t = useTranslations("dashboard");
@@ -71,6 +72,8 @@ export function MemberDashboard() {
         <StatCard label={t("upcomingMeetings")} value={upcoming.length} icon={Calendar} accent="sky" />
         <StatCard label={tNav("myLoans")} value="—" icon={HandCoins} accent="amber" />
       </div>
+
+      <MeetingPrepCard associationId={association?.id} currency={association?.currency} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

@@ -18,7 +18,7 @@ from slugify import slugify
 from app.api.deps import _user_has_bureau_role, get_current_user, get_db
 from app.core.config import settings
 from app.models.association import Association
-from app.models.caisse import Caisse, CaisseCategory
+from app.models.caisse import Caisse, CaisseCategory, MemberCaisseBalance
 from app.models.notification import NotificationKind
 from app.models.finance import Fund, FundKind, MovementDirection
 from app.models.role import Membership, MembershipRole, MembershipStatus, Role
@@ -36,6 +36,7 @@ from app.schemas.social_aid import (
     SocialAidCaseCreate,
     SocialAidCaseDetail,
     SocialAidCaseOut,
+    SocialAidCaseUpdate,
     SocialAidReject,
 )
 from app.models.meeting import (
@@ -172,6 +173,74 @@ async def _source_fund_for(db: AsyncSession, case: SocialAidCase, treasury) -> F
     return fund
 
 
+async def _payout_member_insurance(
+    db: AsyncSession,
+    *,
+    assoc: Association,
+    case: SocialAidCase,
+    aid_type: AidType,
+    treasury,
+    recorded_by_id: UUID,
+):
+    """Décaissement en mode « caisses perso d'assurance ».
+
+    Le montant total approuvé est réparti à parts égales sur les membres actifs
+    autres que le bénéficiaire ; la caisse perso d'assurance de chacun est
+    débitée de sa part (le membre la re-remplira jusqu'au minimum). Un mouvement
+    OUT global sort du fonds de la caisse d'assurance au profit du bénéficiaire.
+    """
+    if not aid_type.insurance_caisse_id:
+        raise HTTPException(500, "Aucune caisse d'assurance configurée pour ce type d'aide.")
+    fund_res = await db.execute(
+        select(Fund)
+        .join(Caisse, Caisse.fund_id == Fund.id)
+        .where(Caisse.id == aid_type.insurance_caisse_id)
+    )
+    fund = fund_res.scalar_one_or_none()
+    if fund is None:
+        raise HTTPException(500, "Fonds de la caisse d'assurance introuvable.")
+
+    members = await _active_member_ids(db, assoc.id)
+    contributors = [m for m in members if m != case.beneficiary_membership_id]
+    if not contributors:
+        raise HTTPException(409, "Aucun membre contributeur pour financer cette aide.")
+
+    total = case.approved_amount
+    share = total // len(contributors)
+    remainder = total - share * len(contributors)  # réparti sur les 1ers membres
+
+    for idx, mid in enumerate(contributors):
+        amt = share + (1 if idx < remainder else 0)
+        bal_res = await db.execute(
+            select(MemberCaisseBalance).where(
+                MemberCaisseBalance.caisse_id == aid_type.insurance_caisse_id,
+                MemberCaisseBalance.membership_id == mid,
+            )
+        )
+        bal = bal_res.scalar_one_or_none()
+        if bal is None:
+            bal = MemberCaisseBalance(
+                caisse_id=aid_type.insurance_caisse_id, membership_id=mid, balance=0
+            )
+            db.add(bal)
+        bal.balance -= amt
+
+    return await post_movement(
+        db,
+        treasury=treasury,
+        direction=MovementDirection.OUT,
+        amount=total,
+        allocations=[Allocation(fund=fund, is_credit=False, amount=total)],
+        occurred_on=date.today(),
+        source_type="aid_payout",
+        source_id=case.id,
+        recorded_by_id=recorded_by_id,
+        related_membership_id=case.beneficiary_membership_id,
+        description=f"Aide sociale {case.reference} — {case.title} (assurance répartie)",
+        commit=False,
+    )
+
+
 def _case_out(case: SocialAidCase) -> SocialAidCaseOut:
     beneficiary = getattr(case, "beneficiary", None)
     user = getattr(beneficiary, "user", None) if beneficiary else None
@@ -203,6 +272,73 @@ def _case_detail(case: SocialAidCase) -> SocialAidCaseDetail:
     return SocialAidCaseDetail(**base, payouts=sorted(case.payouts, key=lambda p: p.paid_on))
 
 
+async def _active_member_ids(db: AsyncSession, association_id: UUID) -> list:
+    res = await db.execute(
+        select(Membership.id).where(
+            Membership.association_id == association_id,
+            Membership.status == MembershipStatus.ACTIVE,
+        )
+    )
+    return list(res.scalars().all())
+
+
+def _aid_total_and_share(aid_type: "AidType", n_members: int) -> tuple[int, int]:
+    """Renvoie (montant total de l'aide, part par membre contributeur).
+
+    - ceiling : total = plafond. Part = total / (n-1) si financement réparti.
+    - objective : total = objectif. Part = objectif / (n-1) (le -1 exclut le
+      demandeur). Les (n-1) contributeurs paient chacun cette part → Σ = objectif.
+    """
+    if getattr(aid_type, "amount_mode", "ceiling") == "objective":
+        total = aid_type.objective_amount or 0
+    else:
+        total = aid_type.aid_ceiling_amount or 0
+    contributors = max(1, n_members - 1)
+    share = total // contributors if contributors else total
+    return total, share
+
+
+async def _insurance_state(
+    db: AsyncSession, aid_type: "AidType", membership_id: UUID
+) -> Optional[tuple[int, int, bool]]:
+    """État de la caisse d'assurance du membre pour ce type d'aide :
+    (solde, minimum, en_dessous_du_min). None si le type n'est pas en mode
+    member_insurance."""
+    if getattr(aid_type, "funding_mode", "fixed") != "member_insurance" or not aid_type.insurance_caisse_id:
+        return None
+    res = await db.execute(
+        select(MemberCaisseBalance.balance).where(
+            MemberCaisseBalance.caisse_id == aid_type.insurance_caisse_id,
+            MemberCaisseBalance.membership_id == membership_id,
+        )
+    )
+    balance = int(res.scalar_one_or_none() or 0)
+    minimum = aid_type.insurance_minimum or 0
+    return balance, minimum, balance < minimum
+
+
+async def _build_case_detail(db: AsyncSession, case: SocialAidCase) -> SocialAidCaseDetail:
+    """Détail d'un dossier + critère « caisse d'assurance » du bénéficiaire."""
+    detail = _case_detail(case)
+    if case.aid_type_id is None:
+        return detail
+    at_res = await db.execute(select(AidType).where(AidType.id == case.aid_type_id))
+    aid_type = at_res.scalar_one_or_none()
+    if not aid_type:
+        return detail
+    detail.funding_mode = aid_type.funding_mode
+    n = len(await _active_member_ids(db, case.association_id))
+    _total, share = _aid_total_and_share(aid_type, n)
+    detail.per_member_share = share
+    state = await _insurance_state(db, aid_type, case.beneficiary_membership_id)
+    if state is not None:
+        bal, mn, below = state
+        detail.insurance_balance = bal
+        detail.insurance_minimum = mn
+        detail.insurance_below_min = below
+    return detail
+
+
 # ── Endpoints ───────────────────────────────────────────────────────────────
 @router.get("", response_model=List[SocialAidCaseOut])
 async def list_cases(
@@ -223,7 +359,27 @@ async def list_cases(
     if status_filter:
         stmt = stmt.where(SocialAidCase.status == SocialAidCaseStatus(status_filter))
     res = await db.execute(stmt)
-    return [_case_out(c) for c in res.scalars().all()]
+    cases = list(res.scalars().all())
+    outs = [_case_out(c) for c in cases]
+
+    # Critère « caisse d'assurance » : enrichit les dossiers liés à un type
+    # member_insurance (solde de la caisse de débit du bénéficiaire vs minimum).
+    type_ids = {c.aid_type_id for c in cases if c.aid_type_id}
+    if type_ids:
+        at_res = await db.execute(select(AidType).where(AidType.id.in_(type_ids)))
+        types = {at.id: at for at in at_res.scalars().all()}
+        n = len(await _active_member_ids(db, association_id))
+        for out, c in zip(outs, cases):
+            at = types.get(c.aid_type_id) if c.aid_type_id else None
+            if not at:
+                continue
+            out.funding_mode = at.funding_mode
+            _total, share = _aid_total_and_share(at, n)
+            out.per_member_share = share
+            state = await _insurance_state(db, at, c.beneficiary_membership_id)
+            if state is not None:
+                out.insurance_balance, out.insurance_minimum, out.insurance_below_min = state
+    return outs
 
 
 # Phase 5 — placed BEFORE /{case_id} so FastAPI doesn't try to parse
@@ -259,7 +415,39 @@ async def get_case(
     case = await _load_case(db, case_id)
     assoc = await _get_assoc_or_404(db, case.association_id)
     _check_access(current_user, assoc)
-    return _case_detail(case)
+    return await _build_case_detail(db, case)
+
+
+@router.patch("/{case_id}", response_model=SocialAidCaseDetail)
+async def update_case(
+    case_id: UUID,
+    payload: SocialAidCaseUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Édite un dossier d'aide. Réservé au bureau/admin ; impossible une fois
+    le dossier décaissé ou clôturé (payé/rejeté/annulé)."""
+    case = await _load_case(db, case_id)
+    assoc = await _get_assoc_or_404(db, case.association_id)
+    _check_access(current_user, assoc)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Réservé aux admins et membres du bureau.")
+    if case.status in (
+        SocialAidCaseStatus.PAID,
+        SocialAidCaseStatus.REJECTED,
+        SocialAidCaseStatus.CANCELLED,
+    ):
+        raise HTTPException(409, "Ce dossier ne peut plus être modifié.")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "kind" in data and data["kind"] is not None:
+        case.kind = SocialAidCaseKind(data.pop("kind"))
+    for field, value in data.items():
+        setattr(case, field, value)
+
+    await db.commit()
+    case = await _load_case(db, case_id)
+    return await _build_case_detail(db, case)
 
 
 @router.post("", response_model=SocialAidCaseDetail, status_code=status.HTTP_201_CREATED)
@@ -332,8 +520,13 @@ async def declare_case(
                 )
 
         source_caisse_id = aid_type.source_caisse_id
-        # Snapshot the requested amount on the ceiling (admin can adjust at approve time).
-        if not requested_amount and aid_type.aid_ceiling_amount > 0:
+        # Snapshot du montant demandé selon le mode de calcul :
+        #  - objective : total = montant objectif (réparti à (N-1) au décaissement) ;
+        #  - ceiling   : plafond du type.
+        # L'admin peut ajuster à l'approbation.
+        if getattr(aid_type, "amount_mode", "ceiling") == "objective" and aid_type.objective_amount > 0:
+            requested_amount = aid_type.objective_amount
+        elif not requested_amount and aid_type.aid_ceiling_amount > 0:
             requested_amount = aid_type.aid_ceiling_amount
 
     count_res = await db.execute(
@@ -377,7 +570,7 @@ async def declare_case(
         send_mail=True,
     )
     await db.commit()
-    return _case_detail(case)
+    return await _build_case_detail(db, case)
 
 
 @router.post("/{case_id}/approve", response_model=SocialAidCaseDetail)
@@ -398,15 +591,22 @@ async def approve_case(
 
     amount = payload.approved_amount
     if amount is None:
-        amount = _scale_amount(assoc, case.kind.value) or 0
+        # Défaut : montant demandé snapshotté (objectif ou plafond), sinon barème.
+        amount = case.requested_amount or _scale_amount(assoc, case.kind.value) or 0
     if amount <= 0:
         raise HTTPException(422, "Montant approuvé requis (aucun barème configuré pour ce type)")
 
-    # Phase 2e — borne par le plafond du type si applicable.
+    # Phase 2e — borne par le plafond du type, uniquement en mode "ceiling".
+    # En mode "objective", le montant total approuvé = l'objectif (pas de plafond).
     if case.aid_type_id is not None:
         at_res = await db.execute(select(AidType).where(AidType.id == case.aid_type_id))
         aid_type = at_res.scalar_one_or_none()
-        if aid_type and aid_type.aid_ceiling_amount > 0 and amount > aid_type.aid_ceiling_amount:
+        if (
+            aid_type
+            and getattr(aid_type, "amount_mode", "ceiling") == "ceiling"
+            and aid_type.aid_ceiling_amount > 0
+            and amount > aid_type.aid_ceiling_amount
+        ):
             raise HTTPException(
                 422,
                 f"Montant {amount} > plafond du type ({aid_type.aid_ceiling_amount}).",
@@ -457,7 +657,7 @@ async def approve_case(
             send_mail=True,
             commit=True,
         )
-    return _case_detail(case)
+    return await _build_case_detail(db, case)
 
 
 @router.post("/{case_id}/reject", response_model=SocialAidCaseDetail)
@@ -497,7 +697,7 @@ async def reject_case(
             send_mail=True,
             commit=True,
         )
-    return _case_detail(case)
+    return await _build_case_detail(db, case)
 
 
 @router.post("/{case_id}/payout", response_model=SocialAidCaseDetail)
@@ -518,22 +718,38 @@ async def payout_case(
         raise HTTPException(422, "Montant approuvé invalide")
 
     treasury = await get_or_create_treasury(db, assoc)
-    fund = await _source_fund_for(db, case, treasury)
 
-    movement = await post_movement(
-        db,
-        treasury=treasury,
-        direction=MovementDirection.OUT,
-        amount=case.approved_amount,
-        allocations=[Allocation(fund=fund, is_credit=False, amount=case.approved_amount)],
-        occurred_on=date.today(),
-        source_type="aid_payout",
-        source_id=case.id,
-        recorded_by_id=current_user.id,
-        related_membership_id=case.beneficiary_membership_id,
-        description=f"Aide sociale {case.reference} — {case.title}",
-        commit=False,
-    )
+    aid_type: AidType | None = None
+    if case.aid_type_id is not None:
+        at_res = await db.execute(select(AidType).where(AidType.id == case.aid_type_id))
+        aid_type = at_res.scalar_one_or_none()
+
+    if aid_type and getattr(aid_type, "funding_mode", "fixed") == "member_insurance":
+        # Répartit le débit sur la caisse perso d'assurance de chaque contributeur.
+        movement = await _payout_member_insurance(
+            db,
+            assoc=assoc,
+            case=case,
+            aid_type=aid_type,
+            treasury=treasury,
+            recorded_by_id=current_user.id,
+        )
+    else:
+        fund = await _source_fund_for(db, case, treasury)
+        movement = await post_movement(
+            db,
+            treasury=treasury,
+            direction=MovementDirection.OUT,
+            amount=case.approved_amount,
+            allocations=[Allocation(fund=fund, is_credit=False, amount=case.approved_amount)],
+            occurred_on=date.today(),
+            source_type="aid_payout",
+            source_id=case.id,
+            recorded_by_id=current_user.id,
+            related_membership_id=case.beneficiary_membership_id,
+            description=f"Aide sociale {case.reference} — {case.title}",
+            commit=False,
+        )
 
     db.add(
         SocialAidPayout(
@@ -573,7 +789,7 @@ async def payout_case(
     await db.commit()
     db.expire_all()  # drop stale collections so the reload sees the new payout
     case = await _load_case(db, case_id)
-    return _case_detail(case)
+    return await _build_case_detail(db, case)
 
 
 # ── Phase 5 — historique des cotisations d'aides sociales ──────────────────

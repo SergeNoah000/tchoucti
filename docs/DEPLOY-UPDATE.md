@@ -29,6 +29,47 @@ séance.
 
 ---
 
+## Lot « Aides v2 + préparation de séance » (2026-06-11)
+
+> **Migration DB requise** : 6 nouvelles colonnes sur `aid_types` (modes de
+> financement et de montant). Idempotent — sans danger si déjà appliqué.
+
+Contenu :
+- **Aides — financement** (`aid_types.funding_mode`) : `fixed` (caisse source),
+  `temporary` (caisse au nom du bénéficiaire) ou `member_insurance` (caisses
+  perso d'assurance par membre, avec minimum + période de re-remplissage ; au
+  décaissement, la part de chaque membre — sauf le demandeur — est débitée de sa
+  caisse perso).
+- **Aides — montant** (`aid_types.amount_mode`) : `ceiling` (plafond fixe) ou
+  `objective` (objectif réparti : part = objectif ÷ (nb membres − 1)).
+- **Critère « caisse d'assurance »** affiché sur chaque dossier (solde vs
+  minimum) au demandeur comme aux autres ; demande créée même si défavorable.
+- **Édition d'un dossier d'aide** par le bureau (tant que non décaissé).
+- **Tableau de bord** : panneau « Préparez votre séance » (prochaine séance +
+  J-compte à rebours + éléments financiers attendus + actions bureau en attente).
+
+**Migration DB** (à appliquer une fois, après `deploy.sh`) :
+
+```bash
+DC="docker compose -f /opt/tchoucti/deploy/docker-compose.prod.yml --env-file /opt/tchoucti/deploy/.env"
+$DC exec -T postgres psql -U tchoucti -d tchoucti <<'SQL'
+ALTER TABLE aid_types ADD COLUMN IF NOT EXISTS amount_mode        VARCHAR(20)  NOT NULL DEFAULT 'ceiling';
+ALTER TABLE aid_types ADD COLUMN IF NOT EXISTS objective_amount   BIGINT       NOT NULL DEFAULT 0;
+ALTER TABLE aid_types ADD COLUMN IF NOT EXISTS funding_mode       VARCHAR(20)  NOT NULL DEFAULT 'fixed';
+ALTER TABLE aid_types ADD COLUMN IF NOT EXISTS insurance_caisse_id UUID        REFERENCES caisses(id) ON DELETE SET NULL;
+ALTER TABLE aid_types ADD COLUMN IF NOT EXISTS insurance_minimum  BIGINT       NOT NULL DEFAULT 0;
+ALTER TABLE aid_types ADD COLUMN IF NOT EXISTS refill_period_days INTEGER      NOT NULL DEFAULT 90;
+-- Aligne le mode des anciens types « caisse temporaire » sur le nouveau champ.
+UPDATE aid_types SET funding_mode = 'temporary' WHERE auto_create_caisse = true AND funding_mode = 'fixed';
+SQL
+```
+
+**Procédure** : `git pull --ff-only` → `bash deploy/deploy.sh` → migration DB
+ci-dessus. Vérifier : création d'un type d'aide en mode « caisses perso
+d'assurance » ; panneau « Préparez votre séance » sur le tableau de bord.
+
+---
+
 ## 1. État — ce qui a changé
 
 | Commit | Changement | Impact déploiement |

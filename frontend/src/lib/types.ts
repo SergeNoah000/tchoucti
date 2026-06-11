@@ -512,6 +512,30 @@ export interface Meeting {
   updated_at: string;
 }
 
+export interface PrepActivity {
+  name: string;
+  amount?: number | null;
+  is_required: boolean;
+}
+
+export interface NextMeetingInfo {
+  id: UUID;
+  title: string;
+  scheduled_on: string;
+  days_until: number;
+}
+
+export interface MeetingPrep {
+  next_meeting?: NextMeetingInfo | null;
+  expected_activities: PrepActivity[];
+  pending_aids: number;
+  aids_to_pay: number;
+  pending_loans: number;
+  loans_to_disburse: number;
+  repayments_due: number;
+  is_bureau: boolean;
+}
+
 export interface MeetingDetail extends Meeting {
   attendances: MeetingAttendance[];
   entries: MeetingActivityEntry[];
@@ -657,6 +681,12 @@ export interface SocialAidCase {
   paid_amount: number;
   rejection_reason?: string | null;
   created_at: string;
+  // Mode de financement du type rattaché + critère caisse d'assurance.
+  funding_mode?: "fixed" | "temporary" | "member_insurance" | null;
+  insurance_balance?: number | null;
+  insurance_minimum?: number | null;
+  insurance_below_min?: boolean | null;
+  per_member_share?: number | null;
 }
 
 export interface SocialAidCaseDetail extends SocialAidCase {

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { HeartHandshake, History, Plus, Loader2, Check, X, HandCoins } from "lucide-react";
+import { HeartHandshake, History, Plus, Loader2, Check, X, HandCoins, Pencil, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ import type { Association, Membership, SocialAidCase, SocialAidKind, SocialAidSt
 import { useAuthStore } from "@/lib/store";
 import { canDoBureauActions } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const KINDS: SocialAidKind[] = ["death", "illness", "marriage", "birth", "other"];
 
@@ -178,6 +179,8 @@ function CaseCard({
   const amount = c.status === "paid" ? c.paid_amount : c.approved_amount || c.requested_amount || 0;
   const canDecide = canManage && (c.status === "requested" || c.status === "reviewing");
   const canPayout = canManage && c.status === "approved";
+  const canEdit =
+    canManage && c.status !== "paid" && c.status !== "rejected" && c.status !== "cancelled";
 
   return (
     <Card>
@@ -198,6 +201,24 @@ function CaseCard({
             {c.rejection_reason && (
               <p className="mt-0.5 truncate text-xs text-destructive">{c.rejection_reason}</p>
             )}
+            {c.funding_mode === "member_insurance" && c.insurance_minimum != null && (
+              <p
+                className={cn(
+                  "mt-0.5 flex items-center gap-1 text-xs",
+                  c.insurance_below_min
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-emerald-600 dark:text-emerald-400",
+                )}
+              >
+                <ShieldCheck className="h-3 w-3 shrink-0" />
+                {t("insuranceCriterion", {
+                  balance: fmt.currency(c.insurance_balance ?? 0),
+                  min: fmt.currency(c.insurance_minimum),
+                })}
+                {" · "}
+                {c.insurance_below_min ? t("insuranceUnfavorable") : t("insuranceFavorable")}
+              </p>
+            )}
           </div>
         </div>
 
@@ -206,6 +227,7 @@ function CaseCard({
             <p className="text-sm font-bold tabular-nums">{amount > 0 ? fmt.currency(amount) : t("noScale")}</p>
             <Badge variant={STATUS_VARIANT[c.status]} className="mt-0.5">{t(`status_${c.status}`)}</Badge>
           </div>
+          {canEdit && <EditDialog c={c} currency={currency} onDone={refresh} />}
           {canDecide && (
             <div className="flex items-center gap-1.5">
               <AlertDialog>
@@ -324,6 +346,144 @@ function RejectDialog({ caseId, onDone }: { caseId: string; onDone: () => void }
             >
               {rejectMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {t("reject")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Edit dialog (#3 — édition d'un dossier par le bureau) ─────────────────────
+
+function EditDialog({
+  c,
+  currency,
+  onDone,
+}: {
+  c: SocialAidCase;
+  currency?: string;
+  onDone: () => void;
+}) {
+  const t = useTranslations("socialAid");
+  const tCommon = useTranslations("common");
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<SocialAidKind>(c.kind);
+  const [title, setTitle] = useState(c.title);
+  const [eventDate, setEventDate] = useState(c.event_date ?? "");
+  const [description, setDescription] = useState(c.description ?? "");
+  const [requestedAmount, setRequestedAmount] = useState(
+    c.requested_amount != null ? String(c.requested_amount) : "",
+  );
+
+  const reset = () => {
+    setKind(c.kind);
+    setTitle(c.title);
+    setEventDate(c.event_date ?? "");
+    setDescription(c.description ?? "");
+    setRequestedAmount(c.requested_amount != null ? String(c.requested_amount) : "");
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      socialAidApi.update(c.id, {
+        kind,
+        title: title.trim(),
+        description: description.trim(),
+        event_date: eventDate || undefined,
+        requested_amount: requestedAmount === "" ? undefined : parseInt(requestedAmount, 10) || 0,
+      }),
+    onSuccess: () => {
+      toast.success(t("editedToast"));
+      setOpen(false);
+      onDone();
+    },
+    onError: (err) => toast.error(extractError(err) ?? t("actionError")),
+  });
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) reset();
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" className="gap-1.5">
+          <Pencil className="h-3.5 w-3.5" />
+          {tCommon("edit")}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("editTitle")}</DialogTitle>
+          <DialogDescription>{t("editDesc")}</DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (title.trim().length >= 2) updateMutation.mutate();
+          }}
+          className="space-y-4 py-2"
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>{t("kind")}</Label>
+              <Select value={kind} onValueChange={(v) => setKind(v as SocialAidKind)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {KINDS.map((k) => (
+                    <SelectItem key={k} value={k}>
+                      {t(`kind_${k}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ed-date">{t("eventDate")}</Label>
+              <Input
+                id="ed-date"
+                type="date"
+                value={eventDate}
+                onChange={(e) => setEventDate(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ed-title">{t("caseTitle")}</Label>
+            <Input id="ed-title" value={title} onChange={(e) => setTitle(e.target.value)} required minLength={2} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ed-amount">{t("requestedAmount")}</Label>
+            <Input
+              id="ed-amount"
+              type="number"
+              min={0}
+              value={requestedAmount}
+              onChange={(e) => setRequestedAmount(e.target.value)}
+              placeholder={currency}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ed-desc">{t("descriptionField")}</Label>
+            <Textarea
+              id="ed-desc"
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              {tCommon("cancel")}
+            </Button>
+            <Button type="submit" disabled={updateMutation.isPending || title.trim().length < 2} className="gap-2">
+              {updateMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {tCommon("save")}
             </Button>
           </DialogFooter>
         </form>

@@ -27,16 +27,23 @@ import type { Association } from "@/lib/types";
 
 interface AidType {
   id: string;
+  funding_mode?: "fixed" | "temporary" | "member_insurance";
   source_caisse_id?: string | null;
   source_caisse_name?: string | null;
   auto_create_caisse?: boolean;
+  insurance_caisse_id?: string | null;
+  insurance_caisse_name?: string | null;
+  insurance_minimum?: number;
+  refill_period_days?: number;
   name: string;
   slug: string;
   description?: string | null;
   is_active: boolean;
   member_contribution_amount: number;
   is_contribution_recurring: boolean;
+  amount_mode?: "ceiling" | "objective";
   aid_ceiling_amount: number;
+  objective_amount?: number;
   max_claims_per_member_per_year: number;
   declaration_delay_days: number;
 }
@@ -173,12 +180,26 @@ export function AidTypesManager({ association }: { association: Association }) {
                       <p className="mt-1 text-xs text-muted-foreground">
                         {t("source")}:{" "}
                         <span className="font-medium">
-                          {at.auto_create_caisse ? t("temporaryCaisse") : at.source_caisse_name}
+                          {(at.funding_mode ?? (at.auto_create_caisse ? "temporary" : "fixed")) === "member_insurance"
+                            ? t("fundingInsurance") + (at.insurance_caisse_name ? ` (${at.insurance_caisse_name})` : "")
+                            : (at.funding_mode ?? (at.auto_create_caisse ? "temporary" : "fixed")) === "temporary"
+                              ? t("temporaryCaisse")
+                              : at.source_caisse_name}
                         </span>
                         {" · "}
-                        {t("contribution")}: <span className="font-medium">{at.member_contribution_amount}</span>
+                        {at.amount_mode === "objective" ? (
+                          <>{t("objective")}: <span className="font-medium">{at.objective_amount}</span></>
+                        ) : (
+                          <>{t("ceiling")}: <span className="font-medium">{at.aid_ceiling_amount}</span></>
+                        )}
                         {" · "}
-                        {t("ceiling")}: <span className="font-medium">{at.aid_ceiling_amount}</span>
+                        {t("contribution")}: <span className="font-medium">{at.member_contribution_amount}</span>
+                        {at.funding_mode === "member_insurance" && (
+                          <>
+                            {" · "}
+                            {t("insuranceMinimum")}: <span className="font-medium">{at.insurance_minimum ?? 0}</span>
+                          </>
+                        )}
                         {" · "}
                         {t("maxClaims")}: <span className="font-medium">{at.max_claims_per_member_per_year}/an</span>
                         {" · "}
@@ -243,14 +264,24 @@ function AidTypeForm({
   const tCommon = useTranslations("common");
   const fmt = useFormatters(currency);
 
+  type FundingMode = "fixed" | "temporary" | "member_insurance";
+  type AmountMode = "ceiling" | "objective";
+
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  // Caisse temporaire par défaut s'il n'existe aucune caisse source utilisable.
-  const [temporary, setTemporary] = useState(caisses.length === 0);
+  // Financement : caisse fixe / caisse temporaire / caisses perso d'assurance.
+  // Par défaut « temporaire » s'il n'existe aucune caisse source utilisable.
+  const [fundingMode, setFundingMode] = useState<FundingMode>(
+    caisses.length === 0 ? "temporary" : "fixed",
+  );
   const [source, setSource] = useState(caisses[0]?.id ?? "");
+  const [insuranceMin, setInsuranceMin] = useState("10000");
+  const [refillPeriod, setRefillPeriod] = useState("90");
   const [contribution, setContribution] = useState("2000");
   const [recurring, setRecurring] = useState(false);
+  const [amountMode, setAmountMode] = useState<AmountMode>("ceiling");
   const [ceiling, setCeiling] = useState("100000");
+  const [objective, setObjective] = useState("500000");
   const [maxClaims, setMaxClaims] = useState("1");
   const [delay, setDelay] = useState("30");
 
@@ -258,14 +289,21 @@ function AidTypeForm({
     mutationFn: () =>
       aidTypesApi.create({
         association_id: associationId,
-        auto_create_caisse: temporary,
-        source_caisse_id: temporary ? undefined : source,
+        funding_mode: fundingMode,
+        auto_create_caisse: fundingMode === "temporary",
+        source_caisse_id: fundingMode === "fixed" ? source : undefined,
+        insurance_minimum:
+          fundingMode === "member_insurance" ? parseInt(insuranceMin, 10) || 0 : undefined,
+        refill_period_days:
+          fundingMode === "member_insurance" ? parseInt(refillPeriod, 10) || 90 : undefined,
         name: name.trim(),
         slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
         description: description.trim() || undefined,
         member_contribution_amount: parseInt(contribution, 10) || 0,
         is_contribution_recurring: recurring,
+        amount_mode: amountMode,
         aid_ceiling_amount: parseInt(ceiling, 10) || 0,
+        objective_amount: amountMode === "objective" ? parseInt(objective, 10) || 0 : 0,
         max_claims_per_member_per_year: parseInt(maxClaims, 10) || 1,
         declaration_delay_days: parseInt(delay, 10) || 30,
       }),
@@ -283,14 +321,20 @@ function AidTypeForm({
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </HelpField>
         <div className="space-y-3 sm:col-span-2">
-          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border/50 bg-muted/20 px-3 py-2.5">
-            <div>
-              <p className="text-sm font-medium">{t("temporaryCaisseTitle")}</p>
-              <p className="text-xs text-muted-foreground">{t("temporaryCaisseHint")}</p>
-            </div>
-            <Switch checked={temporary} onCheckedChange={setTemporary} />
-          </label>
-          {!temporary && (
+          <HelpField label={t("fundingModeLabel")} hint={t("fundingModeHint")} required>
+            <Select value={fundingMode} onValueChange={(v) => setFundingMode(v as FundingMode)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fixed">{t("fundingFixed")}</SelectItem>
+                <SelectItem value="temporary">{t("fundingTemporary")}</SelectItem>
+                <SelectItem value="member_insurance">{t("fundingInsurance")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </HelpField>
+
+          {fundingMode === "fixed" && (
             <HelpField label={t("sourceCaisse")} hint={t("sourceCaisseHint")} required>
               {caisses.length === 0 ? (
                 <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
@@ -312,6 +356,39 @@ function AidTypeForm({
               )}
             </HelpField>
           )}
+
+          {fundingMode === "temporary" && (
+            <ConfigPreview intent="info">{t("temporaryCaisseHint")}</ConfigPreview>
+          )}
+
+          {fundingMode === "member_insurance" && (
+            <>
+              <ConfigPreview intent="info">{t("fundingInsuranceHint")}</ConfigPreview>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <HelpField
+                  label={t("insuranceMinimum")}
+                  hint={t("insuranceMinimumHint")}
+                  example={t("insuranceMinimumExample", { amount: fmt.currency(10000) })}
+                >
+                  <Input
+                    type="number"
+                    min={0}
+                    value={insuranceMin}
+                    onChange={(e) => setInsuranceMin(e.target.value)}
+                  />
+                </HelpField>
+                <HelpField label={t("refillPeriod")} hint={t("refillPeriodHint")}>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={730}
+                    value={refillPeriod}
+                    onChange={(e) => setRefillPeriod(e.target.value)}
+                  />
+                </HelpField>
+              </div>
+            </>
+          )}
         </div>
         <HelpField label={t("typeDescription")} className="sm:col-span-2">
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
@@ -320,6 +397,19 @@ function AidTypeForm({
 
       <section className="space-y-3 rounded-md border border-border bg-card p-3">
         <h3 className="text-sm font-semibold">{t("contributionTitle")}</h3>
+
+        <HelpField label={t("amountModeLabel")} hint={t("amountModeHint")}>
+          <Select value={amountMode} onValueChange={(v) => setAmountMode(v as AmountMode)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ceiling">{t("amountCeiling")}</SelectItem>
+              <SelectItem value="objective">{t("amountObjective")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </HelpField>
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <HelpField label={t("contribution")} example={t("contributionExample", { amount: fmt.currency(2000) })}>
             <Input
@@ -329,9 +419,19 @@ function AidTypeForm({
               onChange={(e) => setContribution(e.target.value)}
             />
           </HelpField>
-          <HelpField label={t("ceiling")} example={t("ceilingExample", { amount: fmt.currency(100000) })}>
-            <Input type="number" min={0} value={ceiling} onChange={(e) => setCeiling(e.target.value)} />
-          </HelpField>
+          {amountMode === "objective" ? (
+            <HelpField
+              label={t("objective")}
+              hint={t("objectiveHint")}
+              example={t("objectiveExample", { amount: fmt.currency(500000) })}
+            >
+              <Input type="number" min={0} value={objective} onChange={(e) => setObjective(e.target.value)} />
+            </HelpField>
+          ) : (
+            <HelpField label={t("ceiling")} example={t("ceilingExample", { amount: fmt.currency(100000) })}>
+              <Input type="number" min={0} value={ceiling} onChange={(e) => setCeiling(e.target.value)} />
+            </HelpField>
+          )}
         </div>
         <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md bg-muted/30 p-2.5">
           <div>
@@ -371,11 +471,24 @@ function AidTypeForm({
         <p className="mt-1">
           {t("previewText", {
             contribution: fmt.currency(parseInt(contribution, 10) || 0),
-            ceiling: fmt.currency(parseInt(ceiling, 10) || 0),
+            ceiling: fmt.currency(
+              (amountMode === "objective" ? parseInt(objective, 10) : parseInt(ceiling, 10)) || 0,
+            ),
             year: maxClaims,
             delay,
           })}
         </p>
+        {amountMode === "objective" && (
+          <p className="mt-1">{t("objectivePreview", { amount: fmt.currency(parseInt(objective, 10) || 0) })}</p>
+        )}
+        {fundingMode === "member_insurance" && (
+          <p className="mt-1">
+            {t("insurancePreview", {
+              min: fmt.currency(parseInt(insuranceMin, 10) || 0),
+              days: refillPeriod,
+            })}
+          </p>
+        )}
       </ConfigPreview>
 
       <div className="flex justify-end gap-2">
@@ -384,7 +497,7 @@ function AidTypeForm({
         </Button>
         <Button
           onClick={() => create.mutate()}
-          disabled={create.isPending || !name.trim() || (!temporary && !source)}
+          disabled={create.isPending || !name.trim() || (fundingMode === "fixed" && !source)}
           className="gap-2"
         >
           {create.isPending && <Loader2 className="h-4 w-4 animate-spin" />}

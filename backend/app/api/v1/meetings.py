@@ -4,7 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -124,10 +124,13 @@ from app.schemas.meeting import (
     MeetingDetail,
     MeetingGenerateRequest,
     MeetingGenerateResult,
+    MeetingPrep,
     MemberAgenda,
     MemberSavePayload,
     MeetingOut,
     MeetingUpdate,
+    NextMeetingInfo,
+    PrepActivity,
 )
 
 router = APIRouter()
@@ -256,6 +259,141 @@ async def list_meetings(
     stmt = stmt.order_by(Meeting.scheduled_on.desc())
     result = await db.execute(stmt)
     return [_meeting_to_out(m) for m in result.scalars().all()]
+
+
+def _activity_amount(cfg: dict) -> Optional[int]:
+    """Extrait le montant attendu d'une activité depuis sa config (clés usuelles,
+    éventuellement imbriquées d'un niveau)."""
+    if not isinstance(cfg, dict):
+        return None
+    for key in ("amount", "suggested_amount", "recurring_amount", "member_required_amount"):
+        v = cfg.get(key)
+        if isinstance(v, (int, float)) and v:
+            return int(v)
+    for v in cfg.values():
+        if isinstance(v, dict):
+            found = _activity_amount(v)
+            if found:
+                return found
+    return None
+
+
+# Déclaré AVANT /{meeting_id} pour que "prep" ne soit pas parsé comme un UUID.
+@router.get("/prep", response_model=MeetingPrep)
+async def meeting_prep(
+    association_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Panneau « Préparez votre séance » : prochaine séance + éléments financiers
+    attendus + actions en attente pour le bureau."""
+    assoc = await _get_assoc_or_404(db, association_id)
+    _check_access(current_user, assoc)
+    is_bureau = await _user_has_bureau_role(db, current_user, assoc.id)
+    today = date_cls.today()
+
+    # Prochaine séance planifiée/en cours, la plus proche dans le futur.
+    nm_res = await db.execute(
+        select(Meeting)
+        .where(
+            Meeting.association_id == association_id,
+            Meeting.status.in_([MeetingStatus.PLANNED, MeetingStatus.ONGOING]),
+            Meeting.scheduled_on >= today,
+        )
+        .order_by(Meeting.scheduled_on.asc())
+        .limit(1)
+    )
+    nm = nm_res.scalar_one_or_none()
+    next_meeting = (
+        NextMeetingInfo(
+            id=nm.id,
+            title=nm.title,
+            scheduled_on=nm.scheduled_on,
+            days_until=(nm.scheduled_on - today).days,
+        )
+        if nm
+        else None
+    )
+
+    # Éléments financiers attendus = activités visibles en séance.
+    act_res = await db.execute(
+        select(Activity)
+        .where(
+            Activity.association_id == association_id,
+            Activity.is_active.is_(True),
+            Activity.is_visible_in_meeting.is_(True),
+        )
+        .order_by(Activity.sort_order)
+    )
+    expected = [
+        PrepActivity(name=a.name, amount=_activity_amount(a.config or {}), is_required=a.is_required)
+        for a in act_res.scalars().all()
+    ]
+
+    pending_aids = aids_to_pay = pending_loans = loans_to_disburse = repayments_due = 0
+    if is_bureau:
+        pending_aids = (
+            await db.execute(
+                select(func.count(SocialAidCase.id)).where(
+                    SocialAidCase.association_id == association_id,
+                    SocialAidCase.status.in_(
+                        [SocialAidCaseStatus.REQUESTED, SocialAidCaseStatus.REVIEWING]
+                    ),
+                )
+            )
+        ).scalar() or 0
+        aids_to_pay = (
+            await db.execute(
+                select(func.count(SocialAidCase.id)).where(
+                    SocialAidCase.association_id == association_id,
+                    SocialAidCase.status == SocialAidCaseStatus.APPROVED,
+                )
+            )
+        ).scalar() or 0
+        pending_loans = (
+            await db.execute(
+                select(func.count(Loan.id)).where(
+                    Loan.association_id == association_id,
+                    Loan.status == LoanStatus.REQUESTED,
+                )
+            )
+        ).scalar() or 0
+        loans_to_disburse = (
+            await db.execute(
+                select(func.count(Loan.id)).where(
+                    Loan.association_id == association_id,
+                    Loan.status == LoanStatus.APPROVED,
+                )
+            )
+        ).scalar() or 0
+        repayments_due = (
+            await db.execute(
+                select(func.count(LoanInstallment.id))
+                .join(Loan, Loan.id == LoanInstallment.loan_id)
+                .where(
+                    Loan.association_id == association_id,
+                    LoanInstallment.status.in_(
+                        [
+                            LoanInstallmentStatus.PENDING,
+                            LoanInstallmentStatus.PARTIALLY_PAID,
+                            LoanInstallmentStatus.LATE,
+                        ]
+                    ),
+                    LoanInstallment.due_on <= today,
+                )
+            )
+        ).scalar() or 0
+
+    return MeetingPrep(
+        next_meeting=next_meeting,
+        expected_activities=expected,
+        pending_aids=pending_aids,
+        aids_to_pay=aids_to_pay,
+        pending_loans=pending_loans,
+        loans_to_disburse=loans_to_disburse,
+        repayments_due=repayments_due,
+        is_bureau=is_bureau,
+    )
 
 
 @router.get("/{meeting_id}", response_model=MeetingDetail)

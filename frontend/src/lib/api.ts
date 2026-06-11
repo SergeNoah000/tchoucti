@@ -291,14 +291,20 @@ export const aidTypesApi = {
     })).data,
   create: async (payload: {
     association_id: string;
+    funding_mode?: "fixed" | "temporary" | "member_insurance";
     source_caisse_id?: string;
     auto_create_caisse?: boolean;
+    insurance_caisse_id?: string;
+    insurance_minimum?: number;
+    refill_period_days?: number;
     name: string;
     slug: string;
     description?: string;
     member_contribution_amount?: number;
     is_contribution_recurring?: boolean;
+    amount_mode?: "ceiling" | "objective";
     aid_ceiling_amount?: number;
+    objective_amount?: number;
     max_claims_per_member_per_year?: number;
     declaration_delay_days?: number;
   }) => (await api.post("/aid-types", payload)).data,
@@ -355,6 +361,8 @@ export const caissesApi = {
 export const meetingsApi = {
   list: async (params?: { association_id?: string; status?: string }) =>
     (await api.get("/meetings", { params })).data,
+  prep: async (associationId: string) =>
+    (await api.get("/meetings/prep", { params: { association_id: associationId } })).data,
   get: async (id: string) => (await api.get(`/meetings/${id}`)).data,
   create: async (payload: Record<string, unknown>) => (await api.post("/meetings", payload)).data,
   update: async (id: string, payload: Record<string, unknown>) =>
@@ -521,6 +529,17 @@ export const socialAidApi = {
     description?: string;
     event_date?: string;
   }) => (await api.post("/social-aid", payload)).data,
+  update: async (
+    id: string,
+    payload: Partial<{
+      kind: string;
+      title: string;
+      description: string;
+      event_date: string;
+      requested_amount: number;
+      notes: string;
+    }>,
+  ) => (await api.patch(`/social-aid/${id}`, payload)).data,
   approve: async (id: string, approvedAmount?: number) =>
     (await api.post(`/social-aid/${id}/approve`, { approved_amount: approvedAmount })).data,
   reject: async (id: string, reason: string) =>

@@ -239,3 +239,33 @@ class MeetingAgenda(BaseModel):
 
     meeting_id: UUID
     members: List[MemberAgenda] = []
+
+
+# ── Dashboard — préparation de séance (rappels) ────────────────────────────────
+class PrepActivity(BaseModel):
+    """Un élément financier attendu lors de la prochaine séance."""
+
+    name: str
+    amount: Optional[int] = None
+    is_required: bool = False
+
+
+class NextMeetingInfo(BaseModel):
+    id: UUID
+    title: str
+    scheduled_on: date
+    days_until: int  # < 0 si en retard, 0 = aujourd'hui
+
+
+class MeetingPrep(BaseModel):
+    """Panneau « Préparez votre séance » du tableau de bord."""
+
+    next_meeting: Optional[NextMeetingInfo] = None
+    expected_activities: List[PrepActivity] = []
+    # Éléments d'action pour le bureau (0 pour un membre simple côté affichage).
+    pending_aids: int = 0          # aides à examiner (requested/reviewing)
+    aids_to_pay: int = 0           # aides approuvées à décaisser
+    pending_loans: int = 0         # prêts à examiner
+    loans_to_disburse: int = 0     # prêts approuvés à débloquer
+    repayments_due: int = 0        # échéances de prêt en retard / dues
+    is_bureau: bool = False

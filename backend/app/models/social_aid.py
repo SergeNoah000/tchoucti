@@ -114,6 +114,40 @@ class AidType(BaseModel):
         BigInteger, default=0, nullable=False
     )
 
+    # Mode de calcul du montant : "ceiling" (plafond fixe) ou "objective"
+    # (montant objectif réparti : part par membre = objectif / (nb_membres - 1),
+    # le -1 excluant le demandeur).
+    amount_mode: Mapped[str] = mapped_column(
+        String(20), default="ceiling", nullable=False, server_default="ceiling"
+    )
+    objective_amount: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False, server_default="0"
+    )
+
+    # ── Mode de financement (coexistence) ────────────────────────────────────
+    # "fixed"           : caisse source fixe (source_caisse_id).
+    # "temporary"       : caisse temporaire au nom du bénéficiaire (auto_create).
+    # "member_insurance": caisse perso d'assurance par membre, avec un minimum ;
+    #                     à chaque aide on débite la caisse de chaque membre de
+    #                     sa part, le membre re-remplit jusqu'au min.
+    funding_mode: Mapped[str] = mapped_column(
+        String(20), default="fixed", nullable=False, server_default="fixed"
+    )
+    # Caisse PERSONAL servant de caisse d'assurance individuelle (mode insurance).
+    insurance_caisse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("caisses.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Montant minimum que chaque membre doit maintenir dans sa caisse d'assurance.
+    insurance_minimum: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False, server_default="0"
+    )
+    # Période (jours) sur laquelle le re-remplissage est attendu après un débit.
+    refill_period_days: Mapped[int] = mapped_column(
+        Integer, default=90, nullable=False, server_default="90"
+    )
+
     # ── Contraintes ──────────────────────────────────────────────────────────
     max_claims_per_member_per_year: Mapped[int] = mapped_column(
         Integer, default=1, nullable=False

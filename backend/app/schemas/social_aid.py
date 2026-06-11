@@ -19,6 +19,16 @@ class SocialAidCaseCreate(BaseModel):
     aid_type_id: Optional[UUID] = None
 
 
+class SocialAidCaseUpdate(BaseModel):
+    """Édition d'un dossier d'aide (bureau/admin), tant qu'il n'est pas décaissé."""
+    kind: Optional[str] = Field(None, pattern=r"^(death|illness|marriage|birth|other)$")
+    title: Optional[str] = Field(None, min_length=2, max_length=255)
+    description: Optional[str] = Field(None, max_length=2000)
+    event_date: Optional[date] = None
+    requested_amount: Optional[int] = Field(None, ge=0)
+    notes: Optional[str] = Field(None, max_length=2000)
+
+
 class SocialAidApprove(BaseModel):
     # Optional override of the configured scale amount.
     approved_amount: Optional[int] = Field(None, ge=0)
@@ -60,6 +70,14 @@ class SocialAidCaseOut(BaseModel):
     paid_amount: int
     rejection_reason: Optional[str]
     created_at: datetime
+    # Mode de financement du type d'aide rattaché (None pour les dossiers legacy).
+    funding_mode: Optional[str] = None
+    # Critère « caisse d'assurance » (mode member_insurance) du bénéficiaire :
+    # état de sa caisse de débit pour ce type d'aide. Affiché à lui et aux autres.
+    insurance_balance: Optional[int] = None
+    insurance_minimum: Optional[int] = None
+    insurance_below_min: Optional[bool] = None
+    per_member_share: Optional[int] = None
 
 
 class SocialAidCaseDetail(SocialAidCaseOut):
