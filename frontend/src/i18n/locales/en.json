@@ -657,7 +657,10 @@
     "kind_statuts": "Bylaws",
     "kind_roi": "Internal rules",
     "kind_recepisse": "Receipt",
-    "kind_autre": "Other"
+    "kind_autre": "Other",
+    "kind_seance": "Meeting attachment",
+    "kind_membre": "Member attachment",
+    "kind_meeting_report": "Meeting minutes"
   },
   "settings": {
     "title": "Settings",

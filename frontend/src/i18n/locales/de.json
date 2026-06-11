@@ -657,7 +657,10 @@
     "kind_statuts": "Satzung",
     "kind_roi": "Geschäftsordnung",
     "kind_recepisse": "Bescheinigung",
-    "kind_autre": "Sonstiges"
+    "kind_autre": "Sonstiges",
+    "kind_seance": "Sitzungsanhang",
+    "kind_membre": "Mitgliedsanhang",
+    "kind_meeting_report": "Sitzungsprotokoll"
   },
   "settings": {
     "title": "Einstellungen",

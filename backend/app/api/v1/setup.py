@@ -14,6 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
+    _user_has_bureau_role,
+    _user_is_association_admin,
     get_current_user,
     get_db,
     require_association_admin_for,
@@ -234,11 +236,25 @@ async def upload_document(
     meeting_id: UUID | None = Form(None),
     membership_id: UUID | None = Form(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_association_admin_for),
+    current_user: User = Depends(get_current_user),
 ):
     """Upload un document (statut, photo, pièce jointe de séance...). Si
     meeting_id et/ou membership_id sont fournis, le document est rattaché à
-    cette séance / ce membre."""
+    cette séance / ce membre.
+
+    Permissions :
+    - Pièce jointe de séance/membre (meeting_id ou membership_id fourni) :
+      ouverte au bureau (admin OU membre du bureau).
+    - Document général (statuts, RÔI…) : réservé à l'admin de l'association.
+    """
+    is_attachment = meeting_id is not None or membership_id is not None
+    if is_attachment:
+        allowed = await _user_has_bureau_role(db, current_user, association_id)
+    else:
+        allowed = await _user_is_association_admin(db, current_user, association_id)
+    if not (current_user.is_super_admin or current_user.is_groupement_admin or allowed):
+        raise HTTPException(403, "Action non autorisée sur cette association")
+
     await _get_assoc(db, association_id)
     contents = await file.read()
     if not contents:

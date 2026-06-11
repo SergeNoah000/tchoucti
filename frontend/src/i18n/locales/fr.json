@@ -657,7 +657,10 @@
     "kind_statuts": "Statuts",
     "kind_roi": "Règlement intérieur",
     "kind_recepisse": "Récépissé",
-    "kind_autre": "Autre"
+    "kind_autre": "Autre",
+    "kind_seance": "Pièce jointe de séance",
+    "kind_membre": "Pièce jointe membre",
+    "kind_meeting_report": "PV de séance"
   },
   "settings": {
     "title": "Paramètres",
