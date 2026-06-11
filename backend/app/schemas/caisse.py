@@ -45,8 +45,9 @@ class CaisseCreate(BaseModel):
     def _validate(self) -> "CaisseCreate":
         if self.category == CaisseCategory.SYSTEM:
             raise ValueError("Les caisses système sont auto-créées.")
-        if self.is_recurring and self.recurring_amount <= 0:
-            raise ValueError("Une caisse récurrente doit avoir un montant > 0.")
+        # Une caisse récurrente (collectée à chaque séance) n'est PAS obligée
+        # d'avoir un montant de cotisation : 0 = montant libre, chaque membre
+        # verse ce qu'il veut à chaque séance.
         if self.is_member_required and self.member_required_amount <= 0:
             raise ValueError("Une cotisation obligatoire doit avoir un montant > 0.")
         if self.has_ceiling and self.ceiling_amount <= 0:

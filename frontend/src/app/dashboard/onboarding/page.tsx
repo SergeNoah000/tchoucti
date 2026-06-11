@@ -809,12 +809,13 @@ function CaisseForm({
           <Switch checked={recurring} onCheckedChange={setRecurring} />
         </label>
         {recurring && (
-          <HelpField label={t("caisseRecurringAmount")} example={t("caisseRecurringAmountExample", { amount: fmt.currency(2000) })}>
+          <HelpField label={t("caisseRecurringAmount")} hint={t("caisseRecurringAmountFreeHint")} example={t("caisseRecurringAmountExample", { amount: fmt.currency(2000) })}>
             <Input
               type="number"
-              min={1}
+              min={0}
               value={recurringAmount}
               onChange={(e) => setRecurringAmount(e.target.value)}
+              placeholder={t("caisseRecurringAmountFreePlaceholder")}
             />
           </HelpField>
         )}
