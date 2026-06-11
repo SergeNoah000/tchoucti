@@ -1150,6 +1150,7 @@ function RescheduleDialog({
           <Input
             id="resched-date"
             type="date"
+            min={new Date().toISOString().split("T")[0]}
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />

@@ -21,12 +21,16 @@ import {
 } from "@/components/ui/select";
 import { meetingsApi, associationsApi } from "@/lib/api";
 import type { Association, Meeting } from "@/lib/types";
+import { useAuthStore } from "@/lib/store";
+import { canDoBureauActions } from "@/lib/roles";
 
 export default function NewMeetingPage() {
   const router = useRouter();
   const t = useTranslations("meeting");
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const isBureau = canDoBureauActions(user);
 
   const { data: associations = [] } = useQuery<Association[]>({
     queryKey: ["associations"],
@@ -72,6 +76,20 @@ export default function NewMeetingPage() {
       scheduled_on: scheduledOn,
       location: location.trim() || undefined,
     });
+  }
+
+  if (!isBureau) {
+    return (
+      <div className="mx-auto max-w-2xl py-16 text-center">
+        <p className="text-muted-foreground">{t("bureauOnly")}</p>
+        <Button asChild variant="ghost" className="mt-4 gap-1.5">
+          <Link href="/dashboard/meetings">
+            <ArrowLeft className="h-4 w-4" />
+            {t("backToList")}
+          </Link>
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -155,6 +173,7 @@ export default function NewMeetingPage() {
               <Input
                 id="date"
                 type="date"
+                min={new Date().toISOString().split("T")[0]}
                 value={scheduledOn}
                 onChange={(e) => setScheduledOn(e.target.value)}
                 required

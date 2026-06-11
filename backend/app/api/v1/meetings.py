@@ -302,6 +302,9 @@ async def create_meeting(
     _check_access(current_user, assoc)
     await _require_bureau(db, current_user, assoc)
 
+    if payload.scheduled_on < date_cls.today():
+        raise HTTPException(422, "La date de la séance ne peut pas être dans le passé.")
+
     meeting = Meeting(
         association_id=payload.association_id,
         title=payload.title,
@@ -340,6 +343,14 @@ async def update_meeting(
             data["status"] = MeetingStatus(data["status"])
         except ValueError:
             raise HTTPException(status_code=422, detail=f"Invalid status '{data['status']}'")
+
+    # Refus d'un (re)planning dans le passé.
+    if (
+        "scheduled_on" in data
+        and data["scheduled_on"] != m.scheduled_on
+        and data["scheduled_on"] < date_cls.today()
+    ):
+        raise HTTPException(422, "La date de la séance ne peut pas être dans le passé.")
 
     # Phase 4 — Si la date change ET un round tontine est rattaché à cette
     # séance, on synchronise round.scheduled_date (sauf lien locked).
@@ -1053,6 +1064,9 @@ async def generate_meetings(
     assoc = await _get_assoc_or_404(db, payload.association_id)
     _check_access(current_user, assoc)
     await _require_bureau(db, current_user, assoc)
+
+    if payload.start_from is not None and payload.start_from < date_cls.today():
+        raise HTTPException(422, "La date de départ ne peut pas être dans le passé.")
 
     start = payload.start_from
     if start is None:

@@ -19,6 +19,7 @@ from app.api.deps import (
     require_association_admin_for,
 )
 from app.models.association import Association, MembershipCriterion
+from app.models.role import Membership
 from app.models.document import Document, DocumentVisibility
 from app.models.user import User
 from app.schemas.setup import (
@@ -194,6 +195,25 @@ async def list_documents(
         stmt = stmt.where(Document.meeting_id == meeting_id)
     if membership_id is not None:
         stmt = stmt.where(Document.membership_id == membership_id)
+
+    # Confidentialité : un membre non-bureau ne voit pas les pièces jointes
+    # rattachées à un AUTRE membre (notes/photos perso d'une séance). Il voit
+    # les siennes + les documents généraux (sans membership_id).
+    from app.api.deps import _user_has_bureau_role
+
+    if not await _user_has_bureau_role(db, current_user, association_id):
+        own = await db.execute(
+            select(Membership.id).where(
+                Membership.user_id == current_user.id,
+                Membership.association_id == association_id,
+            )
+        )
+        own_ids = list(own.scalars().all())
+        stmt = stmt.where(
+            (Document.membership_id.is_(None))
+            | (Document.membership_id.in_(own_ids))
+        )
+
     stmt = stmt.order_by(Document.created_at.desc())
     res = await db.execute(stmt)
     return list(res.scalars().all())

@@ -373,7 +373,8 @@
     "attachTooLarge": "{name} dépasse la limite de 20 Mo.",
     "recapStatus_paid": "payé",
     "recapStatus_partial": "partiel",
-    "recapStatus_missing": "non rempli"
+    "recapStatus_missing": "non rempli",
+    "bureauOnly": "Réservé aux membres du bureau."
   },
   "placeholder": {
     "comingSoon": "Bientôt disponible",
