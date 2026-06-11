@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
+import { MyFinanceView } from "@/components/finance/my-finance-view";
 import { associationsApi, financeApi } from "@/lib/api";
 import type { Association, MovementDirection, Treasury, TreasuryMovement } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
@@ -68,22 +69,38 @@ export default function FinancePage() {
     queryKey: ["associations"],
     queryFn: () => associationsApi.list(),
   });
-  const associationId = associations[0]?.id;
+  const association = associations[0];
+  const associationId = association?.id;
 
+  // Un membre simple voit SA vue « Mes cotisations » ; le bureau voit la
+  // trésorerie globale de l'association.
   const { data: treasury, isLoading } = useQuery<Treasury>({
     queryKey: ["treasury", associationId],
     queryFn: () => financeApi.treasury(associationId!),
-    enabled: !!associationId,
+    enabled: !!associationId && canManage,
   });
 
   const { data: movements = [] } = useQuery<TreasuryMovement[]>({
     queryKey: ["movements", associationId],
     queryFn: () => financeApi.movements(associationId!),
-    enabled: !!associationId,
+    enabled: !!associationId && canManage,
   });
 
   // Format amounts in the treasury's actual currency (XAF, EUR, …).
   const fmt = useFormatters(treasury?.currency);
+
+  // Membre simple → vue « Mes cotisations » (centrée sur lui).
+  if (!canManage) {
+    if (!associationId) {
+      return (
+        <div className="space-y-6">
+          <Skeleton className="h-10 w-56" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+        </div>
+      );
+    }
+    return <MyFinanceView associationId={associationId} currency={association?.currency} />;
+  }
 
   if (isLoading || !treasury) {
     return (

@@ -8,9 +8,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.models.association import Association
-from app.models.finance import Fund, MovementDirection, Treasury, TreasuryMovement
+from app.models.caisse import Caisse, CaisseContributorBalance, MemberCaisseBalance
+from app.models.finance import (
+    Fund,
+    LedgerEntry,
+    MovementDirection,
+    Treasury,
+    TreasuryMovement,
+)
+from app.models.loan import Loan
+from app.models.role import Membership
+from app.models.social_aid import SocialAidCase
 from app.models.user import User
-from app.schemas.finance import MovementCreate, MovementOut, TreasuryOut, VoidRequest
+from app.schemas.finance import (
+    MovementCreate,
+    MovementOut,
+    MyAidLine,
+    MyCaisseLine,
+    MyFinanceSummary,
+    MyLoanLine,
+    MyMovement,
+    TreasuryOut,
+    VoidRequest,
+)
 from app.services.finance import Allocation, get_or_create_treasury, post_movement, void_movement
 
 router = APIRouter()
@@ -29,6 +49,147 @@ def _check_access(user: User, assoc: Association) -> None:
         return
     if user.groupement_id != assoc.groupement_id:
         raise HTTPException(403, "Forbidden")
+
+
+@router.get("/my-summary", response_model=MyFinanceSummary)
+async def my_finance_summary(
+    association_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Vue « Mes cotisations » : historique financier propre au membre courant
+    (cotisations versées, prêts reçus + remboursements, aides reçues, soldes de
+    caisses). Jamais les totaux de l'association."""
+    assoc = await _get_assoc_or_404(db, association_id)
+    _check_access(current_user, assoc)
+
+    mres = await db.execute(
+        select(Membership.id).where(
+            Membership.user_id == current_user.id,
+            Membership.association_id == association_id,
+        )
+    )
+    my_mem_ids = list(mres.scalars().all())
+    if not my_mem_ids:
+        return MyFinanceSummary(
+            total_contributed=0, total_loans_outstanding=0, total_aids_received=0,
+            movements=[], loans=[], aids=[], caisses=[],
+        )
+
+    treasury = await get_or_create_treasury(db, assoc)
+    mv_res = await db.execute(
+        select(TreasuryMovement)
+        .where(
+            TreasuryMovement.treasury_id == treasury.id,
+            TreasuryMovement.related_membership_id.in_(my_mem_ids),
+        )
+        .order_by(TreasuryMovement.occurred_on.desc(), TreasuryMovement.created_at.desc())
+        .limit(100)
+    )
+    movements_rows = list(mv_res.scalars().all())
+    fund_by_movement: dict = {}
+    if movements_rows:
+        le_res = await db.execute(
+            select(LedgerEntry.movement_id, Fund.name)
+            .join(Fund, Fund.id == LedgerEntry.fund_id)
+            .where(LedgerEntry.movement_id.in_([m.id for m in movements_rows]))
+        )
+        for mid, fname in le_res.all():
+            fund_by_movement.setdefault(mid, fname)
+
+    movements = [
+        MyMovement(
+            occurred_on=m.occurred_on,
+            direction=m.direction.value if hasattr(m.direction, "value") else str(m.direction),
+            amount=m.amount,
+            label=m.description or m.source_type,
+            fund_name=fund_by_movement.get(m.id),
+            source_type=m.source_type,
+        )
+        for m in movements_rows
+        if not getattr(m, "is_voided", False)
+    ]
+    total_contributed = sum(
+        m.amount for m in movements_rows
+        if (m.direction == MovementDirection.IN) and not getattr(m, "is_voided", False)
+    )
+
+    loan_res = await db.execute(
+        select(Loan).where(Loan.borrower_membership_id.in_(my_mem_ids))
+        .order_by(Loan.created_at.desc())
+    )
+    loans_rows = list(loan_res.scalars().all())
+    loans = [
+        MyLoanLine(
+            id=ln.id, reference=ln.reference, principal=ln.principal,
+            status=ln.status.value if hasattr(ln.status, "value") else str(ln.status),
+            remaining=ln.remaining_balance, requested_on=ln.requested_on,
+        )
+        for ln in loans_rows
+    ]
+    total_loans_outstanding = sum(ln.remaining_balance for ln in loans_rows)
+
+    aid_res = await db.execute(
+        select(SocialAidCase).where(SocialAidCase.beneficiary_membership_id.in_(my_mem_ids))
+        .order_by(SocialAidCase.created_at.desc())
+    )
+    aids_rows = list(aid_res.scalars().all())
+    aids = [
+        MyAidLine(
+            id=a.id, reference=a.reference, title=a.title,
+            status=a.status.value if hasattr(a.status, "value") else str(a.status),
+            approved_amount=a.approved_amount, paid_amount=a.paid_amount,
+        )
+        for a in aids_rows
+    ]
+    total_aids_received = sum(a.paid_amount for a in aids_rows)
+
+    caisses: list[MyCaisseLine] = []
+    ccb_res = await db.execute(
+        select(CaisseContributorBalance, Caisse)
+        .join(Caisse, Caisse.id == CaisseContributorBalance.caisse_id)
+        .where(CaisseContributorBalance.membership_id.in_(my_mem_ids))
+    )
+    for bal, caisse in ccb_res.all():
+        caisses.append(
+            MyCaisseLine(
+                caisse_id=caisse.id, caisse_name=caisse.name,
+                category=caisse.category.value if hasattr(caisse.category, "value") else str(caisse.category),
+                kind="shared" if caisse.interest_distribution == "shared_pro_rata" else "contribution",
+                my_contributed=bal.apport_cum,
+                my_interest=bal.interest_cum or None,
+            )
+        )
+    seen = {c.caisse_id for c in caisses}
+    mcb_res = await db.execute(
+        select(MemberCaisseBalance, Caisse)
+        .join(Caisse, Caisse.id == MemberCaisseBalance.caisse_id)
+        .where(MemberCaisseBalance.membership_id.in_(my_mem_ids))
+    )
+    for bal, caisse in mcb_res.all():
+        existing = next((c for c in caisses if c.caisse_id == caisse.id), None)
+        if existing:
+            existing.my_personal_balance = bal.balance
+            existing.kind = "personal"
+        else:
+            caisses.append(
+                MyCaisseLine(
+                    caisse_id=caisse.id, caisse_name=caisse.name,
+                    category=caisse.category.value if hasattr(caisse.category, "value") else str(caisse.category),
+                    kind="personal", my_contributed=bal.balance,
+                    my_personal_balance=bal.balance,
+                )
+            )
+
+    return MyFinanceSummary(
+        total_contributed=total_contributed,
+        total_loans_outstanding=total_loans_outstanding,
+        total_aids_received=total_aids_received,
+        movements=movements,
+        loans=loans,
+        aids=aids,
+        caisses=caisses,
+    )
 
 
 @router.get("/treasury", response_model=TreasuryOut)

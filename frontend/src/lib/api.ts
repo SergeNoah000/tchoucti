@@ -475,6 +475,8 @@ export const tontinesApi = {
 export const financeApi = {
   treasury: async (associationId: string) =>
     (await api.get("/finance/treasury", { params: { association_id: associationId } })).data,
+  mySummary: async (associationId: string) =>
+    (await api.get("/finance/my-summary", { params: { association_id: associationId } })).data,
   movements: async (
     associationId: string,
     params?: { fund_id?: string; direction?: string },

@@ -63,3 +63,53 @@ class MovementCreate(BaseModel):
 
 class VoidRequest(BaseModel):
     reason: str = Field(..., min_length=2, max_length=500)
+
+
+# ── Vue « Mes cotisations » (membre) ────────────────────────────────────────
+
+
+class MyMovement(BaseModel):
+    occurred_on: date
+    direction: str          # in | out | xfer
+    amount: int
+    label: str              # description / source lisible
+    fund_name: Optional[str] = None
+    source_type: str
+
+
+class MyLoanLine(BaseModel):
+    id: UUID
+    reference: str
+    principal: int
+    status: str
+    remaining: int
+    requested_on: date
+
+
+class MyAidLine(BaseModel):
+    id: UUID
+    reference: str
+    title: str
+    status: str
+    approved_amount: int
+    paid_amount: int
+
+
+class MyCaisseLine(BaseModel):
+    caisse_id: UUID
+    caisse_name: str
+    category: str
+    kind: str                       # contribution | personal | shared
+    my_contributed: int             # ce que j'y ai versé (cumul)
+    my_personal_balance: Optional[int] = None  # solde perso (caisses PERSONAL)
+    my_interest: Optional[int] = None          # intérêts reçus (mode partagé)
+
+
+class MyFinanceSummary(BaseModel):
+    total_contributed: int
+    total_loans_outstanding: int
+    total_aids_received: int
+    movements: List[MyMovement]
+    loans: List[MyLoanLine]
+    aids: List[MyAidLine]
+    caisses: List[MyCaisseLine]

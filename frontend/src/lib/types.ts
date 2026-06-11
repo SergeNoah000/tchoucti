@@ -122,6 +122,49 @@ export interface AppNotification {
   created_at: string;
 }
 
+export interface MyMovement {
+  occurred_on: string;
+  direction: string;
+  amount: number;
+  label: string;
+  fund_name?: string | null;
+  source_type: string;
+}
+export interface MyLoanLine {
+  id: UUID;
+  reference: string;
+  principal: number;
+  status: string;
+  remaining: number;
+  requested_on: string;
+}
+export interface MyAidLine {
+  id: UUID;
+  reference: string;
+  title: string;
+  status: string;
+  approved_amount: number;
+  paid_amount: number;
+}
+export interface MyCaisseLine {
+  caisse_id: UUID;
+  caisse_name: string;
+  category: string;
+  kind: string;
+  my_contributed: number;
+  my_personal_balance?: number | null;
+  my_interest?: number | null;
+}
+export interface MyFinanceSummary {
+  total_contributed: number;
+  total_loans_outstanding: number;
+  total_aids_received: number;
+  movements: MyMovement[];
+  loans: MyLoanLine[];
+  aids: MyAidLine[];
+  caisses: MyCaisseLine[];
+}
+
 export type Gender = "male" | "female" | "other";
 
 export interface User {
