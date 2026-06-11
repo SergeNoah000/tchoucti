@@ -159,7 +159,14 @@ class AidType(BaseModel):
 
     # ── Relationships ───────────────────────────────────────────────────────
     association: Mapped["Association"] = relationship("Association")
-    source_caisse: Mapped[Optional["Caisse"]] = relationship("Caisse")
+    # Deux FK vers caisses (source_caisse_id + insurance_caisse_id) → il faut
+    # préciser la colonne de jointure pour chaque relation.
+    source_caisse: Mapped[Optional["Caisse"]] = relationship(
+        "Caisse", foreign_keys=[source_caisse_id]
+    )
+    insurance_caisse: Mapped[Optional["Caisse"]] = relationship(
+        "Caisse", foreign_keys=[insurance_caisse_id]
+    )
 
 
 # ───────────────────────────────────────────────────
