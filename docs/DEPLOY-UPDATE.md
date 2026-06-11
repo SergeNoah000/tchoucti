@@ -51,8 +51,9 @@ Contenu :
 **Migration DB** (à appliquer une fois, après `deploy.sh`) :
 
 ```bash
-DC="docker compose -f /opt/tchoucti/deploy/docker-compose.prod.yml --env-file /opt/tchoucti/deploy/.env"
-$DC exec -T postgres psql -U tchoucti -d tchoucti <<'SQL'
+# Lit POSTGRES_USER / POSTGRES_DB depuis l'environnement du conteneur :
+# inutile de connaître les valeurs exactes.
+docker exec -i tchoucti_postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
 ALTER TABLE aid_types ADD COLUMN IF NOT EXISTS amount_mode        VARCHAR(20)  NOT NULL DEFAULT 'ceiling';
 ALTER TABLE aid_types ADD COLUMN IF NOT EXISTS objective_amount   BIGINT       NOT NULL DEFAULT 0;
 ALTER TABLE aid_types ADD COLUMN IF NOT EXISTS funding_mode       VARCHAR(20)  NOT NULL DEFAULT 'fixed';
