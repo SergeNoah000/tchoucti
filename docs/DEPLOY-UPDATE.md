@@ -10,6 +10,30 @@ vérifications).
 
 ---
 
+## Lot « Imports + prêts/aides/caisses + tontines noms » (2026-06-12)
+
+> Commits `73e6f7c` (imports), `91e9c7d` (prêts/aides/caisses), `03fdc1d` (tontines).
+> **Dépendance backend ajoutée : `openpyxl`** → `deploy.sh` reconstruit l'image
+> backend et l'installe automatiquement (rien à faire à la main).
+
+**Migration DB requise** (tontines — additive et idempotente) :
+
+```bash
+docker exec -i tchoucti_postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+ALTER TABLE tontine_round_beneficiaries ADD COLUMN IF NOT EXISTS name_label VARCHAR(150);
+ALTER TABLE tontine_round_beneficiaries DROP CONSTRAINT IF EXISTS uq_tontine_round_beneficiaries_pair;
+SQL
+```
+
+- **Imports en masse** (membres) : nouvelle page `/dashboard/import` + endpoints
+  `/imports/*` (templates Excel). Pas d'autre migration.
+- **Prêts** : la demande ne fournit plus que type + montant (+ motif).
+- **Aides** : on peut changer le type d'un dossier ; **caisse** : sous-champ
+  « montant obligatoire » retiré. Aucune migration.
+- **Tontines** : plusieurs noms par membre (voir migration ci-dessus).
+
+---
+
 ## Lot « Notifications + permissions » (2026-06-06)
 
 > Commits `9deca3b` (bump Next), `ef7d1fa`, `8a07c6c`, `b34f12e`.
