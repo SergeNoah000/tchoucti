@@ -123,17 +123,23 @@ async def list_aid_types(
 ):
     """List aid types for the association. Open to any role with access."""
     await _check_access(db, current_user, association_id)
+    from sqlalchemy.orm import aliased
+
+    SourceCaisse = aliased(Caisse)
+    InsCaisse = aliased(Caisse)
     stmt = (
-        select(AidType, Caisse.name)
-        # Outer join : les types « caisse temporaire » n'ont pas de caisse source.
-        .outerjoin(Caisse, Caisse.id == AidType.source_caisse_id)
+        select(AidType, SourceCaisse.name, InsCaisse.name)
+        # Outer joins : un type peut référencer une caisse collective (source)
+        # ou une caisse individuelle d'assurance (insurance), jamais les deux.
+        .outerjoin(SourceCaisse, SourceCaisse.id == AidType.source_caisse_id)
+        .outerjoin(InsCaisse, InsCaisse.id == AidType.insurance_caisse_id)
         .where(AidType.association_id == association_id)
         .order_by(AidType.created_at)
     )
     if active_only:
         stmt = stmt.where(AidType.is_active.is_(True))
     res = await db.execute(stmt)
-    return [_to_out(at, name) for at, name in res.all()]
+    return [_to_out(at, src, ins) for at, src, ins in res.all()]
 
 
 @router.post("", response_model=AidTypeOut, status_code=status.HTTP_201_CREATED)
@@ -291,7 +297,9 @@ async def update_aid_type(
 
     caisse_res = await db.execute(select(Caisse.name).where(Caisse.id == at.source_caisse_id))
     name = caisse_res.scalar_one_or_none()
-    return _to_out(at, name)
+    ins_res = await db.execute(select(Caisse.name).where(Caisse.id == at.insurance_caisse_id))
+    ins_name = ins_res.scalar_one_or_none()
+    return _to_out(at, name, ins_name)
 
 
 @router.delete("/{aid_type_id}", status_code=status.HTTP_204_NO_CONTENT)

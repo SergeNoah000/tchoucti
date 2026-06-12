@@ -980,7 +980,17 @@
     "insuranceCriterion": "Versicherung: {balance} / Min. {min}",
     "insuranceFavorable": "aktuell",
     "insuranceUnfavorable": "Wiederauffüllung überfällig",
-    "requestedOn": "Gemeldet am {date}"
+    "requestedOn": "Gemeldet am {date}",
+    "aidType": "Hilfeart",
+    "selectType": "Hilfeart wählen",
+    "selectTypeRequired": "Bitte eine Hilfeart wählen.",
+    "amountToReceive": "Zu erhaltender Betrag",
+    "source": "Quelle",
+    "sourceIndividual": "Individuelle Kasse (Versicherung)",
+    "sourceCollective": "Gemeinschaftskasse (Hilfe)",
+    "sourceIndividualNamed": "Individuelle Kasse — {name}",
+    "sourceCollectiveNamed": "Gemeinschaftskasse — {name}",
+    "perMemberDebit": "Jedem Mitglied werden {amount} abgebucht (Betrag ÷ {n} Mitglieder)."
   },
   "loan": {
     "title": "Darlehen",
@@ -1230,7 +1240,23 @@
     "insuranceMinimumExample": "Z. B. {amount} pro Mitglied",
     "insurancePreview": "Jedes Mitglied hält {min} in seiner Versicherungskasse; Wiederauffüllung innerhalb von {days} Tagen nach einer Belastung erwartet.",
     "refillPeriod": "Wiederauffüllungszeitraum (Tage)",
-    "refillPeriodHint": "Frist zum Wiederauffüllen der Kasse bis zum Minimum nach einer Belastung. Danach ist der Zustand ungünstig."
+    "refillPeriodHint": "Frist zum Wiederauffüllen der Kasse bis zum Minimum nach einer Belastung. Danach ist der Zustand ungünstig.",
+    "sourceTitle": "Finanzierungsquelle",
+    "sourceModeLabel": "Art der Quelle",
+    "sourceModeHint": "Woher kommt das Geld für den Antragsteller?",
+    "sourceCollective": "Gemeinschaftskasse (Hilfe)",
+    "sourceIndividual": "Individuelle Kasse (Versicherung)",
+    "collectiveCaisse": "Gemeinschaftskasse",
+    "collectiveCaisseHint": "Der gesamte Betrag wird dieser geteilten Kasse entnommen.",
+    "noCollectiveCaisse": "Keine Gemeinschaftskasse. Erstellen Sie zuerst eine.",
+    "individualCaisse": "Individuelle Kasse (Versicherung)",
+    "individualCaisseHint": "Der Betrag wird durch die Mitgliederzahl geteilt; jedem Mitglied wird sein Anteil aus seiner persönlichen Kasse abgebucht.",
+    "noPersonalCaisse": "Keine individuelle Kasse. Erstellen Sie zuerst eine „persönliche“ Kasse.",
+    "amountToGive": "Zu gebender Betrag",
+    "amountToGiveHint": "Betrag, der an das antragstellende Mitglied gezahlt wird.",
+    "amountToGiveExample": "Z. B. {amount}",
+    "previewCollective": "Der Antragsteller erhält {amount}, vollständig aus der Gemeinschaftskasse.",
+    "previewIndividual": "Der Antragsteller erhält {amount}, aufgeteilt und von der individuellen Kasse jedes Mitglieds abgebucht."
   },
   "configLoans": {
     "title": "Darlehenskonfiguration",

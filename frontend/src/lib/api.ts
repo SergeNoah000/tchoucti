@@ -528,6 +528,7 @@ export const socialAidApi = {
     title: string;
     description?: string;
     event_date?: string;
+    aid_type_id?: string;
   }) => (await api.post("/social-aid", payload)).data,
   update: async (
     id: string,

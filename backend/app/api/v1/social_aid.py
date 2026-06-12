@@ -184,10 +184,10 @@ async def _payout_member_insurance(
 ):
     """Décaissement en mode « caisses perso d'assurance ».
 
-    Le montant total approuvé est réparti à parts égales sur les membres actifs
-    autres que le bénéficiaire ; la caisse perso d'assurance de chacun est
-    débitée de sa part (le membre la re-remplira jusqu'au minimum). Un mouvement
-    OUT global sort du fonds de la caisse d'assurance au profit du bénéficiaire.
+    Le montant total approuvé est réparti à parts égales sur TOUS les membres
+    actifs (le bénéficiaire compris : il cotise aussi à sa propre aide) ; la
+    caisse perso d'assurance de chacun est débitée de sa part. Un mouvement OUT
+    global sort du fonds de la caisse d'assurance au profit du bénéficiaire.
     """
     if not aid_type.insurance_caisse_id:
         raise HTTPException(500, "Aucune caisse d'assurance configurée pour ce type d'aide.")
@@ -201,9 +201,9 @@ async def _payout_member_insurance(
         raise HTTPException(500, "Fonds de la caisse d'assurance introuvable.")
 
     members = await _active_member_ids(db, assoc.id)
-    contributors = [m for m in members if m != case.beneficiary_membership_id]
+    contributors = list(members)  # tous les membres, demandeur inclus
     if not contributors:
-        raise HTTPException(409, "Aucun membre contributeur pour financer cette aide.")
+        raise HTTPException(409, "Aucun membre pour financer cette aide.")
 
     total = case.approved_amount
     share = total // len(contributors)
@@ -283,18 +283,16 @@ async def _active_member_ids(db: AsyncSession, association_id: UUID) -> list:
 
 
 def _aid_total_and_share(aid_type: "AidType", n_members: int) -> tuple[int, int]:
-    """Renvoie (montant total de l'aide, part par membre contributeur).
+    """Renvoie (montant total de l'aide, part par membre).
 
-    - ceiling : total = plafond. Part = total / (n-1) si financement réparti.
-    - objective : total = objectif. Part = objectif / (n-1) (le -1 exclut le
-      demandeur). Les (n-1) contributeurs paient chacun cette part → Σ = objectif.
+    Le montant total est divisé par TOUS les membres actifs (le demandeur
+    compris). Pour une source collective, la part n'est qu'indicative — tout est
+    prélevé sur la caisse partagée. Pour une source individuelle (assurance),
+    chaque membre est débité de cette part sur sa caisse perso.
     """
-    if getattr(aid_type, "amount_mode", "ceiling") == "objective":
-        total = aid_type.objective_amount or 0
-    else:
-        total = aid_type.aid_ceiling_amount or 0
-    contributors = max(1, n_members - 1)
-    share = total // contributors if contributors else total
+    total = aid_type.aid_ceiling_amount or 0
+    n = max(1, n_members)
+    share = total // n
     return total, share
 
 
@@ -520,13 +518,9 @@ async def declare_case(
                 )
 
         source_caisse_id = aid_type.source_caisse_id
-        # Snapshot du montant demandé selon le mode de calcul :
-        #  - objective : total = montant objectif (réparti à (N-1) au décaissement) ;
-        #  - ceiling   : plafond du type.
+        # Snapshot du montant à donner au demandeur (plafond/montant du type).
         # L'admin peut ajuster à l'approbation.
-        if getattr(aid_type, "amount_mode", "ceiling") == "objective" and aid_type.objective_amount > 0:
-            requested_amount = aid_type.objective_amount
-        elif not requested_amount and aid_type.aid_ceiling_amount > 0:
+        if aid_type.aid_ceiling_amount > 0:
             requested_amount = aid_type.aid_ceiling_amount
 
     count_res = await db.execute(

@@ -980,7 +980,17 @@
     "insuranceCriterion": "Assurance : {balance} / min {min}",
     "insuranceFavorable": "à jour",
     "insuranceUnfavorable": "en retard de re-remplissage",
-    "requestedOn": "Déclaré le {date}"
+    "requestedOn": "Déclaré le {date}",
+    "aidType": "Type d'aide",
+    "selectType": "Choisir un type d'aide",
+    "selectTypeRequired": "Veuillez choisir un type d'aide.",
+    "amountToReceive": "Montant à recevoir",
+    "source": "Source",
+    "sourceIndividual": "Caisse individuelle (assurance)",
+    "sourceCollective": "Caisse collective (secours)",
+    "sourceIndividualNamed": "Caisse individuelle — {name}",
+    "sourceCollectiveNamed": "Caisse collective — {name}",
+    "perMemberDebit": "Chaque membre sera débité de {amount} (montant ÷ {n} membres)."
   },
   "loan": {
     "title": "Prêts",
@@ -1230,7 +1240,23 @@
     "insuranceMinimumExample": "Ex. {amount} par membre",
     "insurancePreview": "Chaque membre maintient {min} dans sa caisse d'assurance ; re-remplissage attendu sous {days} jours après un débit.",
     "refillPeriod": "Période de re-remplissage (jours)",
-    "refillPeriodHint": "Délai accordé pour re-remplir la caisse jusqu'au minimum après un débit. Au-delà, l'état est défavorable."
+    "refillPeriodHint": "Délai accordé pour re-remplir la caisse jusqu'au minimum après un débit. Au-delà, l'état est défavorable.",
+    "sourceTitle": "Source du financement",
+    "sourceModeLabel": "Type de source",
+    "sourceModeHint": "Où prend-on l'argent à donner au demandeur ?",
+    "sourceCollective": "Caisse collective (secours)",
+    "sourceIndividual": "Caisse individuelle (assurance)",
+    "collectiveCaisse": "Caisse collective",
+    "collectiveCaisseHint": "Tout le montant est prélevé sur cette caisse partagée.",
+    "noCollectiveCaisse": "Aucune caisse collective. Créez-en une dans les caisses d'abord.",
+    "individualCaisse": "Caisse individuelle (assurance)",
+    "individualCaisseHint": "Le montant est divisé par le nombre de membres ; chaque membre est débité de sa part sur sa caisse perso.",
+    "noPersonalCaisse": "Aucune caisse individuelle. Créez une caisse « personnelle » d'abord.",
+    "amountToGive": "Montant à donner",
+    "amountToGiveHint": "Montant versé au membre qui fait la demande.",
+    "amountToGiveExample": "Ex : {amount}",
+    "previewCollective": "Le demandeur reçoit {amount}, entièrement prélevé sur la caisse collective.",
+    "previewIndividual": "Le demandeur reçoit {amount}, réparti et débité sur la caisse individuelle de chaque membre."
   },
   "configLoans": {
     "title": "Configuration des prêts",

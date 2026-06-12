@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
-import { associationsApi, membersApi, socialAidApi } from "@/lib/api";
+import { associationsApi, membersApi, socialAidApi, aidTypesApi } from "@/lib/api";
 import type { Association, Membership, SocialAidCase, SocialAidKind, SocialAidStatus } from "@/lib/types";
 import { useAuthStore } from "@/lib/store";
 import { canDoBureauActions } from "@/lib/roles";
@@ -51,6 +51,15 @@ import { useFormatters } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const KINDS: SocialAidKind[] = ["death", "illness", "marriage", "birth", "other"];
+
+interface AidTypeOption {
+  id: string;
+  name: string;
+  funding_mode?: "fixed" | "temporary" | "member_insurance";
+  aid_ceiling_amount: number;
+  source_caisse_name?: string | null;
+  insurance_caisse_name?: string | null;
+}
 
 const STATUS_VARIANT: Record<SocialAidStatus, "secondary" | "info" | "success" | "destructive" | "warning"> = {
   requested: "warning",
@@ -498,9 +507,11 @@ function DeclareDialog({ association }: { association: Association }) {
   const t = useTranslations("socialAid");
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
+  const fmt = useFormatters(association.currency);
 
   const [open, setOpen] = useState(false);
   const [membershipId, setMembershipId] = useState("");
+  const [aidTypeId, setAidTypeId] = useState("");
   const [kind, setKind] = useState<SocialAidKind>("death");
   const [title, setTitle] = useState("");
   const [eventDate, setEventDate] = useState("");
@@ -514,6 +525,17 @@ function DeclareDialog({ association }: { association: Association }) {
   });
   const activeMembers = members.filter((m) => m.status === "active");
 
+  // Types d'aide configurés (actifs) : pilotent montant + source.
+  const { data: aidTypes = [] } = useQuery<AidTypeOption[]>({
+    queryKey: ["aid-types", association.id, "active"],
+    queryFn: () => aidTypesApi.list(association.id, true),
+    enabled: open,
+  });
+  const selectedType = aidTypes.find((at) => at.id === aidTypeId);
+  const nMembers = activeMembers.length;
+  const perMemberShare =
+    selectedType && nMembers > 0 ? Math.floor(selectedType.aid_ceiling_amount / nMembers) : 0;
+
   const declareMutation = useMutation({
     mutationFn: () =>
       socialAidApi.declare({
@@ -523,6 +545,7 @@ function DeclareDialog({ association }: { association: Association }) {
         title: title.trim(),
         description: description.trim() || undefined,
         event_date: eventDate || undefined,
+        aid_type_id: aidTypeId || undefined,
       }),
     onSuccess: () => {
       toast.success(t("declared"));
@@ -535,6 +558,7 @@ function DeclareDialog({ association }: { association: Association }) {
 
   const reset = () => {
     setMembershipId("");
+    setAidTypeId("");
     setKind("death");
     setTitle("");
     setEventDate("");
@@ -546,6 +570,10 @@ function DeclareDialog({ association }: { association: Association }) {
     e.preventDefault();
     if (!membershipId || title.trim().length < 2) {
       setError(t("declareError"));
+      return;
+    }
+    if (aidTypes.length > 0 && !aidTypeId) {
+      setError(t("selectTypeRequired"));
       return;
     }
     setError("");
@@ -593,6 +621,52 @@ function DeclareDialog({ association }: { association: Association }) {
               </Select>
             )}
           </div>
+          {/* Type d'aide : pilote le montant et la source (caisse). */}
+          {aidTypes.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>{t("aidType")}</Label>
+              <Select value={aidTypeId} onValueChange={setAidTypeId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("selectType")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {aidTypes.map((at) => (
+                    <SelectItem key={at.id} value={at.id}>
+                      {at.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Aperçu config : montant à recevoir, source, et critère assurance. */}
+          {selectedType && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+              <p className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">{t("amountToReceive")}</span>
+                <span className="font-semibold">{fmt.currency(selectedType.aid_ceiling_amount)}</span>
+              </p>
+              <p className="mt-1 flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">{t("source")}</span>
+                <span className="font-medium">
+                  {selectedType.funding_mode === "member_insurance"
+                    ? t("sourceIndividualNamed", {
+                        name: selectedType.insurance_caisse_name ?? t("sourceIndividual"),
+                      })
+                    : t("sourceCollectiveNamed", {
+                        name: selectedType.source_caisse_name ?? t("sourceCollective"),
+                      })}
+                </span>
+              </p>
+              {selectedType.funding_mode === "member_insurance" && perMemberShare > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t("perMemberDebit", { amount: fmt.currency(perMemberShare), n: nMembers })}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>{t("kind")}</Label>

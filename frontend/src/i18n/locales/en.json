@@ -980,7 +980,17 @@
     "insuranceCriterion": "Insurance: {balance} / min {min}",
     "insuranceFavorable": "up to date",
     "insuranceUnfavorable": "refill overdue",
-    "requestedOn": "Declared on {date}"
+    "requestedOn": "Declared on {date}",
+    "aidType": "Aid type",
+    "selectType": "Choose an aid type",
+    "selectTypeRequired": "Please choose an aid type.",
+    "amountToReceive": "Amount to receive",
+    "source": "Source",
+    "sourceIndividual": "Individual caisse (insurance)",
+    "sourceCollective": "Collective caisse (relief)",
+    "sourceIndividualNamed": "Individual caisse — {name}",
+    "sourceCollectiveNamed": "Collective caisse — {name}",
+    "perMemberDebit": "Each member will be debited {amount} (amount ÷ {n} members)."
   },
   "loan": {
     "title": "Loans",
@@ -1230,7 +1240,23 @@
     "insuranceMinimumExample": "E.g. {amount} per member",
     "insurancePreview": "Each member keeps {min} in their insurance caisse; refill expected within {days} days after a debit.",
     "refillPeriod": "Refill period (days)",
-    "refillPeriodHint": "Time allowed to refill the caisse back to the minimum after a debit. Beyond that, the state is unfavorable."
+    "refillPeriodHint": "Time allowed to refill the caisse back to the minimum after a debit. Beyond that, the state is unfavorable.",
+    "sourceTitle": "Funding source",
+    "sourceModeLabel": "Source type",
+    "sourceModeHint": "Where does the money given to the applicant come from?",
+    "sourceCollective": "Collective caisse (relief)",
+    "sourceIndividual": "Individual caisse (insurance)",
+    "collectiveCaisse": "Collective caisse",
+    "collectiveCaisseHint": "The whole amount is taken from this shared caisse.",
+    "noCollectiveCaisse": "No collective caisse. Create one in the caisses first.",
+    "individualCaisse": "Individual caisse (insurance)",
+    "individualCaisseHint": "The amount is divided by the number of members; each member is debited their share from their personal caisse.",
+    "noPersonalCaisse": "No individual caisse. Create a “personal” caisse first.",
+    "amountToGive": "Amount to give",
+    "amountToGiveHint": "Amount paid to the member who applies.",
+    "amountToGiveExample": "E.g. {amount}",
+    "previewCollective": "The applicant receives {amount}, fully taken from the collective caisse.",
+    "previewIndividual": "The applicant receives {amount}, split and debited from each member's individual caisse."
   },
   "configLoans": {
     "title": "Loan configuration",
