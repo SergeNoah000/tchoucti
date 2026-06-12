@@ -13,6 +13,7 @@ import {
   Crown,
   Plus,
   Pencil,
+  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -42,7 +43,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/common/page-header";
-import { DraftCycleManager } from "@/components/tontines/draft-cycle-manager";
 import { associationsApi, tontinesApi } from "@/lib/api";
 import type {
   Association,
@@ -195,8 +195,21 @@ export default function TontineDetailPage() {
         {!tontine.beneficiary_pays && <Badge variant="outline">{t("beneficiaryExempt")}</Badge>}
       </div>
 
-      {current?.status === "draft" && canConfigure && association && (
-        <DraftCycleManager tontineId={id} cycle={current} associationId={association.id} />
+      {current?.status === "draft" && canConfigure && (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-start gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">{t("draftParticipantsTitle")}</p>
+              <p className="text-xs text-muted-foreground">{t("configureFromButton")}</p>
+            </div>
+            <Button asChild size="sm" className="gap-1.5">
+              <Link href={`/dashboard/tontines/${id}/config`}>
+                <Settings className="h-4 w-4" />
+                {t("configure")}
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {current && current.rounds.length > 0 ? (

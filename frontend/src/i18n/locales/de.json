@@ -869,7 +869,16 @@
     "renameName": "Diesen Namen umbenennen",
     "renameNameDesc": "Bezeichnung dieses Namens/Anteils ändern.",
     "nameRenamed": "Name umbenannt",
-    "configure": "Konfigurieren"
+    "configure": "Konfigurieren",
+    "notAdmin": "Nur für den Vereinsadministrator.",
+    "backToDetail": "Zurück zur Tontine",
+    "configTitle": "Konfigurieren — {name}",
+    "configSubtitle": "Mitglieder und ihre Namen/Anteile hinzufügen. Möglich, solange die Sitzungen nicht begonnen haben.",
+    "cycleStartedTitle": "Sitzungen bereits begonnen",
+    "cycleStartedHint": "Nach dem Start des Zyklus können keine Mitglieder mehr hinzugefügt werden. Namen können weiterhin auf der Tontine-Seite umbenannt werden.",
+    "noDraftCycle": "Kein Entwurfszyklus",
+    "noDraftCycleHint": "Für diese Tontine wird kein Zyklus konfiguriert.",
+    "configureFromButton": "Mitglieder und ihre Namen über die Schaltfläche Konfigurieren hinzufügen."
   },
   "finance": {
     "title": "Finanzen",

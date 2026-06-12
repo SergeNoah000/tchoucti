@@ -869,7 +869,16 @@
     "renameName": "Renommer ce nom",
     "renameNameDesc": "Modifier le libellé de ce nom/part.",
     "nameRenamed": "Nom renommé",
-    "configure": "Configurer"
+    "configure": "Configurer",
+    "notAdmin": "Réservé à l'administrateur de l'association.",
+    "backToDetail": "Retour à la tontine",
+    "configTitle": "Configurer — {name}",
+    "configSubtitle": "Ajoutez les membres et leurs noms/parts. Possible tant que les séances n'ont pas démarré.",
+    "cycleStartedTitle": "Séances déjà démarrées",
+    "cycleStartedHint": "On ne peut plus ajouter de membre une fois le cycle lancé. Vous pouvez encore renommer les noms depuis la page de la tontine.",
+    "noDraftCycle": "Aucun cycle en brouillon",
+    "noDraftCycleHint": "Il n'y a pas de cycle en cours de configuration pour cette tontine.",
+    "configureFromButton": "Ajoutez les membres et leurs noms depuis le bouton Configurer."
   },
   "finance": {
     "title": "Finances",

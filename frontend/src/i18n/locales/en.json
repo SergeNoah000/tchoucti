@@ -869,7 +869,16 @@
     "renameName": "Rename this name",
     "renameNameDesc": "Edit the label of this name/share.",
     "nameRenamed": "Name renamed",
-    "configure": "Configure"
+    "configure": "Configure",
+    "notAdmin": "Reserved for the association administrator.",
+    "backToDetail": "Back to tontine",
+    "configTitle": "Configure — {name}",
+    "configSubtitle": "Add members and their names/shares. Possible as long as meetings have not started.",
+    "cycleStartedTitle": "Meetings already started",
+    "cycleStartedHint": "You can no longer add a member once the cycle has started. You can still rename names from the tontine page.",
+    "noDraftCycle": "No draft cycle",
+    "noDraftCycleHint": "There is no cycle being configured for this tontine.",
+    "configureFromButton": "Add members and their names from the Configure button."
   },
   "finance": {
     "title": "Finance",

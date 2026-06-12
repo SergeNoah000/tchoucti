@@ -111,7 +111,7 @@ export default function TontinesPage() {
                     </Badge>
                   )}
                   <Link
-                    href={`/dashboard/tontines/${tt.id}`}
+                    href={`/dashboard/tontines/${tt.id}/config`}
                     title={t("configure")}
                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
