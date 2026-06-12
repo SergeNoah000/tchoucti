@@ -26,6 +26,8 @@ class SocialAidCaseUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=2000)
     event_date: Optional[date] = None
     requested_amount: Optional[int] = Field(None, ge=0)
+    # Changer le type re-snapshote la caisse source et le montant à donner.
+    aid_type_id: Optional[UUID] = None
     notes: Optional[str] = Field(None, max_length=2000)
 
 

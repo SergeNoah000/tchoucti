@@ -213,85 +213,74 @@ async def request_loan(
             403, "Vous ne pouvez demander un prêt que pour vous-même."
         )
 
-    # Phase 2d — résolution du LoanType : snapshot des règles + caisse source.
-    loan_type: LoanType | None = None
+    # Résolution du LoanType : la demande hérite ENTIÈREMENT de sa config
+    # (durée, taux, pénalité, caisse source). Le membre ne fournit que le
+    # montant + le motif.
     source_caisse_id: UUID | None = None
-    rate = payload.interest_rate_pct
-    late_fee = payload.late_fee_pct
-    duration = payload.duration_months
 
-    if payload.loan_type_id is not None:
-        lt_res = await db.execute(
-            select(LoanType).where(
-                LoanType.id == payload.loan_type_id,
-                LoanType.association_id == payload.association_id,
+    lt_res = await db.execute(
+        select(LoanType).where(
+            LoanType.id == payload.loan_type_id,
+            LoanType.association_id == payload.association_id,
+        )
+    )
+    loan_type = lt_res.scalar_one_or_none()
+    if not loan_type:
+        raise HTTPException(422, "Type de prêt introuvable dans cette association.")
+    if not loan_type.is_active:
+        raise HTTPException(409, "Ce type de prêt est désactivé.")
+
+    # Éligibilité — borne le nombre de prêts vivants + sur 365j.
+    if loan_type.max_simultaneous > 0:
+        live_res = await db.execute(
+            select(func.count(Loan.id)).where(
+                Loan.borrower_membership_id == payload.borrower_membership_id,
+                Loan.loan_type_id == loan_type.id,
+                Loan.status.in_([
+                    LoanStatus.REQUESTED,
+                    LoanStatus.APPROVED,
+                    LoanStatus.DISBURSED,
+                    LoanStatus.REPAYING,
+                ]),
             )
         )
-        loan_type = lt_res.scalar_one_or_none()
-        if not loan_type:
-            raise HTTPException(422, "Type de prêt introuvable dans cette association.")
-        if not loan_type.is_active:
-            raise HTTPException(409, "Ce type de prêt est désactivé.")
-        if duration > loan_type.max_duration_months:
+        if (live_res.scalar() or 0) >= loan_type.max_simultaneous:
             raise HTTPException(
-                422,
-                f"Durée {duration}m > max autorisée par ce type ({loan_type.max_duration_months}m).",
+                409,
+                f"Limite de prêts simultanés atteinte ({loan_type.max_simultaneous}) pour ce type.",
             )
-        # Éligibilité — borne le nombre de prêts vivants + sur 365j.
-        if loan_type.max_simultaneous > 0:
-            live_res = await db.execute(
-                select(func.count(Loan.id)).where(
-                    Loan.borrower_membership_id == payload.borrower_membership_id,
-                    Loan.loan_type_id == loan_type.id,
-                    Loan.status.in_([
-                        LoanStatus.REQUESTED,
-                        LoanStatus.APPROVED,
-                        LoanStatus.DISBURSED,
-                        LoanStatus.REPAYING,
-                    ]),
-                )
+    if loan_type.max_per_year > 0:
+        one_year_ago = date.today() - timedelta(days=365)
+        year_res = await db.execute(
+            select(func.count(Loan.id)).where(
+                Loan.borrower_membership_id == payload.borrower_membership_id,
+                Loan.loan_type_id == loan_type.id,
+                Loan.requested_on >= one_year_ago,
             )
-            if (live_res.scalar() or 0) >= loan_type.max_simultaneous:
-                raise HTTPException(
-                    409,
-                    f"Limite de prêts simultanés atteinte ({loan_type.max_simultaneous}) pour ce type.",
-                )
-        if loan_type.max_per_year > 0:
-            one_year_ago = date.today() - timedelta(days=365)
-            year_res = await db.execute(
-                select(func.count(Loan.id)).where(
-                    Loan.borrower_membership_id == payload.borrower_membership_id,
-                    Loan.loan_type_id == loan_type.id,
-                    Loan.requested_on >= one_year_ago,
-                )
+        )
+        if (year_res.scalar() or 0) >= loan_type.max_per_year:
+            raise HTTPException(
+                409,
+                f"Limite annuelle atteinte ({loan_type.max_per_year}) pour ce type.",
             )
-            if (year_res.scalar() or 0) >= loan_type.max_per_year:
-                raise HTTPException(
-                    409,
-                    f"Limite annuelle atteinte ({loan_type.max_per_year}) pour ce type.",
-                )
-        if loan_type.eligibility_no_default:
-            defaulted = await db.execute(
-                select(Loan.id).where(
-                    Loan.borrower_membership_id == payload.borrower_membership_id,
-                    Loan.status == LoanStatus.DEFAULTED,
-                ).limit(1)
+    if loan_type.eligibility_no_default:
+        defaulted = await db.execute(
+            select(Loan.id).where(
+                Loan.borrower_membership_id == payload.borrower_membership_id,
+                Loan.status == LoanStatus.DEFAULTED,
+            ).limit(1)
+        )
+        if defaulted.first():
+            raise HTTPException(
+                409,
+                "Ce membre a un défaut de paiement antérieur — ce type de prêt l'exclut.",
             )
-            if defaulted.first():
-                raise HTTPException(
-                    409,
-                    "Ce membre a un défaut de paiement antérieur — ce type de prêt l'exclut.",
-                )
-        # Snapshot des paramètres financiers du type.
-        rate = rate if rate is not None else loan_type.interest_rate_pct
-        late_fee = late_fee if late_fee is not None else loan_type.late_fee_pct
-        source_caisse_id = loan_type.source_caisse_id
 
-    # Fallback minimal pour les prêts sans type (legacy).
-    if rate is None:
-        raise HTTPException(422, "Le taux d'intérêt est requis (ou choisis un type de prêt).")
-    if late_fee is None:
-        late_fee = Decimal("0")
+    # Tout vient de la config du type.
+    rate = loan_type.interest_rate_pct
+    late_fee = loan_type.late_fee_pct if loan_type.late_fee_pct is not None else Decimal("0")
+    duration = loan_type.max_duration_months
+    source_caisse_id = loan_type.source_caisse_id
 
     count_res = await db.execute(
         select(func.count(Loan.id)).where(Loan.association_id == payload.association_id)

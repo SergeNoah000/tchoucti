@@ -1064,7 +1064,9 @@
     "inst_late": "Late",
     "inst_waived": "Waived",
     "requestedOn": "Filed on {date}",
-    "borrowerSelf": "you"
+    "borrowerSelf": "you",
+    "selectType": "Choose a loan type",
+    "noLoanTypes": "No loan type configured. Ask the administrator to create one."
   },
   "roles": {
     "super_admin": "Super Administrator",
@@ -1162,7 +1164,8 @@
     "objectiveHint": "Target amount. Project funds auto-close once reached.",
     "projectRequired": "required for a project",
     "objectiveAmount": "Target amount",
-    "objectiveDeadline": "Deadline"
+    "objectiveDeadline": "Deadline",
+    "memberRequiredAmountNote": "The expected amount is the one “collected each meeting” above. A contribution can be mandatory without being fixed (free amount)."
   },
   "configTontines": {
     "title": "Tontines",
@@ -1428,7 +1431,8 @@
     "countTontines": "tontine(s) configured — {active} active",
     "countLoanTypes": "loan type(s)",
     "countAidTypes": "aid type(s)",
-    "disabled": "Module disabled"
+    "disabled": "Module disabled",
+    "caisseMemberRequiredAmountNote": "The expected amount is the one “collected each meeting” above. Can be mandatory without being fixed."
   },
   "errors": {
     "generic": "An error occurred, please try again.",

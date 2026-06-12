@@ -533,6 +533,7 @@ export const socialAidApi = {
   update: async (
     id: string,
     payload: Partial<{
+      aid_type_id: string;
       kind: string;
       title: string;
       description: string;
@@ -569,11 +570,8 @@ export const loansApi = {
   request: async (payload: {
     association_id: string;
     borrower_membership_id: string;
-    loan_type_id?: string;
+    loan_type_id: string;
     principal: number;
-    duration_months: number;
-    interest_rate_pct?: number;
-    late_fee_pct?: number;
     purpose?: string;
   }) => (await api.post("/loans", payload)).data,
   approve: async (id: string) => (await api.post(`/loans/${id}/approve`, {})).data,

@@ -748,7 +748,6 @@ function CaisseForm({
   const [recurring, setRecurring] = useState(false);
   const [recurringAmount, setRecurringAmount] = useState("");
   const [memberRequired, setMemberRequired] = useState(false);
-  const [memberRequiredAmount, setMemberRequiredAmount] = useState("");
   const [hasObjective, setHasObjective] = useState(false);
   const [objectiveAmount, setObjectiveAmount] = useState("");
   const [objectiveDeadline, setObjectiveDeadline] = useState("");
@@ -764,7 +763,7 @@ function CaisseForm({
         is_recurring: recurring,
         recurring_amount: recurring ? parseInt(recurringAmount, 10) || 0 : 0,
         is_member_required: memberRequired,
-        member_required_amount: memberRequired ? parseInt(memberRequiredAmount, 10) || 0 : 0,
+        member_required_amount: memberRequired && recurring ? parseInt(recurringAmount, 10) || 0 : 0,
         has_objective: category === "project" || hasObjective,
         objective_amount: hasObjective || category === "project" ? parseInt(objectiveAmount, 10) || 0 : 0,
         objective_deadline: objectiveDeadline || undefined,
@@ -830,14 +829,7 @@ function CaisseForm({
           <Switch checked={memberRequired} onCheckedChange={setMemberRequired} />
         </label>
         {memberRequired && (
-          <HelpField label={t("caisseMemberAmount")} example={t("caisseMemberAmountExample", { amount: fmt.currency(5000) })}>
-            <Input
-              type="number"
-              min={1}
-              value={memberRequiredAmount}
-              onChange={(e) => setMemberRequiredAmount(e.target.value)}
-            />
-          </HelpField>
+          <p className="text-xs text-muted-foreground">{t("caisseMemberRequiredAmountNote")}</p>
         )}
       </div>
 
@@ -891,7 +883,7 @@ function CaisseForm({
         <p className="mt-1">
           {recurring && t("caissePreviewRecurringText", { amount: parseInt(recurringAmount || "0", 10) })}
           {memberRequired &&
-            ` ${t("caissePreviewMemberText", { amount: parseInt(memberRequiredAmount || "0", 10) })}`}
+            ` ${t("caissePreviewMemberText", { amount: recurring ? parseInt(recurringAmount || "0", 10) : 0 })}`}
           {(hasObjective || category === "project") &&
             ` ${t("caissePreviewObjectiveText", { amount: parseInt(objectiveAmount || "0", 10) })}`}
           {!recurring && !memberRequired && !hasObjective && category !== "project" &&

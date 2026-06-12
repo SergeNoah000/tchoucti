@@ -1064,7 +1064,9 @@
     "inst_late": "Verspätet",
     "inst_waived": "Erlassen",
     "requestedOn": "Eingereicht am {date}",
-    "borrowerSelf": "Sie"
+    "borrowerSelf": "Sie",
+    "selectType": "Darlehensart wählen",
+    "noLoanTypes": "Keine Darlehensart konfiguriert. Bitten Sie den Administrator, eine zu erstellen."
   },
   "roles": {
     "super_admin": "Superadministrator",
@@ -1162,7 +1164,8 @@
     "objectiveHint": "Zielbetrag. Projekt-Kassen schließen automatisch bei Erreichen.",
     "projectRequired": "für Projekt erforderlich",
     "objectiveAmount": "Zielbetrag",
-    "objectiveDeadline": "Frist"
+    "objectiveDeadline": "Frist",
+    "memberRequiredAmountNote": "Der erwartete Betrag ist der oben „pro Sitzung erhobene“. Ein Beitrag kann verpflichtend sein, ohne fest zu sein (freier Betrag)."
   },
   "configTontines": {
     "title": "Tontines",
@@ -1428,7 +1431,8 @@
     "countTontines": "Tontine(s) konfiguriert — {active} aktiv",
     "countLoanTypes": "Darlehenstyp(en)",
     "countAidTypes": "Hilfetyp(en)",
-    "disabled": "Modul deaktiviert"
+    "disabled": "Modul deaktiviert",
+    "caisseMemberRequiredAmountNote": "Der erwartete Betrag ist der oben „pro Sitzung erhobene“. Kann verpflichtend sein, ohne fest zu sein."
   },
   "errors": {
     "generic": "Ein Fehler ist aufgetreten, bitte versuchen Sie es erneut.",

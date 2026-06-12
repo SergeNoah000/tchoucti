@@ -8,15 +8,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class LoanCreate(BaseModel):
+    """Demande de prêt. Le membre ne fournit QUE le type, le montant et un motif
+    facultatif. Tout le reste (durée, taux d'intérêt, pénalité de retard, caisse
+    source) provient de la configuration du type de prêt."""
     association_id: UUID
     borrower_membership_id: UUID
+    loan_type_id: UUID
     principal: int = Field(..., gt=0)
-    duration_months: int = Field(..., ge=1, le=120)
-    # If `loan_type_id` is provided, the type's caps & rates are inherited and
-    # interest_rate_pct/late_fee_pct may be omitted (server-side fallback).
-    loan_type_id: Optional[UUID] = None
-    interest_rate_pct: Optional[Decimal] = Field(None, ge=0, le=100)
-    late_fee_pct: Optional[Decimal] = Field(None, ge=0, le=100)
     purpose: Optional[str] = Field(None, max_length=500)
 
 

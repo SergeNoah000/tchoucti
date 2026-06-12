@@ -48,8 +48,12 @@ class CaisseCreate(BaseModel):
         # Une caisse récurrente (collectée à chaque séance) n'est PAS obligée
         # d'avoir un montant de cotisation : 0 = montant libre, chaque membre
         # verse ce qu'il veut à chaque séance.
-        if self.is_member_required and self.member_required_amount <= 0:
-            raise ValueError("Une cotisation obligatoire doit avoir un montant > 0.")
+        #
+        # Le montant d'une cotisation OBLIGATOIRE n'est plus un champ distinct :
+        # il reprend celui collecté par séance (recurring_amount). Une cotisation
+        # peut donc être obligatoire sans être fixe (montant = 0 = libre).
+        if self.is_member_required:
+            self.member_required_amount = self.recurring_amount
         if self.has_ceiling and self.ceiling_amount <= 0:
             raise ValueError("Le plafond doit être > 0.")
         if self.has_objective and self.objective_amount <= 0:

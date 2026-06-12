@@ -668,6 +668,7 @@ export interface SocialAidCase {
   association_id: UUID;
   beneficiary_membership_id: UUID;
   beneficiary_name?: string | null;
+  aid_type_id?: UUID | null;
   reference: string;
   kind: SocialAidKind;
   status: SocialAidStatus;

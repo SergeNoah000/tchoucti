@@ -440,6 +440,27 @@ async def update_case(
     data = payload.model_dump(exclude_unset=True)
     if "kind" in data and data["kind"] is not None:
         case.kind = SocialAidCaseKind(data.pop("kind"))
+
+    # Changement de type d'aide : re-snapshote la caisse source et, sauf montant
+    # explicitement fourni, le montant à donner depuis la config du type.
+    if "aid_type_id" in data:
+        new_type_id = data.pop("aid_type_id")
+        case.aid_type_id = new_type_id
+        if new_type_id is not None:
+            at = (
+                await db.execute(
+                    select(AidType).where(
+                        AidType.id == new_type_id,
+                        AidType.association_id == assoc.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if at is None:
+                raise HTTPException(422, "Type d'aide introuvable dans cette association.")
+            case.source_caisse_id = at.source_caisse_id
+            if "requested_amount" not in data and at.aid_ceiling_amount > 0:
+                case.requested_amount = at.aid_ceiling_amount
+
     for field, value in data.items():
         setattr(case, field, value)
 

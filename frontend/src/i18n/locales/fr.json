@@ -1064,7 +1064,9 @@
     "inst_late": "En retard",
     "inst_waived": "Remis",
     "requestedOn": "Déposé le {date}",
-    "borrowerSelf": "vous"
+    "borrowerSelf": "vous",
+    "selectType": "Choisir un type de prêt",
+    "noLoanTypes": "Aucun type de prêt configuré. Demandez à l'administrateur d'en créer un."
   },
   "roles": {
     "super_admin": "Super Administrateur",
@@ -1162,7 +1164,8 @@
     "objectiveHint": "Montant cible à atteindre. Caisse Projet : ferme automatiquement à l'objectif.",
     "projectRequired": "obligatoire pour un projet",
     "objectiveAmount": "Montant cible",
-    "objectiveDeadline": "Date limite"
+    "objectiveDeadline": "Date limite",
+    "memberRequiredAmountNote": "Le montant attendu est celui « collecté à chaque séance » ci-dessus. Une cotisation peut être obligatoire sans être fixe (montant libre)."
   },
   "configTontines": {
     "title": "Tontines",
@@ -1428,7 +1431,8 @@
     "countTontines": "tontine(s) configurée(s) — {active} active(s)",
     "countLoanTypes": "type(s) de prêt",
     "countAidTypes": "type(s) d'aide",
-    "disabled": "Module désactivé"
+    "disabled": "Module désactivé",
+    "caisseMemberRequiredAmountNote": "Le montant attendu est celui « collecté à chaque séance » ci-dessus. Peut être obligatoire sans être fixe."
   },
   "errors": {
     "generic": "Une erreur est survenue, veuillez réessayer.",

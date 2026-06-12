@@ -377,6 +377,7 @@ function EditDialog({
   const t = useTranslations("socialAid");
   const tCommon = useTranslations("common");
   const [open, setOpen] = useState(false);
+  const [aidTypeId, setAidTypeId] = useState(c.aid_type_id ?? "");
   const [kind, setKind] = useState<SocialAidKind>(c.kind);
   const [title, setTitle] = useState(c.title);
   const [eventDate, setEventDate] = useState(c.event_date ?? "");
@@ -385,7 +386,14 @@ function EditDialog({
     c.requested_amount != null ? String(c.requested_amount) : "",
   );
 
+  const { data: aidTypes = [] } = useQuery<AidTypeOption[]>({
+    queryKey: ["aid-types", c.association_id, "active"],
+    queryFn: () => aidTypesApi.list(c.association_id, true),
+    enabled: open,
+  });
+
   const reset = () => {
+    setAidTypeId(c.aid_type_id ?? "");
     setKind(c.kind);
     setTitle(c.title);
     setEventDate(c.event_date ?? "");
@@ -396,6 +404,7 @@ function EditDialog({
   const updateMutation = useMutation({
     mutationFn: () =>
       socialAidApi.update(c.id, {
+        aid_type_id: aidTypeId || undefined,
         kind,
         title: title.trim(),
         description: description.trim(),
@@ -436,6 +445,21 @@ function EditDialog({
           }}
           className="space-y-4 py-2"
         >
+          {aidTypes.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>{t("aidType")}</Label>
+              <Select value={aidTypeId} onValueChange={setAidTypeId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("selectType")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {aidTypes.map((at) => (
+                    <SelectItem key={at.id} value={at.id}>{at.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>{t("kind")}</Label>

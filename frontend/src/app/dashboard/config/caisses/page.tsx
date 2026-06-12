@@ -357,9 +357,6 @@ function CaisseFormDialog({
     caisse?.recurring_amount ? String(caisse.recurring_amount) : "",
   );
   const [memberRequired, setMemberRequired] = useState(caisse?.is_member_required ?? false);
-  const [memberRequiredAmount, setMemberRequiredAmount] = useState(
-    caisse?.member_required_amount ? String(caisse.member_required_amount) : "",
-  );
   const [hasObjective, setHasObjective] = useState(caisse?.has_objective ?? false);
   const [objectiveAmount, setObjectiveAmount] = useState(
     caisse?.objective_amount ? String(caisse.objective_amount) : "",
@@ -385,7 +382,9 @@ function CaisseFormDialog({
         is_recurring: recurring,
         recurring_amount: recurring ? parseInt(recurringAmount, 10) || 0 : 0,
         is_member_required: memberRequired,
-        member_required_amount: memberRequired ? parseInt(memberRequiredAmount, 10) || 0 : 0,
+        // Le montant obligatoire reprend celui collecté par séance (peut être 0
+        // = obligatoire mais libre). Plus de champ distinct.
+        member_required_amount: memberRequired && recurring ? parseInt(recurringAmount, 10) || 0 : 0,
         has_objective: category === "project" || hasObjective,
         objective_amount:
           hasObjective || category === "project" ? parseInt(objectiveAmount, 10) || 0 : 0,
@@ -493,7 +492,7 @@ function CaisseFormDialog({
                 )}
               </div>
 
-              <div className="space-y-3 rounded-md border border-border bg-card p-3">
+              <div className="space-y-2 rounded-md border border-border bg-card p-3">
                 <label className="flex cursor-pointer items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">{t("memberRequired")}</p>
@@ -502,14 +501,7 @@ function CaisseFormDialog({
                   <Switch checked={memberRequired} onCheckedChange={setMemberRequired} />
                 </label>
                 {memberRequired && (
-                  <HelpField label={t("memberAmount")}>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={memberRequiredAmount}
-                      onChange={(e) => setMemberRequiredAmount(e.target.value)}
-                    />
-                  </HelpField>
+                  <p className="text-xs text-muted-foreground">{t("memberRequiredAmountNote")}</p>
                 )}
               </div>
 

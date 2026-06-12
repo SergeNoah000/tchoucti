@@ -161,11 +161,8 @@ function RequestLoanDialog({ association }: { association: Association }) {
 
   const [open, setOpen] = useState(false);
   const [membershipId, setMembershipId] = useState("");
-  const [loanTypeId, setLoanTypeId] = useState("custom");
+  const [loanTypeId, setLoanTypeId] = useState("");
   const [principal, setPrincipal] = useState("");
-  const [duration, setDuration] = useState("3");
-  const [rate, setRate] = useState("5");
-  const [lateFee, setLateFee] = useState("1");
   const [purpose, setPurpose] = useState("");
   const [error, setError] = useState("");
 
@@ -190,32 +187,22 @@ function RequestLoanDialog({ association }: { association: Association }) {
     enabled: open,
   });
 
-  const usingType = loanTypeId !== "custom";
   const selectedType = loanTypes.find((lt) => lt.id === loanTypeId);
 
-  // Choisir un type pré-remplit (et fige) le taux et la pénalité.
-  const onPickType = (id: string) => {
-    setLoanTypeId(id);
-    const lt = loanTypes.find((x) => x.id === id);
-    if (lt) {
-      setRate(String(lt.interest_rate_pct));
-      setLateFee(String(lt.late_fee_pct));
-      if (parseInt(duration, 10) > lt.max_duration_months) {
-        setDuration(String(lt.max_duration_months));
-      }
+  // Présélectionne le 1er type disponible à l'ouverture.
+  useEffect(() => {
+    if (open && !loanTypeId && loanTypes.length > 0) {
+      setLoanTypeId(loanTypes[0].id);
     }
-  };
+  }, [open, loanTypeId, loanTypes]);
 
   const requestMutation = useMutation({
     mutationFn: () =>
       loansApi.request({
         association_id: association.id,
         borrower_membership_id: membershipId,
-        loan_type_id: usingType ? loanTypeId : undefined,
+        loan_type_id: loanTypeId,
         principal: parseInt(principal, 10),
-        duration_months: parseInt(duration, 10),
-        interest_rate_pct: parseFloat(rate),
-        late_fee_pct: parseFloat(lateFee) || 0,
         purpose: purpose.trim() || undefined,
       }),
     onSuccess: () => {
@@ -229,11 +216,8 @@ function RequestLoanDialog({ association }: { association: Association }) {
 
   const reset = () => {
     setMembershipId("");
-    setLoanTypeId("custom");
+    setLoanTypeId("");
     setPrincipal("");
-    setDuration("3");
-    setRate("5");
-    setLateFee("1");
     setPurpose("");
     setError("");
   };
@@ -241,7 +225,7 @@ function RequestLoanDialog({ association }: { association: Association }) {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const p = parseInt(principal, 10);
-    if (!membershipId || Number.isNaN(p) || p <= 0) {
+    if (!membershipId || !loanTypeId || Number.isNaN(p) || p <= 0) {
       setError(t("requestError"));
       return;
     }
@@ -299,19 +283,24 @@ function RequestLoanDialog({ association }: { association: Association }) {
 
           <div className="space-y-1.5">
             <Label>{t("loanType")}</Label>
-            <Select value={loanTypeId} onValueChange={onPickType}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="custom">{t("customLoan")}</SelectItem>
-                {loanTypes.map((lt) => (
-                  <SelectItem key={lt.id} value={lt.id}>
-                    {lt.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {loanTypes.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border px-3 py-3 text-center text-sm text-muted-foreground">
+                {t("noLoanTypes")}
+              </p>
+            ) : (
+              <Select value={loanTypeId} onValueChange={setLoanTypeId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("selectType")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {loanTypes.map((lt) => (
+                    <SelectItem key={lt.id} value={lt.id}>
+                      {lt.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {selectedType && (
               <p className="text-xs text-muted-foreground">
                 {t("loanTypeHint", {
@@ -322,59 +311,17 @@ function RequestLoanDialog({ association }: { association: Association }) {
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="ln-principal">{`${t("principal")} (${association.currency})`}</Label>
-              <Input
-                id="ln-principal"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={principal}
-                onChange={(e) => setPrincipal(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ln-duration">{t("duration")}</Label>
-              <Input
-                id="ln-duration"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={usingType && selectedType ? selectedType.max_duration_months : 120}
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ln-rate">{t("interestRate")}</Label>
-              <Input
-                id="ln-rate"
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                min={0}
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-                disabled={usingType}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ln-late">{t("lateFee")}</Label>
-              <Input
-                id="ln-late"
-                type="number"
-                inputMode="decimal"
-                step="0.1"
-                min={0}
-                value={lateFee}
-                onChange={(e) => setLateFee(e.target.value)}
-                disabled={usingType}
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ln-principal">{`${t("principal")} (${association.currency})`}</Label>
+            <Input
+              id="ln-principal"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={principal}
+              onChange={(e) => setPrincipal(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ln-purpose">{t("purpose")}</Label>
@@ -397,7 +344,7 @@ function RequestLoanDialog({ association }: { association: Association }) {
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               {tCommon("cancel")}
             </Button>
-            <Button type="submit" disabled={requestMutation.isPending || !membershipId} className="gap-2">
+            <Button type="submit" disabled={requestMutation.isPending || !membershipId || !loanTypeId} className="gap-2">
               {requestMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {t("request")}
             </Button>
