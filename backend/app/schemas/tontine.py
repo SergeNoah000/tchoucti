@@ -27,10 +27,12 @@ class TontineCreate(BaseModel):
     start_date: date
     is_mandatory: bool = True
 
-    # Participants dans l'ordre de passage souhaité. Peut être vide : la tontine
-    # est alors créée avec un cycle brouillon, et les membres sont ajoutés ensuite
-    # depuis la config de la tontine.
-    participant_ids: List[UUID] = Field(default_factory=list, max_length=200)
+    # Participants dans l'ordre de passage souhaité. Un même membre peut apparaître
+    # PLUSIEURS fois = plusieurs noms/parts (chacun sa position dans la rotation).
+    # Peut être vide : cycle brouillon, membres ajoutés ensuite depuis la config.
+    participant_ids: List[UUID] = Field(default_factory=list, max_length=400)
+    # Libellés parallèles (même longueur que participant_ids). None = nom du membre.
+    participant_names: Optional[List[Optional[str]]] = None
     # Si is_mandatory=False : membres actifs explicitement exclus du cycle.
     excluded_membership_ids: List[UUID] = Field(default_factory=list)
     # Mélanger l'ordre de passage (tirage au sort).
@@ -47,18 +49,26 @@ class CycleParticipantsUpdate(BaseModel):
     """Définit/édite les participants d'un cycle BROUILLON, puis (re)génère ses
     tours + séances. N'est possible que tant que le cycle est en brouillon."""
 
-    participant_ids: List[UUID] = Field(default_factory=list, max_length=200)
+    participant_ids: List[UUID] = Field(default_factory=list, max_length=400)
+    participant_names: Optional[List[Optional[str]]] = None
     excluded_membership_ids: List[UUID] = Field(default_factory=list)
     is_mandatory: bool = True
     shuffle: bool = False
     start_date: Optional[date] = None
 
 
+class BeneficiaryRename(BaseModel):
+    """Renomme un nom/part d'un bénéficiaire (admin + bureau, à tout moment)."""
+    name: str = Field(..., min_length=1, max_length=150)
+
+
 # ── Outputs ─────────────────────────────────────────────────────────────────
 
 class TontineBeneficiaryOut(BaseModel):
+    id: UUID
     membership_id: UUID
-    name: Optional[str] = None
+    name: Optional[str] = None          # libellé du nom (name_label) ou nom du membre
+    member_name: Optional[str] = None   # nom du membre porteur (pour le regroupement)
     share_amount: int
     share_parts: int
 

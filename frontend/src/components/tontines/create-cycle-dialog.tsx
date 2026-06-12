@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Loader2, Check, Shuffle, Users } from "lucide-react";
+import { Plus, Loader2, Shuffle, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -65,6 +65,8 @@ export function CreateTontineDialog({ association }: { association: Association 
   const [shuffle, setShuffle] = useState(false);
   const [isMandatory, setIsMandatory] = useState(true);
   const [selected, setSelected] = useState<string[]>([]);
+  // Nombre de noms/parts par membre (>=1). Présent ssi le membre est sélectionné.
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const [error, setError] = useState("");
 
   const { data: members = [] } = useQuery<Membership[]>({
@@ -74,9 +76,26 @@ export function CreateTontineDialog({ association }: { association: Association 
   });
   const activeMembers = useMemo(() => members.filter((m) => m.status === "active"), [members]);
 
+  // Construit la liste des slots (un par nom) dans l'ordre de sélection + les
+  // libellés correspondants (suffixés quand un membre a plusieurs noms).
+  const { slotIds, slotNames, totalSlots } = useMemo(() => {
+    const ids: string[] = [];
+    const names: (string | null)[] = [];
+    for (const id of selected) {
+      const m = activeMembers.find((x) => x.id === id);
+      const full = m?.user.full_name ?? "";
+      const n = Math.max(1, counts[id] ?? 1);
+      for (let i = 0; i < n; i++) {
+        ids.push(id);
+        names.push(n > 1 ? `${full} ${i + 1}` : full);
+      }
+    }
+    return { slotIds: ids, slotNames: names, totalSlots: ids.length };
+  }, [selected, counts, activeMembers]);
+
   const k = Math.max(1, parseInt(beneficiariesPerRound, 10) || 1);
-  const nRounds = selected.length > 0 ? Math.ceil(selected.length / k) : 0;
-  const payers = beneficiaryPays ? selected.length : Math.max(0, selected.length - k);
+  const nRounds = totalSlots > 0 ? Math.ceil(totalSlots / k) : 0;
+  const payers = beneficiaryPays ? totalSlots : Math.max(0, totalSlots - k);
   const pot = (parseInt(amount, 10) || 0) * payers;
 
   const computedExclusions = useMemo(() => {
@@ -98,7 +117,8 @@ export function CreateTontineDialog({ association }: { association: Association 
         selection_method: selectionMethod,
         start_date: startDate,
         is_mandatory: isMandatory,
-        participant_ids: selected,
+        participant_ids: slotIds,
+        participant_names: slotNames,
         excluded_membership_ids: computedExclusions,
         shuffle,
       }),
@@ -122,11 +142,26 @@ export function CreateTontineDialog({ association }: { association: Association 
     setShuffle(false);
     setIsMandatory(true);
     setSelected([]);
+    setCounts({});
     setError("");
   };
 
   const toggle = (id: string) =>
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+    setSelected((s) => {
+      if (s.includes(id)) {
+        setCounts((c) => {
+          const next = { ...c };
+          delete next[id];
+          return next;
+        });
+        return s.filter((x) => x !== id);
+      }
+      setCounts((c) => ({ ...c, [id]: 1 }));
+      return [...s, id];
+    });
+
+  const setCount = (id: string, n: number) =>
+    setCounts((c) => ({ ...c, [id]: Math.max(1, Math.min(20, n)) }));
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -287,7 +322,8 @@ export function CreateTontineDialog({ association }: { association: Association 
 
           <div className="space-y-1.5">
             <Label>
-              {t("selectParticipants")} ({selected.length})
+              {t("selectParticipants")} ({selected.length}
+              {totalSlots !== selected.length ? ` · ${t("namesTotal", { n: totalSlots })}` : ""})
             </Label>
             <p className="text-xs text-muted-foreground">{t("participantsOptionalHint")}</p>
             {activeMembers.length === 0 ? (
@@ -299,17 +335,20 @@ export function CreateTontineDialog({ association }: { association: Association 
                 {activeMembers.map((m) => {
                   const isSel = selected.includes(m.id);
                   const order = selected.indexOf(m.id) + 1;
+                  const cnt = counts[m.id] ?? 1;
                   return (
-                    <button
+                    <div
                       key={m.id}
-                      type="button"
-                      onClick={() => toggle(m.id)}
                       className={cn(
-                        "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+                        "flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
                         isSel ? "bg-primary/10 text-foreground" : "hover:bg-accent/50",
                       )}
                     >
-                      <span className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggle(m.id)}
+                        className="flex flex-1 items-center gap-2 text-left"
+                      >
                         <span
                           className={cn(
                             "flex h-5 w-5 items-center justify-center rounded border text-[10px] font-bold",
@@ -321,9 +360,29 @@ export function CreateTontineDialog({ association }: { association: Association 
                           {isSel ? order : ""}
                         </span>
                         {m.user.full_name}
-                      </span>
-                      {isSel && <Check className="h-4 w-4 text-primary" />}
-                    </button>
+                      </button>
+                      {isSel && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">{t("namesLabel")}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCount(m.id, cnt - 1)}
+                            disabled={cnt <= 1}
+                            className="flex h-6 w-6 items-center justify-center rounded border border-border text-sm disabled:opacity-40"
+                          >
+                            −
+                          </button>
+                          <span className="w-5 text-center text-sm font-semibold tabular-nums">{cnt}</span>
+                          <button
+                            type="button"
+                            onClick={() => setCount(m.id, cnt + 1)}
+                            className="flex h-6 w-6 items-center justify-center rounded border border-border text-sm"
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -333,7 +392,7 @@ export function CreateTontineDialog({ association }: { association: Association 
           {nRounds > 0 ? (
             <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-900 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-200">
               {t("createPreview", {
-                participants: selected.length,
+                participants: totalSlots,
                 perRound: k,
                 rounds: nRounds,
                 pot: fmt.currency(pot),

@@ -10,7 +10,7 @@
 import random
 import re
 from datetime import date, timedelta
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 from dateutil.relativedelta import relativedelta
@@ -20,7 +20,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import _user_has_bureau_role, get_current_user, get_db
 from app.models.association import Association
 from app.models.caisse import Caisse, CaisseCategory
 from app.models.finance import Fund, FundKind, MovementDirection
@@ -40,6 +40,7 @@ from app.models.user import User
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.services.meeting_agenda import upsert_tontine_activity
 from app.schemas.tontine import (
+    BeneficiaryRename,
     CycleParticipantsUpdate,
     NextCycleCreate,
     TontineBeneficiaryOut,
@@ -127,6 +128,26 @@ async def _get_tontine_fund(db: AsyncSession, treasury, tontine: Tontine) -> Fun
     )
 
 
+def _resolve_order_and_labels(
+    ids: list[UUID],
+    names: Optional[list[Optional[str]]],
+    shuffle: bool,
+) -> tuple[list[UUID], list[Optional[str]]]:
+    """Construit l'ordre de passage + les libellés (un par slot). Les doublons
+    de membre sont autorisés (plusieurs noms). `shuffle` mélange les paires."""
+    labels = names if names is not None else [None] * len(ids)
+    if len(labels) != len(ids):
+        raise HTTPException(
+            422, "participant_names doit avoir la même longueur que participant_ids."
+        )
+    pairs = list(zip(ids, labels))
+    if shuffle:
+        random.shuffle(pairs)
+    order = [p[0] for p in pairs]
+    out_labels = [(p[1].strip() if p[1] and str(p[1]).strip() else None) for p in pairs]
+    return order, out_labels
+
+
 async def _populate_cycle(
     db: AsyncSession,
     *,
@@ -135,6 +156,7 @@ async def _populate_cycle(
     participant_order: list[UUID],
     excluded_ids: list[UUID],
     activate: bool,
+    name_labels: list[Optional[str]] | None = None,
 ) -> None:
     """(Re)génère tours + séances d'office + bénéficiaires + opt-outs sur un cycle
     EXISTANT (déjà flushé).
@@ -186,11 +208,16 @@ async def _populate_cycle(
         await db.flush()
         db.add(TontineMeetingLink(round_id=rnd.id, meeting_id=meeting.id))
 
+        labels = (name_labels[idx * k : (idx + 1) * k] if name_labels else [None] * len(beneficiaries))
         shares = _shares(pot, [1] * len(beneficiaries))
-        for mid, amt in zip(beneficiaries, shares):
+        for mid, amt, label in zip(beneficiaries, shares, labels):
             db.add(
                 TontineRoundBeneficiary(
-                    round_id=rnd.id, membership_id=mid, share_amount=amt, share_parts=1
+                    round_id=rnd.id,
+                    membership_id=mid,
+                    name_label=label,
+                    share_amount=amt,
+                    share_parts=1,
                 )
             )
 
@@ -210,6 +237,7 @@ async def _build_cycle(
     is_mandatory: bool,
     excluded_ids: list[UUID],
     activate: bool = True,
+    name_labels: list[Optional[str]] | None = None,
 ) -> TontineCycle:
     """Crée un cycle puis le peuple. Sans participant (`activate=False`), le cycle
     est créé vide en BROUILLON — les membres sont ajoutés ensuite via la config."""
@@ -233,6 +261,7 @@ async def _build_cycle(
         participant_order=participant_order,
         excluded_ids=excluded_ids,
         activate=activate,
+        name_labels=name_labels,
     )
     return cycle
 
@@ -306,15 +335,21 @@ async def _load_tontine(db: AsyncSession, tontine_id: UUID) -> Tontine:
 
 
 def _round_out(r: TontineRound, meeting_info: tuple[UUID, str] | None = None) -> TontineRoundOut:
-    benefs = [
-        TontineBeneficiaryOut(
-            membership_id=b.membership_id,
-            name=getattr(getattr(b, "membership", None) and b.membership.user, "full_name", None),
-            share_amount=b.share_amount,
-            share_parts=b.share_parts,
+    benefs = []
+    for b in r.beneficiaries:
+        member_name = getattr(
+            getattr(b, "membership", None) and b.membership.user, "full_name", None
         )
-        for b in r.beneficiaries
-    ]
+        benefs.append(
+            TontineBeneficiaryOut(
+                id=b.id,
+                membership_id=b.membership_id,
+                name=b.name_label or member_name,
+                member_name=member_name,
+                share_amount=b.share_amount,
+                share_parts=b.share_parts,
+            )
+        )
     return TontineRoundOut(
         id=r.id,
         round_number=r.round_number,
@@ -447,23 +482,23 @@ async def create_tontine(
     _check_access(current_user, assoc)
 
     ids = list(payload.participant_ids)
-    if len(set(ids)) != len(ids):
-        raise HTTPException(422, "Un participant ne peut apparaître qu'une fois dans l'ordre.")
-    res = await db.execute(
-        select(Membership.id).where(
-            Membership.id.in_(ids), Membership.association_id == payload.association_id
-        )
+    # Doublons autorisés : un membre peut tenir plusieurs noms/parts.
+    order, labels = _resolve_order_and_labels(
+        ids, payload.participant_names, payload.shuffle
     )
-    found = {m for m in res.scalars().all()}
-    missing = [str(i) for i in ids if i not in found]
-    if missing:
-        raise HTTPException(422, f"Membres introuvables : {', '.join(missing)}")
+    if ids:
+        res = await db.execute(
+            select(Membership.id).where(
+                Membership.id.in_(set(ids)),
+                Membership.association_id == payload.association_id,
+            )
+        )
+        found = {m for m in res.scalars().all()}
+        missing = [str(i) for i in set(ids) if i not in found]
+        if missing:
+            raise HTTPException(422, f"Membres introuvables : {', '.join(missing)}")
     if payload.is_mandatory and payload.excluded_membership_ids:
         raise HTTPException(422, "Exclusions impossibles quand la tontine est obligatoire.")
-
-    order = ids[:]
-    if payload.shuffle:
-        random.shuffle(order)
 
     slug = await _unique_slug(db, payload.association_id, payload.name)
 
@@ -526,6 +561,7 @@ async def create_tontine(
         is_mandatory=payload.is_mandatory,
         excluded_ids=payload.excluded_membership_ids,
         activate=bool(order),
+        name_labels=labels,
     )
 
     await db.commit()
@@ -605,24 +641,22 @@ async def set_cycle_participants(
         raise HTTPException(409, "Seul un cycle brouillon peut être modifié.")
 
     ids = list(payload.participant_ids)
-    if len(set(ids)) != len(ids):
-        raise HTTPException(422, "Un participant ne peut apparaître qu'une fois dans l'ordre.")
+    # Doublons autorisés : un membre peut tenir plusieurs noms/parts.
+    order, labels = _resolve_order_and_labels(
+        ids, payload.participant_names, payload.shuffle
+    )
     if ids:
         res = await db.execute(
             select(Membership.id).where(
-                Membership.id.in_(ids), Membership.association_id == assoc.id
+                Membership.id.in_(set(ids)), Membership.association_id == assoc.id
             )
         )
         found = set(res.scalars().all())
-        missing = [str(i) for i in ids if i not in found]
+        missing = [str(i) for i in set(ids) if i not in found]
         if missing:
             raise HTTPException(422, f"Membres introuvables : {', '.join(missing)}")
     if payload.is_mandatory and payload.excluded_membership_ids:
         raise HTTPException(422, "Exclusions impossibles quand la tontine est obligatoire.")
-
-    order = ids[:]
-    if payload.shuffle:
-        random.shuffle(order)
 
     if payload.start_date:
         cycle.start_date = payload.start_date
@@ -636,11 +670,46 @@ async def set_cycle_participants(
         participant_order=order,
         excluded_ids=payload.excluded_membership_ids,
         activate=False,
+        name_labels=labels,
     )
     await db.commit()
     # Le cycle a été pré-chargé puis vidé/régénéré via bulk delete : on détache
     # tout pour que le rechargement reflète bien les nouveaux tours.
     tid = cycle.tontine_id
+    db.expunge_all()
+    tontine = await _load_tontine(db, tid)
+    return await _tontine_detail(db, tontine)
+
+
+@router.patch("/beneficiaries/{beneficiary_id}/rename", response_model=TontineDetail)
+async def rename_beneficiary(
+    beneficiary_id: UUID,
+    payload: BeneficiaryRename,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Renomme un nom/part d'un bénéficiaire. Admin + bureau, à tout moment
+    (même cycle démarré) : ce n'est qu'un libellé."""
+    b = (
+        await db.execute(
+            select(TontineRoundBeneficiary).where(TontineRoundBeneficiary.id == beneficiary_id)
+        )
+    ).scalar_one_or_none()
+    if not b:
+        raise HTTPException(404, "Bénéficiaire introuvable")
+    rnd = (
+        await db.execute(select(TontineRound).where(TontineRound.id == b.round_id))
+    ).scalar_one()
+    cycle = await _load_cycle(db, rnd.cycle_id)
+    tontine = await _load_tontine(db, cycle.tontine_id)
+    assoc = await _get_assoc_or_404(db, tontine.association_id)
+    _check_access(current_user, assoc)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Réservé aux admins et membres du bureau.")
+
+    b.name_label = payload.name.strip()
+    await db.commit()
+    tid = tontine.id
     db.expunge_all()
     tontine = await _load_tontine(db, tid)
     return await _tontine_detail(db, tontine)

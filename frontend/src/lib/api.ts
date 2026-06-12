@@ -450,6 +450,8 @@ export const tontinesApi = {
     /** Participants dans l'ordre de passage. Peut être vide : la tontine est
      *  créée en brouillon, les membres sont ajoutés ensuite via sa config. */
     participant_ids: string[];
+    /** Libellés parallèles (un par slot). Un membre répété = plusieurs noms. */
+    participant_names?: (string | null)[];
     excluded_membership_ids?: string[];
     shuffle?: boolean;
   }) => (await api.post("/tontines", payload)).data,
@@ -461,12 +463,16 @@ export const tontinesApi = {
     cycleId: string,
     payload: {
       participant_ids: string[];
+      participant_names?: (string | null)[];
       excluded_membership_ids?: string[];
       is_mandatory?: boolean;
       shuffle?: boolean;
       start_date?: string;
     },
   ) => (await api.put(`/tontines/cycles/${cycleId}/participants`, payload)).data,
+  /** Renomme un nom/part d'un bénéficiaire (admin + bureau, à tout moment). */
+  renameBeneficiary: async (beneficiaryId: string, name: string) =>
+    (await api.patch(`/tontines/beneficiaries/${beneficiaryId}/rename`, { name })).data,
   /** Démarre un cycle brouillon (le 1er tour passe en collecte). */
   activateCycle: async (cycleId: string) =>
     (await api.post(`/tontines/cycles/${cycleId}/activate`, {})).data,

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { Repeat, ChevronRight } from "lucide-react";
+import { Repeat, Settings } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -78,12 +78,11 @@ export default function TontinesPage() {
           {tontines.map((tt) => {
             const cc = tt.current_cycle;
             return (
-              <Link
+              <div
                 key={tt.id}
-                href={`/dashboard/tontines/${tt.id}`}
                 className="group flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm"
               >
-                <div className="flex min-w-0 items-center gap-3">
+                <Link href={`/dashboard/tontines/${tt.id}`} className="flex min-w-0 flex-1 items-center gap-3">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                     <Repeat className="h-5 w-5" />
                   </div>
@@ -104,16 +103,22 @@ export default function TontinesPage() {
                       )}
                     </p>
                   </div>
-                </div>
+                </Link>
                 <div className="flex shrink-0 items-center gap-2">
                   {cc && (
                     <Badge variant={STATUS_VARIANT[cc.status]}>
                       {t(`status${capitalize(cc.status)}`)}
                     </Badge>
                   )}
-                  <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                  <Link
+                    href={`/dashboard/tontines/${tt.id}`}
+                    title={t("configure")}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Link>
                 </div>
-              </Link>
+              </div>
             );
           })}
         </div>

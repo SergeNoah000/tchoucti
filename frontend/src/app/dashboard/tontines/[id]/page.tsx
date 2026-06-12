@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -11,11 +12,22 @@ import {
   HandCoins,
   Crown,
   Plus,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -193,6 +205,8 @@ export default function TontineDetailPage() {
           isCurrent
           canConfigure={canConfigure}
           canPayout={canPayout}
+          canRename={canPayout}
+          tontineId={id}
           onPayout={(roundId) => payoutMutation.mutate({ cycleId: current.id, roundId })}
           payoutPending={payoutMutation.isPending}
           onCancel={() => cancelMutation.mutate(current.id)}
@@ -217,6 +231,8 @@ export default function TontineDetailPage() {
               isCurrent={false}
               canConfigure={false}
               canPayout={false}
+              canRename={false}
+              tontineId={id}
               onPayout={() => {}}
               payoutPending={false}
               onCancel={() => {}}
@@ -236,6 +252,8 @@ function CycleCard({
   isCurrent,
   canConfigure,
   canPayout,
+  canRename,
+  tontineId,
   onPayout,
   payoutPending,
   onCancel,
@@ -247,6 +265,8 @@ function CycleCard({
   isCurrent: boolean;
   canConfigure: boolean;
   canPayout: boolean;
+  canRename: boolean;
+  tontineId: string;
   onPayout: (roundId: string) => void;
   payoutPending: boolean;
   onCancel: () => void;
@@ -307,12 +327,32 @@ function CycleCard({
                         ? t("sharedRound", { count: r.beneficiaries.length })
                         : (r.beneficiaries[0]?.name ?? "—")}
                     </p>
+                    {canRename && r.beneficiaries.length === 1 && r.beneficiaries[0] && (
+                      <RenameNameButton
+                        beneficiaryId={r.beneficiaries[0].id}
+                        currentName={r.beneficiaries[0].name ?? ""}
+                        tontineId={tontineId}
+                        t={t}
+                        tCommon={tCommon}
+                      />
+                    )}
                   </div>
                   {r.beneficiaries.length > 1 && (
                     <div className="mt-1 space-y-0.5">
                       {r.beneficiaries.map((b) => (
-                        <p key={b.membership_id} className="flex justify-between gap-2 text-xs">
-                          <span className="truncate text-muted-foreground">• {b.name ?? "—"}</span>
+                        <p key={b.id} className="flex items-center justify-between gap-2 text-xs">
+                          <span className="flex min-w-0 items-center gap-1">
+                            <span className="truncate text-muted-foreground">• {b.name ?? "—"}</span>
+                            {canRename && (
+                              <RenameNameButton
+                                beneficiaryId={b.id}
+                                currentName={b.name ?? ""}
+                                tontineId={tontineId}
+                                t={t}
+                                tCommon={tCommon}
+                              />
+                            )}
+                          </span>
                           <span className="shrink-0 tabular-nums">{fmt.currency(b.share_amount)}</span>
                         </p>
                       ))}
@@ -372,4 +412,71 @@ function CycleCard({
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Petit bouton crayon → dialog pour renommer un nom/part d'un bénéficiaire. */
+function RenameNameButton({
+  beneficiaryId,
+  currentName,
+  tontineId,
+  t,
+  tCommon,
+}: {
+  beneficiaryId: string;
+  currentName: string;
+  tontineId: string;
+  t: ReturnType<typeof useTranslations>;
+  tCommon: ReturnType<typeof useTranslations>;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(currentName);
+
+  const mutation = useMutation({
+    mutationFn: () => tontinesApi.renameBeneficiary(beneficiaryId, name.trim()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tontine", tontineId] });
+      toast.success(t("nameRenamed"));
+      setOpen(false);
+    },
+    onError: () => toast.error(tCommon("error")),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (v) setName(currentName); }}>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          title={t("renameName")}
+          className="text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t("renameName")}</DialogTitle>
+          <DialogDescription>{t("renameNameDesc")}</DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name.trim().length >= 1) mutation.mutate();
+          }}
+          className="space-y-4 py-2"
+        >
+          <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              {tCommon("cancel")}
+            </Button>
+            <Button type="submit" disabled={mutation.isPending || name.trim().length < 1} className="gap-2">
+              {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {tCommon("save")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }

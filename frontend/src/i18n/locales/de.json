@@ -863,7 +863,13 @@
     "draftParticipantsHint": "Mitglieder in Reihenfolge auswählen, speichern, dann Zyklus starten. Die Sitzungen werden dann automatisch erstellt.",
     "saveParticipants": "Teilnehmer speichern",
     "startCycle": "Zyklus starten",
-    "saveBeforeStart": "Zuerst die Teilnehmer speichern."
+    "saveBeforeStart": "Zuerst die Teilnehmer speichern.",
+    "namesLabel": "Namen",
+    "namesTotal": "{n} Namen insgesamt",
+    "renameName": "Diesen Namen umbenennen",
+    "renameNameDesc": "Bezeichnung dieses Namens/Anteils ändern.",
+    "nameRenamed": "Name umbenannt",
+    "configure": "Konfigurieren"
   },
   "finance": {
     "title": "Finanzen",

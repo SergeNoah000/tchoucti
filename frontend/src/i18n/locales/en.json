@@ -863,7 +863,13 @@
     "draftParticipantsHint": "Pick members in payout order, save, then start the cycle. The meetings are then created automatically.",
     "saveParticipants": "Save participants",
     "startCycle": "Start cycle",
-    "saveBeforeStart": "Save participants first."
+    "saveBeforeStart": "Save participants first.",
+    "namesLabel": "Names",
+    "namesTotal": "{n} names total",
+    "renameName": "Rename this name",
+    "renameNameDesc": "Edit the label of this name/share.",
+    "nameRenamed": "Name renamed",
+    "configure": "Configure"
   },
   "finance": {
     "title": "Finance",

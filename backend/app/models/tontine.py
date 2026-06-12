@@ -203,15 +203,16 @@ class TontineRound(BaseModel):
 # RoundBeneficiary — one beneficiary share inside a round
 # ───────────────────────────────────────────────────
 class TontineRoundBeneficiary(BaseModel):
-    """One person who receives a share of a round's pot."""
+    """One slot ("name") that receives a share of a round's pot.
+
+    Un membre peut tenir PLUSIEURS noms dans une tontine : chaque nom est un
+    bénéficiaire distinct (sa propre position dans la rotation). `name_label`
+    porte le libellé du nom (modifiable) ; à défaut, on affiche le nom du membre.
+    """
 
     __tablename__ = "tontine_round_beneficiaries"
-    __table_args__ = (
-        UniqueConstraint(
-            "round_id", "membership_id",
-            name="uq_tontine_round_beneficiaries_pair",
-        ),
-    )
+    # Pas de contrainte d'unicité (round, membership) : un membre peut occuper
+    # plusieurs noms, donc potentiellement plusieurs slots dans un même tour.
 
     round_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -225,6 +226,8 @@ class TontineRoundBeneficiary(BaseModel):
         nullable=False,
         index=True,
     )
+    # Libellé du nom/part (ex. « Awa », « Awa 2 »). NULL = nom du membre.
+    name_label: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
 
     # Snapshot of what this person receives — set at round creation (equal split
     # by default; admin may tune `share_parts` for unequal splits).

@@ -332,8 +332,10 @@ export type TontineCycleStatus = "draft" | "active" | "completed" | "cancelled";
 export type TontineRoundStatus = "pending" | "collecting" | "paid_out" | "skipped";
 
 export interface TontineBeneficiary {
+  id: UUID;
   membership_id: UUID;
   name?: string | null;
+  member_name?: string | null;
   share_amount: number;
   share_parts: number;
 }

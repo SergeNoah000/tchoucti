@@ -863,7 +863,13 @@
     "draftParticipantsHint": "Sélectionnez les membres dans l'ordre de passage, enregistrez, puis démarrez le cycle. Les séances seront alors créées d'office.",
     "saveParticipants": "Enregistrer les participants",
     "startCycle": "Démarrer le cycle",
-    "saveBeforeStart": "Enregistrez d'abord les participants."
+    "saveBeforeStart": "Enregistrez d'abord les participants.",
+    "namesLabel": "Noms",
+    "namesTotal": "{n} noms au total",
+    "renameName": "Renommer ce nom",
+    "renameNameDesc": "Modifier le libellé de ce nom/part.",
+    "nameRenamed": "Nom renommé",
+    "configure": "Configurer"
   },
   "finance": {
     "title": "Finances",

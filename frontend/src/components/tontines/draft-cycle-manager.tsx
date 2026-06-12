@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, PlayCircle, Save, Users } from "lucide-react";
+import { Loader2, PlayCircle, Save, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -35,11 +35,28 @@ export function DraftCycleManager({
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
 
-  const initial = useMemo(
-    () => cycle.rounds.flatMap((r) => r.beneficiaries.map((b) => b.membership_id)),
-    [cycle.rounds],
-  );
-  const [selected, setSelected] = useState<string[]>(initial);
+  // État initial depuis les bénéficiaires existants : ordre des membres (1re
+  // apparition), nombre de noms par membre, et libellés existants à préserver.
+  const { initialOrder, initialCounts, initialNames } = useMemo(() => {
+    const order: string[] = [];
+    const cnt: Record<string, number> = {};
+    const names: Record<string, string[]> = {};
+    for (const r of cycle.rounds) {
+      for (const b of r.beneficiaries) {
+        if (!(b.membership_id in cnt)) {
+          order.push(b.membership_id);
+          cnt[b.membership_id] = 0;
+          names[b.membership_id] = [];
+        }
+        cnt[b.membership_id] += 1;
+        names[b.membership_id].push(b.name ?? "");
+      }
+    }
+    return { initialOrder: order, initialCounts: cnt, initialNames: names };
+  }, [cycle.rounds]);
+
+  const [selected, setSelected] = useState<string[]>(initialOrder);
+  const [counts, setCounts] = useState<Record<string, number>>(initialCounts);
 
   const { data: members = [] } = useQuery<Membership[]>({
     queryKey: ["memberships", associationId],
@@ -47,12 +64,30 @@ export function DraftCycleManager({
   });
   const activeMembers = useMemo(() => members.filter((m) => m.status === "active"), [members]);
 
+  // Slots (un par nom) + libellés : préserve les noms existants, défaut sinon.
+  const { slotIds, slotNames, totalSlots } = useMemo(() => {
+    const ids: string[] = [];
+    const labels: (string | null)[] = [];
+    for (const id of selected) {
+      const m = activeMembers.find((x) => x.id === id);
+      const full = m?.user.full_name ?? "";
+      const n = Math.max(1, counts[id] ?? 1);
+      for (let i = 0; i < n; i++) {
+        ids.push(id);
+        const existing = initialNames[id]?.[i];
+        labels.push(existing && existing.trim() ? existing : n > 1 ? `${full} ${i + 1}` : full);
+      }
+    }
+    return { slotIds: ids, slotNames: labels, totalSlots: ids.length };
+  }, [selected, counts, activeMembers, initialNames]);
+
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["tontine", tontineId] });
 
   const save = useMutation({
     mutationFn: () =>
       tontinesApi.setParticipants(cycle.id, {
-        participant_ids: selected,
+        participant_ids: slotIds,
+        participant_names: slotNames,
         is_mandatory: cycle.is_mandatory,
       }),
     onSuccess: () => {
@@ -72,11 +107,25 @@ export function DraftCycleManager({
   });
 
   const toggle = (id: string) =>
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+    setSelected((s) => {
+      if (s.includes(id)) {
+        setCounts((c) => {
+          const next = { ...c };
+          delete next[id];
+          return next;
+        });
+        return s.filter((x) => x !== id);
+      }
+      setCounts((c) => ({ ...c, [id]: 1 }));
+      return [...s, id];
+    });
+
+  const setCount = (id: string, n: number) =>
+    setCounts((c) => ({ ...c, [id]: Math.max(1, Math.min(20, n)) }));
 
   const dirty = useMemo(
-    () => selected.join(",") !== initial.join(","),
-    [selected, initial],
+    () => slotIds.join(",") !== initialOrder.flatMap((id) => Array(initialCounts[id]).fill(id)).join(","),
+    [slotIds, initialOrder, initialCounts],
   );
   const canActivate = cycle.rounds_count > 0 && !dirty;
 
@@ -93,7 +142,8 @@ export function DraftCycleManager({
 
         <div className="space-y-1.5">
           <Label>
-            {t("selectParticipants")} ({selected.length})
+            {t("selectParticipants")} ({selected.length}
+            {totalSlots !== selected.length ? ` · ${t("namesTotal", { n: totalSlots })}` : ""})
           </Label>
           {activeMembers.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">
@@ -104,17 +154,20 @@ export function DraftCycleManager({
               {activeMembers.map((m) => {
                 const isSel = selected.includes(m.id);
                 const order = selected.indexOf(m.id) + 1;
+                const cnt = counts[m.id] ?? 1;
                 return (
-                  <button
+                  <div
                     key={m.id}
-                    type="button"
-                    onClick={() => toggle(m.id)}
                     className={cn(
-                      "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+                      "flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
                       isSel ? "bg-primary/10 text-foreground" : "hover:bg-accent/50",
                     )}
                   >
-                    <span className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggle(m.id)}
+                      className="flex flex-1 items-center gap-2 text-left"
+                    >
                       <span
                         className={cn(
                           "flex h-5 w-5 items-center justify-center rounded border text-[10px] font-bold",
@@ -126,9 +179,29 @@ export function DraftCycleManager({
                         {isSel ? order : ""}
                       </span>
                       {m.user.full_name}
-                    </span>
-                    {isSel && <Check className="h-4 w-4 text-primary" />}
-                  </button>
+                    </button>
+                    {isSel && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">{t("namesLabel")}</span>
+                        <button
+                          type="button"
+                          onClick={() => setCount(m.id, cnt - 1)}
+                          disabled={cnt <= 1}
+                          className="flex h-6 w-6 items-center justify-center rounded border border-border text-sm disabled:opacity-40"
+                        >
+                          −
+                        </button>
+                        <span className="w-5 text-center text-sm font-semibold tabular-nums">{cnt}</span>
+                        <button
+                          type="button"
+                          onClick={() => setCount(m.id, cnt + 1)}
+                          className="flex h-6 w-6 items-center justify-center rounded border border-border text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
