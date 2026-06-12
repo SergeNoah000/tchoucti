@@ -21,6 +21,7 @@ from app.api.v1 import (
     aid_types,
     public,
     notifications,
+    imports,
 )
 
 api_router = APIRouter()
@@ -73,4 +74,7 @@ api_router.include_router(public.router, prefix="/public", tags=["public"])
 
 # In-app notifications
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+
+# Imports en masse (templates Excel)
+api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 

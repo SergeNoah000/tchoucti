@@ -118,7 +118,8 @@
     "configCaisses": "Kassen",
     "configTontines": "Tontines",
     "configLoans": "Darlehen",
-    "configAids": "Soziale Hilfen"
+    "configAids": "Soziale Hilfen",
+    "import": "Importieren"
   },
   "login": {
     "title": "Anmelden",
@@ -1507,5 +1508,30 @@
     "aidStatus_paid": "Bezahlt",
     "aidStatus_rejected": "Abgelehnt",
     "aidStatus_cancelled": "Storniert"
+  },
+  "imports": {
+    "notAdmin": "Nur für den Vereinsadministrator.",
+    "title": "Daten importieren",
+    "subtitle": "Excel-Vorlage herunterladen, ausfüllen und importieren. Eine Vorschau prüft jede Zeile vor dem Anlegen.",
+    "step1Title": "Auswählen, was importiert wird, und Vorlage herunterladen",
+    "entityLabel": "Datentyp",
+    "entityPlaceholder": "Wählen…",
+    "downloadTemplate": "Excel-Vorlage herunterladen",
+    "step2Title": "Vorlage ausfüllen und importieren",
+    "dropHint": "Klicken, um Ihre ausgefüllte .xlsx-Datei zu wählen",
+    "dropSub": "Erwartetes Format: die oben heruntergeladene Excel-Vorlage",
+    "rowsTotal": "{n} Zeile(n)",
+    "rowsValid": "{n} gültig",
+    "rowsInvalid": "{n} mit Fehlern",
+    "noRows": "Keine Zeilen zum Importieren (Datei ist leer).",
+    "statusCol": "Status",
+    "commitHint": "Nur gültige Zeilen werden angelegt; fehlerhafte Zeilen werden übersprungen.",
+    "commitButton": "{n} Zeile(n) importieren",
+    "downloadError": "Vorlagen-Download fehlgeschlagen.",
+    "previewError": "Datei konnte nicht gelesen werden.",
+    "commitError": "Import fehlgeschlagen.",
+    "commitDone": "{created} Zeile(n) importiert.",
+    "commitPartial": "{failed} fehlerhafte Zeile(n) übersprungen.",
+    "commitEmpty": "Keine gültigen Zeilen zum Importieren."
   }
 }

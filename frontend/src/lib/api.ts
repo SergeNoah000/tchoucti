@@ -583,3 +583,74 @@ export const loansApi = {
   repay: async (id: string, amount: number) =>
     (await api.post(`/loans/${id}/repay`, { amount })).data,
 };
+
+// ── Imports en masse (templates Excel) ────────────────────────────────────
+export interface ImportEntity {
+  entity: string;
+  label: string;
+  description: string;
+}
+export interface ImportColumn {
+  key: string;
+  header: string;
+  required: boolean;
+}
+export interface ImportRow {
+  index: number;
+  values: Record<string, unknown>;
+  errors: string[];
+  ok: boolean;
+}
+export interface ImportPreview {
+  entity: string;
+  columns: ImportColumn[];
+  rows: ImportRow[];
+  total: number;
+  valid: number;
+  invalid: number;
+}
+export interface ImportCommitResult {
+  entity: string;
+  created: number;
+  failed: number;
+  errors: ImportRow[];
+}
+
+export const importsApi = {
+  entities: async (): Promise<ImportEntity[]> =>
+    (await api.get("/imports/entities")).data,
+  downloadTemplate: async (entity: string, associationId: string) => {
+    const res = await api.get(`/imports/${entity}/template`, {
+      params: { association_id: associationId },
+      responseType: "blob",
+    });
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `template-${entity}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+  preview: async (entity: string, associationId: string, file: File): Promise<ImportPreview> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return (
+      await api.post(`/imports/${entity}/preview`, fd, {
+        params: { association_id: associationId },
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+    ).data;
+  },
+  commit: async (entity: string, associationId: string, file: File): Promise<ImportCommitResult> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return (
+      await api.post(`/imports/${entity}/commit`, fd, {
+        params: { association_id: associationId },
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+    ).data;
+  },
+};

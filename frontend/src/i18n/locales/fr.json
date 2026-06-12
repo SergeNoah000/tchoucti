@@ -118,7 +118,8 @@
     "configCaisses": "Caisses",
     "configTontines": "Tontines",
     "configLoans": "Prêts",
-    "configAids": "Aides sociales"
+    "configAids": "Aides sociales",
+    "import": "Importer"
   },
   "login": {
     "title": "Connexion",
@@ -1507,5 +1508,30 @@
     "aidStatus_paid": "Payée",
     "aidStatus_rejected": "Refusée",
     "aidStatus_cancelled": "Annulée"
+  },
+  "imports": {
+    "notAdmin": "Réservé à l'administrateur de l'association.",
+    "title": "Importer des données",
+    "subtitle": "Téléchargez un modèle Excel, remplissez-le, puis importez-le. Un aperçu vérifie chaque ligne avant la création.",
+    "step1Title": "Choisir quoi importer et télécharger le modèle",
+    "entityLabel": "Type de données",
+    "entityPlaceholder": "Choisir…",
+    "downloadTemplate": "Télécharger le modèle Excel",
+    "step2Title": "Remplir le modèle puis l'importer",
+    "dropHint": "Cliquez pour choisir votre fichier .xlsx rempli",
+    "dropSub": "Format attendu : le modèle Excel téléchargé ci-dessus",
+    "rowsTotal": "{n} ligne(s)",
+    "rowsValid": "{n} valide(s)",
+    "rowsInvalid": "{n} en erreur",
+    "noRows": "Aucune ligne à importer (le fichier est vide).",
+    "statusCol": "État",
+    "commitHint": "Seules les lignes valides seront créées ; les lignes en erreur sont ignorées.",
+    "commitButton": "Importer {n} ligne(s)",
+    "downloadError": "Échec du téléchargement du modèle.",
+    "previewError": "Impossible de lire le fichier.",
+    "commitError": "Échec de l'import.",
+    "commitDone": "{created} ligne(s) importée(s).",
+    "commitPartial": "{failed} ligne(s) en erreur ignorée(s).",
+    "commitEmpty": "Aucune ligne valide à importer."
   }
 }

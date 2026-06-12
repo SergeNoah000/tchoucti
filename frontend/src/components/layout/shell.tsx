@@ -22,6 +22,7 @@ import {
   CreditCard,
   ShieldCheck,
   ScrollText,
+  FileUp,
   type LucideIcon,
 } from "lucide-react";
 
@@ -146,6 +147,7 @@ const ASSOCIATION_NAV: NavSection[] = [
   {
     label: "tools",
     items: [
+      { href: "/dashboard/import", icon: FileUp, key: "import" },
       { href: "/dashboard/documents", icon: FileText, key: "documents" },
       { href: "/dashboard/settings", icon: Settings, key: "settings" },
     ],

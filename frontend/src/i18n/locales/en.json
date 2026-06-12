@@ -118,7 +118,8 @@
     "configCaisses": "Funds",
     "configTontines": "Tontines",
     "configLoans": "Loans",
-    "configAids": "Social aids"
+    "configAids": "Social aids",
+    "import": "Import"
   },
   "login": {
     "title": "Sign in",
@@ -1507,5 +1508,30 @@
     "aidStatus_paid": "Paid",
     "aidStatus_rejected": "Rejected",
     "aidStatus_cancelled": "Cancelled"
+  },
+  "imports": {
+    "notAdmin": "Reserved for the association administrator.",
+    "title": "Import data",
+    "subtitle": "Download an Excel template, fill it in, then import it. A preview checks every row before creation.",
+    "step1Title": "Choose what to import and download the template",
+    "entityLabel": "Data type",
+    "entityPlaceholder": "Choose…",
+    "downloadTemplate": "Download Excel template",
+    "step2Title": "Fill in the template then import it",
+    "dropHint": "Click to choose your filled .xlsx file",
+    "dropSub": "Expected format: the Excel template downloaded above",
+    "rowsTotal": "{n} row(s)",
+    "rowsValid": "{n} valid",
+    "rowsInvalid": "{n} with errors",
+    "noRows": "No rows to import (the file is empty).",
+    "statusCol": "Status",
+    "commitHint": "Only valid rows will be created; rows with errors are skipped.",
+    "commitButton": "Import {n} row(s)",
+    "downloadError": "Template download failed.",
+    "previewError": "Could not read the file.",
+    "commitError": "Import failed.",
+    "commitDone": "{created} row(s) imported.",
+    "commitPartial": "{failed} row(s) with errors skipped.",
+    "commitEmpty": "No valid rows to import."
   }
 }
