@@ -1006,7 +1006,8 @@
     "sourceCollective": "Caisse collective (secours)",
     "sourceIndividualNamed": "Caisse individuelle — {name}",
     "sourceCollectiveNamed": "Caisse collective — {name}",
-    "perMemberDebit": "Chaque membre sera débité de {amount} (montant ÷ {n} membres)."
+    "perMemberDebit": "Chaque membre sera débité de {amount} (montant ÷ {n} membres).",
+    "beneficiarySelf": "vous-même"
   },
   "loan": {
     "title": "Prêts",
@@ -1180,7 +1181,12 @@
     "projectRequired": "obligatoire pour un projet",
     "objectiveAmount": "Montant cible",
     "objectiveDeadline": "Date limite",
-    "memberRequiredAmountNote": "Le montant attendu est celui « collecté à chaque séance » ci-dessus. Une cotisation peut être obligatoire sans être fixe (montant libre)."
+    "memberRequiredAmountNote": "Le montant attendu est celui « collecté à chaque séance » ci-dessus. Une cotisation peut être obligatoire sans être fixe (montant libre).",
+    "memberMinBalance": "Objectif minimum par membre",
+    "memberMinBalanceHint": "Chaque membre doit garder au moins cette somme dans la caisse. En dessous, il est en « zone rouge ». 0 = pas de minimum.",
+    "tabMembers": "Membres",
+    "memberMinBalanceLegend": "En rouge : membres dont le solde est inférieur à {amount}.",
+    "noMembers": "Aucun membre actif."
   },
   "configTontines": {
     "title": "Tontines",

@@ -1006,7 +1006,8 @@
     "sourceCollective": "Collective caisse (relief)",
     "sourceIndividualNamed": "Individual caisse — {name}",
     "sourceCollectiveNamed": "Collective caisse — {name}",
-    "perMemberDebit": "Each member will be debited {amount} (amount ÷ {n} members)."
+    "perMemberDebit": "Each member will be debited {amount} (amount ÷ {n} members).",
+    "beneficiarySelf": "yourself"
   },
   "loan": {
     "title": "Loans",
@@ -1180,7 +1181,12 @@
     "projectRequired": "required for a project",
     "objectiveAmount": "Target amount",
     "objectiveDeadline": "Deadline",
-    "memberRequiredAmountNote": "The expected amount is the one “collected each meeting” above. A contribution can be mandatory without being fixed (free amount)."
+    "memberRequiredAmountNote": "The expected amount is the one “collected each meeting” above. A contribution can be mandatory without being fixed (free amount).",
+    "memberMinBalance": "Minimum target per member",
+    "memberMinBalanceHint": "Each member must keep at least this amount in the caisse. Below it, they are in the “red zone”. 0 = no minimum.",
+    "tabMembers": "Members",
+    "memberMinBalanceLegend": "In red: members whose balance is below {amount}.",
+    "noMembers": "No active member."
   },
   "configTontines": {
     "title": "Tontines",

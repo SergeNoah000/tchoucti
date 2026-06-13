@@ -357,6 +357,9 @@ function CaisseFormDialog({
     caisse?.recurring_amount ? String(caisse.recurring_amount) : "",
   );
   const [memberRequired, setMemberRequired] = useState(caisse?.is_member_required ?? false);
+  const [memberMinBalance, setMemberMinBalance] = useState(
+    caisse?.member_min_balance ? String(caisse.member_min_balance) : "",
+  );
   const [hasObjective, setHasObjective] = useState(caisse?.has_objective ?? false);
   const [objectiveAmount, setObjectiveAmount] = useState(
     caisse?.objective_amount ? String(caisse.objective_amount) : "",
@@ -385,6 +388,7 @@ function CaisseFormDialog({
         // Le montant obligatoire reprend celui collecté par séance (peut être 0
         // = obligatoire mais libre). Plus de champ distinct.
         member_required_amount: memberRequired && recurring ? parseInt(recurringAmount, 10) || 0 : 0,
+        member_min_balance: category === "personal" ? parseInt(memberMinBalance, 10) || 0 : 0,
         has_objective: category === "project" || hasObjective,
         objective_amount:
           hasObjective || category === "project" ? parseInt(objectiveAmount, 10) || 0 : 0,
@@ -544,6 +548,19 @@ function CaisseFormDialog({
                       </HelpField>
                     </div>
                   )}
+                </div>
+              )}
+
+              {category === "personal" && (
+                <div className="space-y-2 rounded-md border border-border bg-card p-3">
+                  <HelpField label={t("memberMinBalance")} hint={t("memberMinBalanceHint")}>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={memberMinBalance}
+                      onChange={(e) => setMemberMinBalance(e.target.value)}
+                    />
+                  </HelpField>
                 </div>
               )}
 

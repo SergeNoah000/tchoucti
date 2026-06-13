@@ -330,6 +330,7 @@ export const caissesApi = {
     recurring_amount?: number;
     is_member_required?: boolean;
     member_required_amount?: number;
+    member_min_balance?: number;
     has_ceiling?: boolean;
     ceiling_amount?: number;
     has_objective?: boolean;
@@ -348,6 +349,8 @@ export const caissesApi = {
     (await api.get("/caisses/my-shares", { params: { association_id: associationId } })).data,
   contributors: async (caisseId: string) =>
     (await api.get(`/caisses/${caisseId}/contributors`)).data,
+  memberBalances: async (caisseId: string) =>
+    (await api.get(`/caisses/${caisseId}/member-balances`)).data,
   distributions: async (caisseId: string) =>
     (await api.get(`/caisses/${caisseId}/distributions`)).data,
   closeDistribution: async (caisseId: string) =>

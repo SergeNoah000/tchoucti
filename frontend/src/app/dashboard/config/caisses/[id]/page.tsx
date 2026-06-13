@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, PlayCircle, Settings, Users, History } from "lucide-react";
+import { ArrowLeft, Loader2, PlayCircle, Settings, Users, History, AlertTriangle, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -20,11 +20,13 @@ import {
 import { useAuthStore } from "@/lib/store";
 import { canConfigureAssociation } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type {
   Association,
   Caisse,
   CaisseContributorBalance,
   CaisseDistribution,
+  MemberBalance,
 } from "@/lib/types";
 
 function extractError(err: unknown): string | undefined {
@@ -65,6 +67,14 @@ export default function CaisseDetailPage() {
     queryFn: () => caissesApi.distributions(id),
     enabled: !!id,
   });
+
+  const isPersonal = caisse?.category === "personal";
+  const { data: memberBalances = [] } = useQuery<MemberBalance[]>({
+    queryKey: ["caisse", id, "member-balances"],
+    queryFn: () => caissesApi.memberBalances(id),
+    enabled: !!id && isPersonal,
+  });
+  const belowMinCount = memberBalances.filter((m) => m.below_min).length;
 
   const closeMutation = useMutation({
     mutationFn: () => caissesApi.closeDistribution(id),
@@ -120,6 +130,15 @@ export default function CaisseDetailPage() {
             <Settings className="h-3.5 w-3.5" />
             {t("tabConfig")}
           </TabsTrigger>
+          {isPersonal && (
+            <TabsTrigger value="members" className="gap-1.5">
+              <Wallet className="h-3.5 w-3.5" />
+              {t("tabMembers")} ({memberBalances.length})
+              {belowMinCount > 0 && (
+                <Badge variant="destructive" className="ml-1 px-1.5 text-[10px]">{belowMinCount}</Badge>
+              )}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="contributors" className="gap-1.5">
             <Users className="h-3.5 w-3.5" />
             {t("tabContributors")} ({contributors.length})
@@ -144,6 +163,9 @@ export default function CaisseDetailPage() {
               {caisse.is_member_required && (
                 <Row label={t("required")} value={`${fmt.currency(caisse.member_required_amount)}/membre`} />
               )}
+              {isPersonal && caisse.member_min_balance > 0 && (
+                <Row label={t("memberMinBalance")} value={`${fmt.currency(caisse.member_min_balance)}/membre`} />
+              )}
               {caisse.has_ceiling && <Row label={t("ceiling")} value={fmt.currency(caisse.ceiling_amount)} />}
               {caisse.has_objective && (
                 <Row label={t("objective")} value={fmt.currency(caisse.objective_amount)} />
@@ -159,6 +181,53 @@ export default function CaisseDetailPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Onglet Membres (caisses personnelles) — solde + zone rouge */}
+        {isPersonal && (
+          <TabsContent value="members" className="mt-4">
+            {caisse.member_min_balance > 0 && (
+              <p className="mb-3 text-xs text-muted-foreground">
+                {t("memberMinBalanceLegend", { amount: fmt.currency(caisse.member_min_balance) })}
+              </p>
+            )}
+            {memberBalances.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center text-sm text-muted-foreground">
+                  {t("noMembers")}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  <ul className="divide-y divide-border">
+                    {memberBalances.map((m) => (
+                      <li
+                        key={m.membership_id}
+                        className={cn(
+                          "flex items-center justify-between gap-3 px-4 py-2.5 text-sm",
+                          m.below_min && "bg-destructive/5",
+                        )}
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          {m.below_min && <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />}
+                          <span className="truncate font-medium">{m.member_name ?? "—"}</span>
+                        </span>
+                        <span
+                          className={cn(
+                            "shrink-0 font-semibold tabular-nums",
+                            m.below_min ? "text-destructive" : "text-foreground",
+                          )}
+                        >
+                          {fmt.currency(m.balance)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        )}
 
         {/* Onglet Cotisants */}
         <TabsContent value="contributors" className="mt-4">

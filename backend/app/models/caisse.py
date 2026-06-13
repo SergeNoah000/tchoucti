@@ -135,6 +135,13 @@ class Caisse(BaseModel):
     is_member_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     member_required_amount: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
 
+    # Objectif minimum que chaque membre doit maintenir dans la caisse (caisses
+    # PERSONAL). Un membre dont le solde est < ce minimum est « en zone rouge ».
+    # 0 = pas de minimum.
+    member_min_balance: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False, server_default="0"
+    )
+
     # ── Plafond / objectif ───────────────────────────────────────────────────
 
     # Si has_ceiling : refuse les contributions au-delà.

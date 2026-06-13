@@ -30,12 +30,13 @@ from app.models.caisse import (
     CaisseDistribution,
     CaisseDistributionShare,
     InterestDistribution,
+    MemberCaisseBalance,
     WithdrawalMode,
 )
 from app.models.finance import MovementDirection
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.models.finance import Fund, FundKind, Treasury
-from app.models.role import Membership
+from app.models.role import Membership, MembershipStatus
 from app.models.user import User
 from app.schemas.caisse import (
     CaisseContributorBalanceOut,
@@ -43,6 +44,7 @@ from app.schemas.caisse import (
     CaisseDistributionOut,
     CaisseDistributionShareOut,
     CaisseOut,
+    MemberBalanceOut,
     CaisseUpdate,
     CaisseWithdrawRequest,
     CaisseWithdrawResponse,
@@ -245,6 +247,7 @@ async def create_caisse(
         recurring_amount=payload.recurring_amount,
         is_member_required=payload.is_member_required,
         member_required_amount=payload.member_required_amount,
+        member_min_balance=payload.member_min_balance,
         has_ceiling=payload.has_ceiling,
         ceiling_amount=payload.ceiling_amount,
         has_objective=payload.has_objective,
@@ -410,6 +413,53 @@ async def list_contributors(
                 interest_cum=bal.interest_cum,
             )
         )
+    return out
+
+
+@router.get("/{caisse_id}/member-balances", response_model=List[MemberBalanceOut])
+async def list_member_balances(
+    caisse_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Solde de CHAQUE membre actif dans une caisse PERSONAL, avec le drapeau
+    « zone rouge » (solde < objectif minimum par membre). Tous les membres
+    actifs sont listés, même sans solde."""
+    cres = await db.execute(select(Caisse).where(Caisse.id == caisse_id))
+    caisse = cres.scalar_one_or_none()
+    if not caisse:
+        raise HTTPException(404, "Caisse introuvable")
+    await _check_access(db, current_user, caisse.association_id)
+
+    bal_res = await db.execute(
+        select(MemberCaisseBalance.membership_id, MemberCaisseBalance.balance).where(
+            MemberCaisseBalance.caisse_id == caisse_id
+        )
+    )
+    balances = {mid: bal for mid, bal in bal_res.all()}
+
+    mem_res = await db.execute(
+        select(Membership)
+        .options(selectinload(Membership.user))
+        .where(
+            Membership.association_id == caisse.association_id,
+            Membership.status == MembershipStatus.ACTIVE,
+        )
+    )
+    mn = caisse.member_min_balance or 0
+    out: List[MemberBalanceOut] = []
+    for mem in mem_res.scalars().all():
+        bal = int(balances.get(mem.id, 0))
+        out.append(
+            MemberBalanceOut(
+                membership_id=mem.id,
+                member_name=mem.user.full_name if mem.user else None,
+                balance=bal,
+                min_balance=mn,
+                below_min=mn > 0 and bal < mn,
+            )
+        )
+    out.sort(key=lambda x: (not x.below_min, x.member_name or ""))
     return out
 
 

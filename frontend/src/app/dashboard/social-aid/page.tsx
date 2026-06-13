@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -55,6 +55,7 @@ const KINDS: SocialAidKind[] = ["death", "illness", "marriage", "birth", "other"
 interface AidTypeOption {
   id: string;
   name: string;
+  description?: string | null;
   funding_mode?: "fixed" | "temporary" | "member_insurance";
   aid_ceiling_amount: number;
   source_caisse_name?: string | null;
@@ -532,11 +533,12 @@ function DeclareDialog({ association }: { association: Association }) {
   const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
   const fmt = useFormatters(association.currency);
+  const { user } = useAuthStore();
+  const isBureau = canDoBureauActions(user);
 
   const [open, setOpen] = useState(false);
   const [membershipId, setMembershipId] = useState("");
   const [aidTypeId, setAidTypeId] = useState("");
-  const [kind, setKind] = useState<SocialAidKind>("death");
   const [title, setTitle] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [description, setDescription] = useState("");
@@ -548,6 +550,12 @@ function DeclareDialog({ association }: { association: Association }) {
     enabled: open,
   });
   const activeMembers = members.filter((m) => m.status === "active");
+  const myMembership = members.find((m) => m.user_id === user?.id);
+
+  // Pré-remplit le bénéficiaire avec le membre courant (sa propre demande).
+  useEffect(() => {
+    if (open && !membershipId && myMembership) setMembershipId(myMembership.id);
+  }, [open, membershipId, myMembership]);
 
   // Types d'aide configurés (actifs) : pilotent montant + source.
   const { data: aidTypes = [] } = useQuery<AidTypeOption[]>({
@@ -565,7 +573,9 @@ function DeclareDialog({ association }: { association: Association }) {
       socialAidApi.declare({
         association_id: association.id,
         beneficiary_membership_id: membershipId,
-        kind,
+        // Le type d'aide définit déjà la nature de l'événement ; on garde un
+        // kind neutre côté modèle.
+        kind: "other",
         title: title.trim(),
         description: description.trim() || undefined,
         event_date: eventDate || undefined,
@@ -583,7 +593,6 @@ function DeclareDialog({ association }: { association: Association }) {
   const reset = () => {
     setMembershipId("");
     setAidTypeId("");
-    setKind("death");
     setTitle("");
     setEventDate("");
     setDescription("");
@@ -626,7 +635,13 @@ function DeclareDialog({ association }: { association: Association }) {
         <form onSubmit={submit} className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label>{t("beneficiary")}</Label>
-            {activeMembers.length === 0 ? (
+            {!isBureau ? (
+              // Membre simple : la demande est pour lui-même (pré-rempli).
+              <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                {myMembership?.user.full_name ?? user?.full_name}{" "}
+                <span className="text-muted-foreground">({t("beneficiarySelf")})</span>
+              </p>
+            ) : activeMembers.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border px-3 py-3 text-center text-sm text-muted-foreground">
                 {t("noMembers")}
               </p>
@@ -661,6 +676,9 @@ function DeclareDialog({ association }: { association: Association }) {
                   ))}
                 </SelectContent>
               </Select>
+              {selectedType?.description && (
+                <p className="text-xs text-muted-foreground">{selectedType.description}</p>
+              )}
             </div>
           )}
 
@@ -691,31 +709,14 @@ function DeclareDialog({ association }: { association: Association }) {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>{t("kind")}</Label>
-              <Select value={kind} onValueChange={(v) => setKind(v as SocialAidKind)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {KINDS.map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {t(`kind_${k}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="sa-date">{t("eventDate")}</Label>
-              <Input
-                id="sa-date"
-                type="date"
-                value={eventDate}
-                onChange={(e) => setEventDate(e.target.value)}
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sa-date">{t("eventDate")}</Label>
+            <Input
+              id="sa-date"
+              type="date"
+              value={eventDate}
+              onChange={(e) => setEventDate(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="sa-title">{t("caseTitle")}</Label>

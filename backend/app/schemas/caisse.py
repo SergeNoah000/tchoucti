@@ -29,6 +29,9 @@ class CaisseCreate(BaseModel):
     is_member_required: bool = False
     member_required_amount: int = Field(0, ge=0)
 
+    # Objectif minimum par membre (caisses PERSONAL) : en-dessous → zone rouge.
+    member_min_balance: int = Field(0, ge=0)
+
     has_ceiling: bool = False
     ceiling_amount: int = Field(0, ge=0)
 
@@ -75,6 +78,7 @@ class CaisseUpdate(BaseModel):
 
     is_member_required: Optional[bool] = None
     member_required_amount: Optional[int] = Field(None, ge=0)
+    member_min_balance: Optional[int] = Field(None, ge=0)
 
     has_ceiling: Optional[bool] = None
     ceiling_amount: Optional[int] = Field(None, ge=0)
@@ -111,6 +115,7 @@ class CaisseOut(BaseModel):
 
     is_member_required: bool
     member_required_amount: int
+    member_min_balance: int = 0
 
     has_ceiling: bool
     ceiling_amount: int
@@ -137,6 +142,15 @@ class CaisseContributorBalanceOut(BaseModel):
     apport_cum: int
     apport_cum_at_period_start: int
     interest_cum: int
+
+
+class MemberBalanceOut(BaseModel):
+    """Solde individuel d'un membre dans une caisse PERSONAL + zone rouge."""
+    membership_id: UUID
+    member_name: Optional[str] = None
+    balance: int
+    min_balance: int
+    below_min: bool
 
 
 class CaisseDistributionShareOut(BaseModel):

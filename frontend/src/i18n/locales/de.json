@@ -1006,7 +1006,8 @@
     "sourceCollective": "Gemeinschaftskasse (Hilfe)",
     "sourceIndividualNamed": "Individuelle Kasse — {name}",
     "sourceCollectiveNamed": "Gemeinschaftskasse — {name}",
-    "perMemberDebit": "Jedem Mitglied werden {amount} abgebucht (Betrag ÷ {n} Mitglieder)."
+    "perMemberDebit": "Jedem Mitglied werden {amount} abgebucht (Betrag ÷ {n} Mitglieder).",
+    "beneficiarySelf": "Sie selbst"
   },
   "loan": {
     "title": "Darlehen",
@@ -1180,7 +1181,12 @@
     "projectRequired": "für Projekt erforderlich",
     "objectiveAmount": "Zielbetrag",
     "objectiveDeadline": "Frist",
-    "memberRequiredAmountNote": "Der erwartete Betrag ist der oben „pro Sitzung erhobene“. Ein Beitrag kann verpflichtend sein, ohne fest zu sein (freier Betrag)."
+    "memberRequiredAmountNote": "Der erwartete Betrag ist der oben „pro Sitzung erhobene“. Ein Beitrag kann verpflichtend sein, ohne fest zu sein (freier Betrag).",
+    "memberMinBalance": "Mindestziel pro Mitglied",
+    "memberMinBalanceHint": "Jedes Mitglied muss mindestens diesen Betrag in der Kasse halten. Darunter ist es in der „roten Zone“. 0 = kein Minimum.",
+    "tabMembers": "Mitglieder",
+    "memberMinBalanceLegend": "Rot: Mitglieder, deren Saldo unter {amount} liegt.",
+    "noMembers": "Kein aktives Mitglied."
   },
   "configTontines": {
     "title": "Tontines",

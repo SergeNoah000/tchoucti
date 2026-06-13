@@ -274,6 +274,7 @@ export interface Caisse {
   recurring_amount: number;
   is_member_required: boolean;
   member_required_amount: number;
+  member_min_balance: number;
   has_ceiling: boolean;
   ceiling_amount: number;
   has_objective: boolean;
@@ -284,6 +285,14 @@ export interface Caisse {
   distribution_period: DistributionPeriodT;
   withdrawal_mode: WithdrawalModeT;
   last_distribution_at?: string | null;
+}
+
+export interface MemberBalance {
+  membership_id: UUID;
+  member_name?: string | null;
+  balance: number;
+  min_balance: number;
+  below_min: boolean;
 }
 
 export interface CaisseContributorBalance {
