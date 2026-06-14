@@ -254,7 +254,11 @@ export function Shell({ children, forceRole, homeHref }: ShellProps) {
     }
     logout();
     clearPerms();
-    router.push("/login");
+    // Navigation DURE (et non router.push) : détruit tout l'état React et les
+    // requêtes en vol (poll des notifications, etc.). Sans ça, une requête qui
+    // se termine en 401 après le logout déclenchait la redirection « dure » de
+    // l'intercepteur axios, en conflit avec la navigation soft → page blanche.
+    window.location.assign("/login");
   };
 
   const resolvedHome = homeHref ?? (role === "super_admin" ? "/admin" : "/dashboard");
