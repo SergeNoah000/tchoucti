@@ -214,6 +214,55 @@ async def send_invitation_email(
     await send_email(to=to, subject=subject, text_body=text_body, html_body=html_body)
 
 
+async def send_account_created_email(
+    *,
+    to: str,
+    invitee_name: Optional[str],
+    association_name: Optional[str],
+    login_url: str,
+    has_default_password: bool,
+) -> None:
+    """Mail de bienvenue « votre compte a été créé » — SANS le mot de passe.
+
+    Envoyé en plus (et séparément) du mail d'activation. Si le compte a un mot
+    de passe par défaut, on invite à se connecter et à le changer ; sinon on
+    renvoie vers le mail d'activation.
+    """
+    greet = f"Bonjour {invitee_name}," if invitee_name else "Bonjour,"
+    scope = f" au sein de <strong>{association_name}</strong>" if association_name else ""
+    subject = f"Votre compte Tchoucti a été créé — {association_name or 'plateforme'}"
+
+    if has_default_password:
+        cta_text = (
+            "Un mot de passe vous a été communiqué par votre administrateur. "
+            "Connectez-vous puis changez-le dès la première connexion."
+        )
+    else:
+        cta_text = (
+            "Vous allez recevoir un e-mail séparé contenant le lien d'activation "
+            "de votre compte pour définir votre mot de passe."
+        )
+
+    text_body = (
+        f"{greet}\n\n"
+        f"Votre compte a été créé sur la plateforme Tchoucti"
+        f"{' au sein de ' + association_name if association_name else ''}.\n\n"
+        f"{cta_text}\n\n"
+        f"Connexion : {login_url}\n"
+    )
+
+    html_body = _wrap_html(f"""
+      <p style="margin:0 0 12px;font-size:18px;font-weight:600;">{greet}</p>
+      <p style="margin:0 0 16px;">Votre compte a été créé sur la plateforme <strong>Tchoucti</strong>{scope}.</p>
+      <p style="margin:0 0 24px;">{cta_text}</p>
+      <p style="margin:0 0 24px;text-align:center;">
+        <a href="{login_url}" style="display:inline-block;background:#0d9488;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Se connecter</a>
+      </p>
+    """)
+
+    await send_email(to=to, subject=subject, text_body=text_body, html_body=html_body)
+
+
 async def send_meeting_recap_email(
     *,
     to: str,

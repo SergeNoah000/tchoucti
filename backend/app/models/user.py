@@ -57,6 +57,11 @@ class User(BaseModel):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Force le changement de mot de passe à la prochaine connexion (comptes créés
+    # avec un mot de passe par défaut, ex. import de membres).
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
 
     # Préférences
     language: Mapped[str] = mapped_column(String(5), default="fr", nullable=False)

@@ -7,13 +7,22 @@ plus tard) car ``User.email`` est obligatoire et unique globalement.
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import hashlib
 from typing import Any, Optional
 from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.security import get_password_hash
 from app.models.association import Association
+from app.models.invitation import (
+    Invitation,
+    InvitationKind,
+    InvitationStatus,
+    generate_invitation_token,
+)
 from app.models.role import (
     MemberCategory,
     Membership,
@@ -22,8 +31,27 @@ from app.models.role import (
     Role,
 )
 from app.models.user import User, UserType
+from app.services.mailer import (
+    MailError,
+    send_account_created_email,
+    send_invitation_email,
+)
 
 from .base import Choice, ImportColumn, Importer
+
+_ADMIN_ROLE_CODES = {"association_admin", "association_manager"}
+
+
+def hash_token(plain: str) -> str:
+    return hashlib.sha256(plain.encode("utf-8")).hexdigest()
+
+
+def _activation_url(plain_token: str) -> str:
+    return f"{settings.FRONTEND_URL.rstrip('/')}/activate?token={plain_token}"
+
+
+def _login_url() -> str:
+    return f"{settings.FRONTEND_URL.rstrip('/')}/login"
 
 _STATUS = (
     Choice("active", "Actif"),
@@ -88,9 +116,15 @@ class MembersImporter(Importer):
                      help="Numéro interne du membre (facultatif mais recommandé).",
                      example="M-001"),
         ImportColumn("email", "Email",
-                     help="Facultatif. Si vide, le membre n'aura pas de compte de "
-                          "connexion (vous pourrez en ajouter un plus tard).",
+                     help="Email de connexion. Obligatoire SAUF si vous mettez un "
+                          "mot de passe ci-contre. Avec email et sans mot de passe, "
+                          "un lien d'activation est envoyé par mail.",
                      example="awa.diallo@example.com"),
+        ImportColumn("password", "Mot de passe",
+                     help="Facultatif. Si renseigné : le membre se connecte avec ce "
+                          "mot de passe (qu'il devra changer à la 1re connexion). "
+                          "Si vide : un lien d'activation est envoyé à son email.",
+                     example="Bienvenue2026"),
         ImportColumn("phone", "Téléphone",
                      help="Facultatif.", example="+237 6 99 00 11 22"),
         ImportColumn("status", "Statut", choices=_STATUS,
@@ -168,6 +202,15 @@ class MembersImporter(Importer):
         if cumul_raw and cumul is None:
             errors.append(f"Cotisations cumulées illisibles : {cumul_raw}.")
 
+        password = values.get("password")
+        if password is not None and len(password) < 6:
+            errors.append("Mot de passe trop court (6 caractères minimum).")
+
+        # Un membre doit avoir un EMAIL (pour le lien d'activation) OU un mot de
+        # passe (connexion directe) — sinon le compte serait inaccessible.
+        if not email and not password:
+            errors.append("Email ou mot de passe requis (compte sinon inaccessible).")
+
         if errors:
             return None, errors
 
@@ -179,6 +222,7 @@ class MembersImporter(Importer):
         return {
             "full_name": full_name,
             "email": email,
+            "password": password,
             "phone": values.get("phone"),
             "member_number": number,
             "status": status,
@@ -208,6 +252,7 @@ class MembersImporter(Importer):
                 raise ValueError(f"Numéro d'adhérent déjà utilisé : {number}.")
 
         # Résolution / création de l'utilisateur.
+        password = payload.get("password")
         target: Optional[User] = None
         email = payload["email"]
         if email:
@@ -215,7 +260,10 @@ class MembersImporter(Importer):
                 await db.execute(select(User).where(User.email == email))
             ).scalar_one_or_none()
         if target is None:
+            real_email = bool(email)
             if not email:
+                # Pas d'email mais un mot de passe (garanti par la validation) :
+                # email-placeholder = identifiant de connexion.
                 slug = (assoc.slug or "assoc")[:20]
                 email = f"import-{uuid4().hex[:12]}@{slug}.import.local"
             target = User(
@@ -224,10 +272,17 @@ class MembersImporter(Importer):
                 phone=payload.get("phone"),
                 groupement_id=assoc.groupement_id,
                 user_type=UserType.MEMBER,
-                is_active=False,
+                # Mot de passe fourni → compte actif tout de suite ; sinon il
+                # s'activera via le lien d'activation envoyé par mail.
+                is_active=bool(password),
             )
+            if password:
+                target.hashed_password = get_password_hash(password)
+                target.must_change_password = True  # à changer à la 1re connexion
             db.add(target)
             await db.flush()
+        else:
+            real_email = True  # utilisateur existant → a forcément un vrai email
 
         # Pas de doublon d'adhésion.
         dup = (
@@ -260,3 +315,64 @@ class MembersImporter(Importer):
             role = ctx["roles_by_code"].get(code)
             if role:
                 db.add(MembershipRole(membership_id=membership.id, role_id=role.id, assigned_at=now))
+
+        # Accès au compte : si pas de mot de passe mais un vrai email → invitation
+        # + lien d'activation. L'envoi des mails est différé après le commit.
+        plain_token: Optional[str] = None
+        if real_email and not password:
+            is_admin = any(c in _ADMIN_ROLE_CODES for c in payload["role_codes"])
+            kind = InvitationKind.ASSOCIATION_ADMIN if is_admin else InvitationKind.ASSOCIATION_MEMBER
+            plain_token = generate_invitation_token()
+            db.add(
+                Invitation(
+                    email=target.email,
+                    full_name=payload["full_name"],
+                    kind=kind,
+                    status=InvitationStatus.PENDING,
+                    token_hash=hash_token(plain_token),
+                    groupement_id=assoc.groupement_id,
+                    association_id=assoc.id,
+                    expires_at=Invitation.expiry_in(settings.INVITATION_EXPIRE_DAYS),
+                )
+            )
+
+        # File des mails (bienvenue + activation) envoyés après le commit global.
+        if real_email:
+            ctx.setdefault("_email_queue", []).append(
+                {
+                    "email": target.email,
+                    "name": payload["full_name"],
+                    "has_password": bool(password),
+                    "plain_token": plain_token,
+                    "assoc_name": assoc.name,
+                }
+            )
+
+    async def after_commit(self, db, ctx):
+        """Envoie, après le commit, le mail de bienvenue (sans mot de passe) et,
+        si pas de mot de passe, le mail d'activation séparé. Les échecs SMTP
+        n'interrompent pas l'import."""
+        for item in ctx.get("_email_queue", []):
+            try:
+                await send_account_created_email(
+                    to=item["email"],
+                    invitee_name=item["name"],
+                    association_name=item["assoc_name"],
+                    login_url=_login_url(),
+                    has_default_password=item["has_password"],
+                )
+            except MailError:
+                pass
+            if item["plain_token"]:
+                try:
+                    await send_invitation_email(
+                        to=item["email"],
+                        invitee_name=item["name"],
+                        activation_url=_activation_url(item["plain_token"]),
+                        inviter_name=None,
+                        groupement_name=item["assoc_name"],
+                        role_label="Membre d'association",
+                        expires_in_days=settings.INVITATION_EXPIRE_DAYS,
+                    )
+                except MailError:
+                    pass

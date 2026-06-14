@@ -64,6 +64,7 @@ class UserPublic(BaseModel):
     birth_date: Optional[date] = None
     profession: Optional[str] = None
     is_active: bool
+    must_change_password: bool = False
     is_platform_admin: bool
     is_groupement_admin: bool = False
     is_association_admin: bool = False

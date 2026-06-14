@@ -92,6 +92,10 @@ class Importer:
         """Contexte partagé optionnel (préchargements, caches)."""
         return {}
 
+    async def after_commit(self, db: AsyncSession, ctx: dict) -> None:
+        """Hook exécuté APRÈS le commit global (envoi de mails, etc.)."""
+        return None
+
     # ── Template .xlsx ───────────────────────────────────────────────────────
     def build_template(self) -> bytes:
         wb = Workbook()

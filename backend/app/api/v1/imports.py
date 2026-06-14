@@ -171,4 +171,10 @@ async def commit_import(
             )
 
     await db.commit()
+    # Hook post-commit (ex. envoi des mails de bienvenue/activation pour les
+    # membres). Les erreurs d'envoi ne doivent pas faire échouer l'import.
+    try:
+        await imp.after_commit(db, ctx)
+    except Exception:  # noqa: BLE001
+        pass
     return CommitOut(entity=entity, created=created, failed=len(errors), errors=errors)

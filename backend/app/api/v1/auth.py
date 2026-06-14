@@ -69,6 +69,7 @@ async def _public_user(db: AsyncSession, user: User) -> dict:
         "birth_date": user.birth_date,
         "profession": user.profession,
         "is_active": user.is_active,
+        "must_change_password": user.must_change_password,
         "is_platform_admin": user.user_type == UserType.SUPER_ADMIN,
         "is_groupement_admin": user.user_type == UserType.GROUPEMENT_ADMIN,
         "is_association_admin": is_assoc_admin,
@@ -179,6 +180,7 @@ async def change_password(
     if not user.hashed_password or not verify_password(payload.current_password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
     user.hashed_password = get_password_hash(payload.new_password)
+    user.must_change_password = False  # le changement forcé est levé
     await db.commit()
     return None
 
@@ -201,6 +203,7 @@ async def activate(payload: ActivateRequest, db: AsyncSession = Depends(get_db))
     user.hashed_password = get_password_hash(payload.password)
     user.is_active = True
     user.is_verified = True
+    user.must_change_password = False  # il vient de définir son mot de passe
     user.invite_status = InviteStatus.ACCEPTED
     await db.commit()
     await db.refresh(user)
