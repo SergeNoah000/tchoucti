@@ -7,8 +7,10 @@ import { GeistMono } from "geist/font/mono";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { Toaster } from "sonner";
+import { Suspense } from "react";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import { NavProgress } from "@/components/layout/nav-progress";
 
 export const metadata: Metadata = {
   title: { default: "Tchoucti — La plateforme des associations", template: "%s · Tchoucti" },
@@ -26,6 +28,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className={`${GeistSans.variable} ${GeistMono.variable} font-sans antialiased`}>
 
         <NextIntlClientProvider messages={messages}>
+          <Suspense fallback={null}>
+            <NavProgress />
+          </Suspense>
           <Providers>{children}</Providers>
           <Toaster richColors position="top-right" closeButton />
         </NextIntlClientProvider>
