@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { Users, Clock } from "lucide-react";
@@ -115,7 +116,9 @@ export default function MembersPage() {
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-bold">
                           {initials(m.user.full_name)}
                         </div>
-                        <span className="font-medium">{m.user.full_name}</span>
+                        <Link href={`/dashboard/members/${m.id}`} className="font-medium hover:underline">
+                          {m.user.full_name}
+                        </Link>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{m.user.email}</td>

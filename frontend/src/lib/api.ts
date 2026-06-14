@@ -426,9 +426,12 @@ export const membersApi = {
     member_number?: string;
     notes?: string;
   }) => (await api.post("/memberships", payload)).data,
+  get: async (id: string) => (await api.get(`/memberships/${id}`)).data,
   update: async (id: string, payload: Record<string, unknown>) =>
     (await api.patch(`/memberships/${id}`, payload)).data,
   remove: async (id: string) => (await api.delete(`/memberships/${id}`)).data,
+  resendInvitation: async (id: string): Promise<{ activation_url: string; sent: boolean }> =>
+    (await api.post(`/memberships/${id}/resend-invitation`, {})).data,
 };
 
 export const tontinesApi = {

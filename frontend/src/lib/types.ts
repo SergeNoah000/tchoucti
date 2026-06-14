@@ -178,6 +178,9 @@ export interface User {
   birth_date?: string | null;
   profession?: string | null;
   is_active: boolean;
+  /** Forcé à changer son mot de passe à la 1re connexion (compte créé avec un
+   *  mot de passe par défaut, ex. import de membres). */
+  must_change_password?: boolean;
   /** Mutually exclusive role flags. `is_association_admin` is now strict: only
    *  true when the user has the `association_admin` role on a membership. */
   is_platform_admin: boolean;

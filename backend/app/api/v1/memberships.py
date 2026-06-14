@@ -4,11 +4,12 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import _user_has_bureau_role, get_current_user, get_db
 from app.api.v1.invitations import (
     _send_invitation_email_safe,
     activation_url_for,
@@ -125,6 +126,79 @@ async def get_membership(
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_assoc_access(current_user, assoc)
     return _membership_to_out(m)
+
+
+class ActivationLinkOut(BaseModel):
+    activation_url: str
+    sent: bool          # True si l'email a bien été envoyé
+
+
+@router.post("/{membership_id}/resend-invitation", response_model=ActivationLinkOut)
+async def resend_member_invitation(
+    membership_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """(Re)génère et renvoie le lien d'activation d'un membre non encore actif.
+    Réservé au bureau/admin. Renvoie aussi l'URL pour la copier manuellement."""
+    m = await _load_membership(db, membership_id)
+    assoc = await _get_assoc_or_404(db, m.association_id)
+    _check_assoc_access(current_user, assoc)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Réservé aux admins et membres du bureau.")
+
+    user = m.user
+    email = user.email if user else ""
+    if not email or "@" not in email or email.endswith(".import.local"):
+        raise HTTPException(
+            422,
+            "Ce membre n'a pas d'email réel : impossible d'envoyer un lien "
+            "d'activation. Définissez d'abord son email.",
+        )
+    if user.is_active:
+        raise HTTPException(409, "Ce compte est déjà actif.")
+
+    role_codes = {mr.role.code for mr in m.membership_roles}
+    is_admin = bool(role_codes & _ADMIN_ROLE_CODES)
+    kind = InvitationKind.ASSOCIATION_ADMIN if is_admin else InvitationKind.ASSOCIATION_MEMBER
+
+    inv = (
+        await db.execute(
+            select(Invitation)
+            .where(
+                Invitation.email == email,
+                Invitation.association_id == assoc.id,
+            )
+            .order_by(Invitation.created_at.desc())
+        )
+    ).scalars().first()
+
+    plain = generate_invitation_token()
+    if inv is None:
+        inv = Invitation(
+            email=email,
+            full_name=user.full_name,
+            kind=kind,
+            status=InvitationStatus.PENDING,
+            token_hash=hash_token(plain),
+            groupement_id=assoc.groupement_id,
+            association_id=assoc.id,
+            invited_by_id=current_user.id,
+            expires_at=Invitation.expiry_in(settings.INVITATION_EXPIRE_DAYS),
+        )
+        db.add(inv)
+    else:
+        inv.token_hash = hash_token(plain)
+        inv.expires_at = Invitation.expiry_in(settings.INVITATION_EXPIRE_DAYS)
+        inv.status = InvitationStatus.PENDING
+        inv.resent_count = (inv.resent_count or 0) + 1
+    await db.flush()
+
+    sent = await _send_invitation_email_safe(
+        invitation=inv, plain_token=plain, inviter=current_user, scope_name=assoc.name
+    )
+    await db.commit()
+    return ActivationLinkOut(activation_url=activation_url_for(plain), sent=sent)
 
 
 @router.post("", response_model=MembershipOut, status_code=status.HTTP_201_CREATED)

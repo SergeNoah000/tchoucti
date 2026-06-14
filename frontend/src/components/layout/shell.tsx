@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { ForcePasswordChange } from "@/components/auth/force-password-change";
 import {
   LayoutDashboard,
   Users,
@@ -244,6 +245,12 @@ export function Shell({ children, forceRole, homeHref }: ShellProps) {
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
+  }
+
+  // Compte créé avec un mot de passe par défaut → changement obligatoire avant
+  // tout accès à l'application.
+  if (user.must_change_password) {
+    return <ForcePasswordChange />;
   }
 
   const handleLogout = async () => {
