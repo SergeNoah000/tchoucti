@@ -1186,7 +1186,8 @@
     "memberMinBalanceHint": "Chaque membre doit garder au moins cette somme dans la caisse. En dessous, il est en « zone rouge ». 0 = pas de minimum.",
     "tabMembers": "Membres",
     "memberMinBalanceLegend": "En rouge : membres dont le solde est inférieur à {amount}.",
-    "noMembers": "Aucun membre actif."
+    "noMembers": "Aucun membre actif.",
+    "memberMinBalanceAmount": "Montant minimum par membre"
   },
   "configTontines": {
     "title": "Tontines",

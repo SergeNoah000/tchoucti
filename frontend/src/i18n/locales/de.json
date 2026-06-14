@@ -1186,7 +1186,8 @@
     "memberMinBalanceHint": "Jedes Mitglied muss mindestens diesen Betrag in der Kasse halten. Darunter ist es in der „roten Zone“. 0 = kein Minimum.",
     "tabMembers": "Mitglieder",
     "memberMinBalanceLegend": "Rot: Mitglieder, deren Saldo unter {amount} liegt.",
-    "noMembers": "Kein aktives Mitglied."
+    "noMembers": "Kein aktives Mitglied.",
+    "memberMinBalanceAmount": "Mindestbetrag pro Mitglied"
   },
   "configTontines": {
     "title": "Tontines",

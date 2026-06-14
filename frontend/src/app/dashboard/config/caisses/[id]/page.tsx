@@ -69,10 +69,13 @@ export default function CaisseDetailPage() {
   });
 
   const isPersonal = caisse?.category === "personal";
+  // L'objectif min par membre vaut pour tous les types : on montre l'onglet
+  // « Membres » dès qu'un minimum est défini, ou pour les caisses personnelles.
+  const showMembers = isPersonal || (caisse?.member_min_balance ?? 0) > 0;
   const { data: memberBalances = [] } = useQuery<MemberBalance[]>({
     queryKey: ["caisse", id, "member-balances"],
     queryFn: () => caissesApi.memberBalances(id),
-    enabled: !!id && isPersonal,
+    enabled: !!id && showMembers,
   });
   const belowMinCount = memberBalances.filter((m) => m.below_min).length;
 
@@ -130,7 +133,7 @@ export default function CaisseDetailPage() {
             <Settings className="h-3.5 w-3.5" />
             {t("tabConfig")}
           </TabsTrigger>
-          {isPersonal && (
+          {showMembers && (
             <TabsTrigger value="members" className="gap-1.5">
               <Wallet className="h-3.5 w-3.5" />
               {t("tabMembers")} ({memberBalances.length})
@@ -163,7 +166,7 @@ export default function CaisseDetailPage() {
               {caisse.is_member_required && (
                 <Row label={t("required")} value={`${fmt.currency(caisse.member_required_amount)}/membre`} />
               )}
-              {isPersonal && caisse.member_min_balance > 0 && (
+              {caisse.member_min_balance > 0 && (
                 <Row label={t("memberMinBalance")} value={`${fmt.currency(caisse.member_min_balance)}/membre`} />
               )}
               {caisse.has_ceiling && <Row label={t("ceiling")} value={fmt.currency(caisse.ceiling_amount)} />}
@@ -183,7 +186,7 @@ export default function CaisseDetailPage() {
         </TabsContent>
 
         {/* Onglet Membres (caisses personnelles) — solde + zone rouge */}
-        {isPersonal && (
+        {showMembers && (
           <TabsContent value="members" className="mt-4">
             {caisse.member_min_balance > 0 && (
               <p className="mb-3 text-xs text-muted-foreground">

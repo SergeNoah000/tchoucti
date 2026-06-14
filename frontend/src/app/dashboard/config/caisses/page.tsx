@@ -357,6 +357,7 @@ function CaisseFormDialog({
     caisse?.recurring_amount ? String(caisse.recurring_amount) : "",
   );
   const [memberRequired, setMemberRequired] = useState(caisse?.is_member_required ?? false);
+  const [hasMemberMin, setHasMemberMin] = useState((caisse?.member_min_balance ?? 0) > 0);
   const [memberMinBalance, setMemberMinBalance] = useState(
     caisse?.member_min_balance ? String(caisse.member_min_balance) : "",
   );
@@ -388,7 +389,7 @@ function CaisseFormDialog({
         // Le montant obligatoire reprend celui collecté par séance (peut être 0
         // = obligatoire mais libre). Plus de champ distinct.
         member_required_amount: memberRequired && recurring ? parseInt(recurringAmount, 10) || 0 : 0,
-        member_min_balance: category === "personal" ? parseInt(memberMinBalance, 10) || 0 : 0,
+        member_min_balance: hasMemberMin ? parseInt(memberMinBalance, 10) || 0 : 0,
         has_objective: category === "project" || hasObjective,
         objective_amount:
           hasObjective || category === "project" ? parseInt(objectiveAmount, 10) || 0 : 0,
@@ -551,18 +552,25 @@ function CaisseFormDialog({
                 </div>
               )}
 
-              {category === "personal" && (
-                <div className="space-y-2 rounded-md border border-border bg-card p-3">
-                  <HelpField label={t("memberMinBalance")} hint={t("memberMinBalanceHint")}>
+              <div className="space-y-3 rounded-md border border-border bg-card p-3">
+                <label className="flex cursor-pointer items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">{t("memberMinBalance")}</p>
+                    <p className="text-xs text-muted-foreground">{t("memberMinBalanceHint")}</p>
+                  </div>
+                  <Switch checked={hasMemberMin} onCheckedChange={setHasMemberMin} />
+                </label>
+                {hasMemberMin && (
+                  <HelpField label={t("memberMinBalanceAmount")}>
                     <Input
                       type="number"
-                      min={0}
+                      min={1}
                       value={memberMinBalance}
                       onChange={(e) => setMemberMinBalance(e.target.value)}
                     />
                   </HelpField>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Phase 7 (Fred) — Mode rendement partagé */}
               {category !== "personal" && (

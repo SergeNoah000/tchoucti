@@ -422,20 +422,30 @@ async def list_member_balances(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Solde de CHAQUE membre actif dans une caisse PERSONAL, avec le drapeau
-    « zone rouge » (solde < objectif minimum par membre). Tous les membres
-    actifs sont listés, même sans solde."""
+    """Solde de CHAQUE membre actif dans une caisse + drapeau « zone rouge »
+    (solde < objectif minimum par membre). Vaut pour TOUS les types de caisses :
+    - PERSONAL : solde individuel (MemberCaisseBalance) ;
+    - autres   : cotisation cumulée du membre (CaisseContributorBalance.apport_cum).
+    Tous les membres actifs sont listés, même sans solde."""
     cres = await db.execute(select(Caisse).where(Caisse.id == caisse_id))
     caisse = cres.scalar_one_or_none()
     if not caisse:
         raise HTTPException(404, "Caisse introuvable")
     await _check_access(db, current_user, caisse.association_id)
 
-    bal_res = await db.execute(
-        select(MemberCaisseBalance.membership_id, MemberCaisseBalance.balance).where(
-            MemberCaisseBalance.caisse_id == caisse_id
+    if caisse.category == CaisseCategory.PERSONAL:
+        bal_res = await db.execute(
+            select(MemberCaisseBalance.membership_id, MemberCaisseBalance.balance).where(
+                MemberCaisseBalance.caisse_id == caisse_id
+            )
         )
-    )
+    else:
+        bal_res = await db.execute(
+            select(
+                CaisseContributorBalance.membership_id,
+                CaisseContributorBalance.apport_cum,
+            ).where(CaisseContributorBalance.caisse_id == caisse_id)
+        )
     balances = {mid: bal for mid, bal in bal_res.all()}
 
     mem_res = await db.execute(

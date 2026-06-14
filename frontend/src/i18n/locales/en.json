@@ -1186,7 +1186,8 @@
     "memberMinBalanceHint": "Each member must keep at least this amount in the caisse. Below it, they are in the “red zone”. 0 = no minimum.",
     "tabMembers": "Members",
     "memberMinBalanceLegend": "In red: members whose balance is below {amount}.",
-    "noMembers": "No active member."
+    "noMembers": "No active member.",
+    "memberMinBalanceAmount": "Minimum amount per member"
   },
   "configTontines": {
     "title": "Tontines",
