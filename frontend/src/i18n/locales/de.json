@@ -1454,7 +1454,11 @@
     "countLoanTypes": "Darlehenstyp(en)",
     "countAidTypes": "Hilfetyp(en)",
     "disabled": "Modul deaktiviert",
-    "caisseMemberRequiredAmountNote": "Der erwartete Betrag ist der oben „pro Sitzung erhobene“. Kann verpflichtend sein, ohne fest zu sein."
+    "caisseMemberRequiredAmountNote": "Der erwartete Betrag ist der oben „pro Sitzung erhobene“. Kann verpflichtend sein, ohne fest zu sein.",
+    "caisseMemberMin": "Mindestziel pro Mitglied",
+    "caisseMemberMinHint": "Jedes Mitglied muss mindestens diesen Betrag halten. Darunter ist es in der „roten Zone“.",
+    "caisseMemberMinAmount": "Mindestbetrag pro Mitglied",
+    "caisseMemberMinExample": "Z. B. {amount}"
   },
   "errors": {
     "generic": "Ein Fehler ist aufgetreten, bitte versuchen Sie es erneut.",

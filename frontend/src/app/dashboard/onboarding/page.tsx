@@ -748,6 +748,8 @@ function CaisseForm({
   const [recurring, setRecurring] = useState(false);
   const [recurringAmount, setRecurringAmount] = useState("");
   const [memberRequired, setMemberRequired] = useState(false);
+  const [hasMemberMin, setHasMemberMin] = useState(false);
+  const [memberMinBalance, setMemberMinBalance] = useState("");
   const [hasObjective, setHasObjective] = useState(false);
   const [objectiveAmount, setObjectiveAmount] = useState("");
   const [objectiveDeadline, setObjectiveDeadline] = useState("");
@@ -764,6 +766,7 @@ function CaisseForm({
         recurring_amount: recurring ? parseInt(recurringAmount, 10) || 0 : 0,
         is_member_required: memberRequired,
         member_required_amount: memberRequired && recurring ? parseInt(recurringAmount, 10) || 0 : 0,
+        member_min_balance: hasMemberMin ? parseInt(memberMinBalance, 10) || 0 : 0,
         has_objective: category === "project" || hasObjective,
         objective_amount: hasObjective || category === "project" ? parseInt(objectiveAmount, 10) || 0 : 0,
         objective_deadline: objectiveDeadline || undefined,
@@ -830,6 +833,26 @@ function CaisseForm({
         </label>
         {memberRequired && (
           <p className="text-xs text-muted-foreground">{t("caisseMemberRequiredAmountNote")}</p>
+        )}
+      </div>
+
+      <div className="space-y-3 rounded-md border border-border bg-card p-3">
+        <label className="flex cursor-pointer items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">{t("caisseMemberMin")}</p>
+            <p className="text-xs text-muted-foreground">{t("caisseMemberMinHint")}</p>
+          </div>
+          <Switch checked={hasMemberMin} onCheckedChange={setHasMemberMin} />
+        </label>
+        {hasMemberMin && (
+          <HelpField label={t("caisseMemberMinAmount")} example={t("caisseMemberMinExample", { amount: fmt.currency(20000) })}>
+            <Input
+              type="number"
+              min={1}
+              value={memberMinBalance}
+              onChange={(e) => setMemberMinBalance(e.target.value)}
+            />
+          </HelpField>
         )}
       </div>
 

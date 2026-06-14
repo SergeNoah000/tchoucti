@@ -1454,7 +1454,11 @@
     "countLoanTypes": "type(s) de prêt",
     "countAidTypes": "type(s) d'aide",
     "disabled": "Module désactivé",
-    "caisseMemberRequiredAmountNote": "Le montant attendu est celui « collecté à chaque séance » ci-dessus. Peut être obligatoire sans être fixe."
+    "caisseMemberRequiredAmountNote": "Le montant attendu est celui « collecté à chaque séance » ci-dessus. Peut être obligatoire sans être fixe.",
+    "caisseMemberMin": "Objectif minimum par membre",
+    "caisseMemberMinHint": "Chaque membre doit garder au moins cette somme. En dessous, il est en « zone rouge ».",
+    "caisseMemberMinAmount": "Montant minimum par membre",
+    "caisseMemberMinExample": "Ex : {amount}"
   },
   "errors": {
     "generic": "Une erreur est survenue, veuillez réessayer.",

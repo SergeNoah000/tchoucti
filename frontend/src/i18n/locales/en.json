@@ -1454,7 +1454,11 @@
     "countLoanTypes": "loan type(s)",
     "countAidTypes": "aid type(s)",
     "disabled": "Module disabled",
-    "caisseMemberRequiredAmountNote": "The expected amount is the one “collected each meeting” above. Can be mandatory without being fixed."
+    "caisseMemberRequiredAmountNote": "The expected amount is the one “collected each meeting” above. Can be mandatory without being fixed.",
+    "caisseMemberMin": "Minimum target per member",
+    "caisseMemberMinHint": "Each member must keep at least this amount. Below it, they are in the “red zone”.",
+    "caisseMemberMinAmount": "Minimum amount per member",
+    "caisseMemberMinExample": "E.g. {amount}"
   },
   "errors": {
     "generic": "An error occurred, please try again.",
