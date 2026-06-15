@@ -58,6 +58,8 @@ interface AidTypeOption {
   description?: string | null;
   funding_mode?: "fixed" | "temporary" | "member_insurance";
   aid_ceiling_amount: number;
+  member_contribution_amount?: number;
+  contribution_required?: boolean;
   source_caisse_name?: string | null;
   insurance_caisse_name?: string | null;
 }
@@ -685,26 +687,40 @@ function DeclareDialog({ association }: { association: Association }) {
           {/* Aperçu config : montant à recevoir, source, et critère assurance. */}
           {selectedType && (
             <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
-              <p className="flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">{t("amountToReceive")}</span>
-                <span className="font-semibold">{fmt.currency(selectedType.aid_ceiling_amount)}</span>
-              </p>
-              <p className="mt-1 flex items-center justify-between gap-2">
-                <span className="text-muted-foreground">{t("source")}</span>
-                <span className="font-medium">
-                  {selectedType.funding_mode === "member_insurance"
-                    ? t("sourceIndividualNamed", {
-                        name: selectedType.insurance_caisse_name ?? t("sourceIndividual"),
-                      })
-                    : t("sourceCollectiveNamed", {
-                        name: selectedType.source_caisse_name ?? t("sourceCollective"),
-                      })}
-                </span>
-              </p>
-              {selectedType.funding_mode === "member_insurance" && perMemberShare > 0 && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("perMemberDebit", { amount: fmt.currency(perMemberShare), n: nMembers })}
+              {selectedType.funding_mode === "temporary" ? (
+                // Cotisation ponctuelle : pas de montant fixe, collecte à la séance.
+                <p className="text-muted-foreground">
+                  {t("perEventNote", {
+                    amount:
+                      (selectedType.member_contribution_amount ?? 0) > 0
+                        ? fmt.currency(selectedType.member_contribution_amount ?? 0)
+                        : t("perEventFree"),
+                  })}
                 </p>
+              ) : (
+                <>
+                  <p className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">{t("amountToReceive")}</span>
+                    <span className="font-semibold">{fmt.currency(selectedType.aid_ceiling_amount)}</span>
+                  </p>
+                  <p className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">{t("source")}</span>
+                    <span className="font-medium">
+                      {selectedType.funding_mode === "member_insurance"
+                        ? t("sourceIndividualNamed", {
+                            name: selectedType.insurance_caisse_name ?? t("sourceIndividual"),
+                          })
+                        : t("sourceCollectiveNamed", {
+                            name: selectedType.source_caisse_name ?? t("sourceCollective"),
+                          })}
+                    </span>
+                  </p>
+                  {selectedType.funding_mode === "member_insurance" && perMemberShare > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t("perMemberDebit", { amount: fmt.currency(perMemberShare), n: nMembers })}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           )}

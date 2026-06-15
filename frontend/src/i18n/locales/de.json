@@ -1018,7 +1018,9 @@
     "sourceIndividualNamed": "Individuelle Kasse — {name}",
     "sourceCollectiveNamed": "Gemeinschaftskasse — {name}",
     "perMemberDebit": "Jedem Mitglied werden {amount} abgebucht (Betrag ÷ {n} Mitglieder).",
-    "beneficiarySelf": "Sie selbst"
+    "beneficiarySelf": "Sie selbst",
+    "perEventNote": "Einmalbeitrag: jedes Mitglied zahlt {amount} in der nächsten Sitzung; die Sammlung wird Ihnen übergeben.",
+    "perEventFree": "ein freier Betrag"
   },
   "loan": {
     "title": "Darlehen",
@@ -1293,7 +1295,15 @@
     "amountToGiveHint": "Betrag, der an das antragstellende Mitglied gezahlt wird.",
     "amountToGiveExample": "Z. B. {amount}",
     "previewCollective": "Der Antragsteller erhält {amount}, vollständig aus der Gemeinschaftskasse.",
-    "previewIndividual": "Der Antragsteller erhält {amount}, aufgeteilt und von der individuellen Kasse jedes Mitglieds abgebucht."
+    "previewIndividual": "Der Antragsteller erhält {amount}, aufgeteilt und von der individuellen Kasse jedes Mitglieds abgebucht.",
+    "sourcePerEvent": "Einmalbeitrag (ohne Kasse)",
+    "perEventHint": "Keine Quellkasse: in der Sitzung nach dem Antrag zahlt jedes Mitglied; die Sammlung geht an den Begünstigten.",
+    "perEventAmount": "Beitrag pro Mitglied",
+    "perEventAmountHint": "Betrag pro Mitglied. 0 = frei (jeder gibt, was er will).",
+    "perEventRequired": "Pflichtbeitrag",
+    "perEventRequiredHint": "Wenn aktiv, muss jedes Mitglied beitragen; sonst optional.",
+    "previewPerEvent": "Jedes Mitglied zahlt {amount} in der nächsten Sitzung; die Sammlung geht an den Antragsteller.",
+    "freeAmount": "frei"
   },
   "configLoans": {
     "title": "Darlehenskonfiguration",

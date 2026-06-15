@@ -114,6 +114,7 @@ async def upsert_aid_type_activity(
     slug: str,
     member_contribution_amount: int,
     is_recurring: bool,
+    is_required: bool = False,
 ) -> Activity:
     """One Activity per AidType — used when a case is being collected."""
     code = f"aid-{slug}"
@@ -139,10 +140,11 @@ async def upsert_aid_type_activity(
             # Visible seulement quand un dossier de ce type est en cours
             # (filtré côté agenda). Au catalogue ça reste actif.
             is_visible_in_meeting=False,
-            is_required=False,
+            is_required=bool(is_required),
         )
         db.add(act)
     else:
         act.name = f"Aide — {name}"
         act.config = config
+        act.is_required = bool(is_required)
     return act

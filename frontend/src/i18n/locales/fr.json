@@ -1018,7 +1018,9 @@
     "sourceIndividualNamed": "Caisse individuelle — {name}",
     "sourceCollectiveNamed": "Caisse collective — {name}",
     "perMemberDebit": "Chaque membre sera débité de {amount} (montant ÷ {n} membres).",
-    "beneficiarySelf": "vous-même"
+    "beneficiarySelf": "vous-même",
+    "perEventNote": "Cotisation ponctuelle : chaque membre cotisera {amount} à la prochaine séance ; la collecte vous sera remise.",
+    "perEventFree": "un montant libre"
   },
   "loan": {
     "title": "Prêts",
@@ -1293,7 +1295,15 @@
     "amountToGiveHint": "Montant versé au membre qui fait la demande.",
     "amountToGiveExample": "Ex : {amount}",
     "previewCollective": "Le demandeur reçoit {amount}, entièrement prélevé sur la caisse collective.",
-    "previewIndividual": "Le demandeur reçoit {amount}, réparti et débité sur la caisse individuelle de chaque membre."
+    "previewIndividual": "Le demandeur reçoit {amount}, réparti et débité sur la caisse individuelle de chaque membre.",
+    "sourcePerEvent": "Cotisation ponctuelle (sans caisse)",
+    "perEventHint": "Pas de caisse source : à la séance suivant la demande, chaque membre cotise ; la collecte est remise au bénéficiaire.",
+    "perEventAmount": "Cotisation par membre",
+    "perEventAmountHint": "Montant cotisé par chaque membre. 0 = libre (chacun donne ce qu'il veut).",
+    "perEventRequired": "Cotisation obligatoire",
+    "perEventRequiredHint": "Si activé, chaque membre doit cotiser ; sinon c'est facultatif.",
+    "previewPerEvent": "Chaque membre cotise {amount} à la prochaine séance ; la collecte est remise au demandeur.",
+    "freeAmount": "libre"
   },
   "configLoans": {
     "title": "Configuration des prêts",

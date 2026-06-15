@@ -105,6 +105,7 @@ def _to_out(at: AidType, source_name: str | None = None, insurance_name: str | N
         description=at.description,
         is_active=at.is_active,
         member_contribution_amount=at.member_contribution_amount,
+        contribution_required=at.contribution_required,
         is_contribution_recurring=at.is_contribution_recurring,
         amount_mode=at.amount_mode,
         aid_ceiling_amount=at.aid_ceiling_amount,
@@ -216,6 +217,7 @@ async def create_aid_type(
         slug=payload.slug,
         description=payload.description,
         member_contribution_amount=payload.member_contribution_amount,
+        contribution_required=payload.contribution_required,
         is_contribution_recurring=payload.is_contribution_recurring,
         amount_mode=payload.amount_mode,
         aid_ceiling_amount=payload.aid_ceiling_amount,
@@ -237,6 +239,7 @@ async def create_aid_type(
         slug=payload.slug,
         member_contribution_amount=payload.member_contribution_amount,
         is_recurring=payload.is_contribution_recurring,
+        is_required=payload.contribution_required,
     )
 
     await db.commit()

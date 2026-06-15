@@ -165,6 +165,12 @@ export function AidTypesManager({ association }: { association: Association }) {
             <ul className="space-y-2">
               {types.map((at) => {
                 const isInsurance = at.funding_mode === "member_insurance";
+                const isPerEventRow = at.funding_mode === "temporary";
+                const sourceBadge = isPerEventRow
+                  ? t("sourcePerEvent")
+                  : isInsurance
+                    ? t("sourceIndividual")
+                    : t("sourceCollective");
                 return (
                   <li
                     key={at.id}
@@ -183,22 +189,35 @@ export function AidTypesManager({ association }: { association: Association }) {
                             </Badge>
                           )}
                           <Badge variant="secondary" className="text-[10px]">
-                            {isInsurance ? t("sourceIndividual") : t("sourceCollective")}
+                            {sourceBadge}
                           </Badge>
                         </div>
                         {at.description && (
                           <p className="text-sm text-muted-foreground">{at.description}</p>
                         )}
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {t("source")}:{" "}
-                          <span className="font-medium">
-                            {isInsurance
-                              ? at.insurance_caisse_name ?? t("sourceIndividual")
-                              : at.source_caisse_name ?? t("sourceCollective")}
-                          </span>
-                          {" · "}
-                          {t("amountToGive")}:{" "}
-                          <span className="font-medium">{at.aid_ceiling_amount}</span>
+                          {isPerEventRow ? (
+                            <>
+                              {t("perEventAmount")}:{" "}
+                              <span className="font-medium">
+                                {at.member_contribution_amount > 0
+                                  ? at.member_contribution_amount
+                                  : t("freeAmount")}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              {t("source")}:{" "}
+                              <span className="font-medium">
+                                {isInsurance
+                                  ? at.insurance_caisse_name ?? t("sourceIndividual")
+                                  : at.source_caisse_name ?? t("sourceCollective")}
+                              </span>
+                              {" · "}
+                              {t("amountToGive")}:{" "}
+                              <span className="font-medium">{at.aid_ceiling_amount}</span>
+                            </>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -263,31 +282,46 @@ function AidTypeForm({
   const tCommon = useTranslations("common");
   const fmt = useFormatters(currency);
 
-  // Source : "individual" (caisse perso d'assurance) ou "collective" (secours).
-  type SourceMode = "individual" | "collective";
+  // Source : "individual" (assurance), "collective" (secours) ou "per_event"
+  // (cotisation ponctuelle, sans caisse).
+  type SourceMode = "individual" | "collective" | "per_event";
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [sourceMode, setSourceMode] = useState<SourceMode>(
-    collectiveCaisses.length > 0 ? "collective" : "individual",
+    collectiveCaisses.length > 0 ? "collective" : "per_event",
   );
   const [collectiveCaisse, setCollectiveCaisse] = useState(collectiveCaisses[0]?.id ?? "");
   const [personalCaisse, setPersonalCaisse] = useState(personalCaisses[0]?.id ?? "");
   const [amount, setAmount] = useState("100000");
+  // Mode per_event : cotisation par membre (0 = libre) + obligatoire ou non.
+  const [contribution, setContribution] = useState("2000");
+  const [contributionRequired, setContributionRequired] = useState(true);
 
   const amountNum = parseInt(amount, 10) || 0;
+  const contributionNum = parseInt(contribution, 10) || 0;
+  const isPerEvent = sourceMode === "per_event";
 
   const create = useMutation({
     mutationFn: () =>
       aidTypesApi.create({
         association_id: associationId,
-        funding_mode: sourceMode === "individual" ? "member_insurance" : "fixed",
+        funding_mode:
+          sourceMode === "individual"
+            ? "member_insurance"
+            : sourceMode === "collective"
+              ? "fixed"
+              : "temporary",
         source_caisse_id: sourceMode === "collective" ? collectiveCaisse : undefined,
         insurance_caisse_id: sourceMode === "individual" ? personalCaisse : undefined,
         name: name.trim(),
         slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
         description: description.trim() || undefined,
-        aid_ceiling_amount: amountNum,
+        // Per_event : pas de montant fixe à donner (le bénéficiaire reçoit la
+        // collecte) ; on envoie la cotisation par membre + obligation.
+        aid_ceiling_amount: isPerEvent ? 0 : amountNum,
+        member_contribution_amount: isPerEvent ? contributionNum : undefined,
+        contribution_required: isPerEvent ? contributionRequired : undefined,
       }),
     onSuccess: () => onCreated(),
     onError: (err: unknown) => {
@@ -323,11 +357,31 @@ function AidTypeForm({
             <SelectContent>
               <SelectItem value="collective">{t("sourceCollective")}</SelectItem>
               <SelectItem value="individual">{t("sourceIndividual")}</SelectItem>
+              <SelectItem value="per_event">{t("sourcePerEvent")}</SelectItem>
             </SelectContent>
           </Select>
         </HelpField>
 
-        {sourceMode === "collective" ? (
+        {isPerEvent ? (
+          <div className="space-y-3">
+            <ConfigPreview intent="info">{t("perEventHint")}</ConfigPreview>
+            <HelpField label={t("perEventAmount")} hint={t("perEventAmountHint")}>
+              <Input
+                type="number"
+                min={0}
+                value={contribution}
+                onChange={(e) => setContribution(e.target.value)}
+              />
+            </HelpField>
+            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-border bg-card p-3">
+              <div>
+                <p className="text-sm font-medium">{t("perEventRequired")}</p>
+                <p className="text-xs text-muted-foreground">{t("perEventRequiredHint")}</p>
+              </div>
+              <Switch checked={contributionRequired} onCheckedChange={setContributionRequired} />
+            </label>
+          </div>
+        ) : sourceMode === "collective" ? (
           <HelpField label={t("collectiveCaisse")} hint={t("collectiveCaisseHint")} required>
             {collectiveCaisses.length === 0 ? (
               <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
@@ -372,21 +426,27 @@ function AidTypeForm({
         )}
       </section>
 
-      <HelpField
-        label={t("amountToGive")}
-        hint={t("amountToGiveHint")}
-        example={t("amountToGiveExample", { amount: fmt.currency(100000) })}
-        required
-      >
-        <Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} />
-      </HelpField>
+      {!isPerEvent && (
+        <HelpField
+          label={t("amountToGive")}
+          hint={t("amountToGiveHint")}
+          example={t("amountToGiveExample", { amount: fmt.currency(100000) })}
+          required
+        >
+          <Input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </HelpField>
+      )}
 
       <ConfigPreview intent="success">
         <p className="font-medium">{t("previewTitle")}</p>
         <p className="mt-1">
-          {sourceMode === "collective"
-            ? t("previewCollective", { amount: fmt.currency(amountNum) })
-            : t("previewIndividual", { amount: fmt.currency(amountNum) })}
+          {isPerEvent
+            ? t("previewPerEvent", {
+                amount: contributionNum > 0 ? fmt.currency(contributionNum) : t("freeAmount"),
+              })
+            : sourceMode === "collective"
+              ? t("previewCollective", { amount: fmt.currency(amountNum) })
+              : t("previewIndividual", { amount: fmt.currency(amountNum) })}
         </p>
       </ConfigPreview>
 
@@ -399,8 +459,8 @@ function AidTypeForm({
           disabled={
             create.isPending ||
             !name.trim() ||
-            amountNum <= 0 ||
-            noCaisse ||
+            (!isPerEvent && amountNum <= 0) ||
+            (!isPerEvent && noCaisse) ||
             (sourceMode === "collective" && !collectiveCaisse) ||
             (sourceMode === "individual" && !personalCaisse)
           }

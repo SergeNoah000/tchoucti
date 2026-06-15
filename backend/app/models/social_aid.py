@@ -108,6 +108,11 @@ class AidType(BaseModel):
     is_contribution_recurring: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    # Mode "temporary" (cotisation ponctuelle) : la cotisation membre est-elle
+    # obligatoire ? (sinon optionnelle).
+    contribution_required: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
 
     # ── Versement au bénéficiaire ────────────────────────────────────────────
     aid_ceiling_amount: Mapped[int] = mapped_column(

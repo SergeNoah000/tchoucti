@@ -1018,7 +1018,9 @@
     "sourceIndividualNamed": "Individual caisse — {name}",
     "sourceCollectiveNamed": "Collective caisse — {name}",
     "perMemberDebit": "Each member will be debited {amount} (amount ÷ {n} members).",
-    "beneficiarySelf": "yourself"
+    "beneficiarySelf": "yourself",
+    "perEventNote": "One-off contribution: each member will contribute {amount} at the next session; the collection will be given to you.",
+    "perEventFree": "a free amount"
   },
   "loan": {
     "title": "Loans",
@@ -1293,7 +1295,15 @@
     "amountToGiveHint": "Amount paid to the member who applies.",
     "amountToGiveExample": "E.g. {amount}",
     "previewCollective": "The applicant receives {amount}, fully taken from the collective caisse.",
-    "previewIndividual": "The applicant receives {amount}, split and debited from each member's individual caisse."
+    "previewIndividual": "The applicant receives {amount}, split and debited from each member's individual caisse.",
+    "sourcePerEvent": "One-off contribution (no caisse)",
+    "perEventHint": "No source caisse: at the session after the request, each member contributes; the collection is given to the beneficiary.",
+    "perEventAmount": "Contribution per member",
+    "perEventAmountHint": "Amount each member contributes. 0 = free (each gives what they want).",
+    "perEventRequired": "Mandatory contribution",
+    "perEventRequiredHint": "If on, each member must contribute; otherwise optional.",
+    "previewPerEvent": "Each member contributes {amount} at the next session; the collection is given to the applicant.",
+    "freeAmount": "free"
   },
   "configLoans": {
     "title": "Loan configuration",

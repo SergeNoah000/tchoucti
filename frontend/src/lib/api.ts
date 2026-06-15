@@ -301,6 +301,7 @@ export const aidTypesApi = {
     slug: string;
     description?: string;
     member_contribution_amount?: number;
+    contribution_required?: boolean;
     is_contribution_recurring?: boolean;
     amount_mode?: "ceiling" | "objective";
     aid_ceiling_amount?: number;
