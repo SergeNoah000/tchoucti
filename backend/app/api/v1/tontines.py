@@ -167,8 +167,15 @@ async def _populate_cycle(
     cycle passe ACTIVE et le 1er tour COLLECTING ; sinon il reste BROUILLON
     (tous les tours PENDING) — sans participant, aucun tour n'est créé.
     """
-    k = max(1, tontine.beneficiaries_per_round)
     n = len(participant_order)
+    # Mode "by_duration" : on connaît la durée max (target_rounds séances) → on
+    # en déduit le nombre de gagnants par séance = participants / nb séances.
+    # Mode "by_beneficiaries" (défaut) : on fixe les gagnants/tour, la durée suit.
+    if getattr(tontine, "cycle_mode", "by_beneficiaries") == "by_duration" and tontine.target_rounds:
+        target = max(1, tontine.target_rounds)
+        k = max(1, (n + target - 1) // target) if n else 1  # ceil(n / target)
+    else:
+        k = max(1, tontine.beneficiaries_per_round)
     n_rounds = (n + k - 1) // k  # ceil
 
     cycle.rounds_count = n_rounds
@@ -417,9 +424,13 @@ def _tontine_out(tontine: Tontine) -> TontineOut:
         description=tontine.description,
         is_active=tontine.is_active,
         round_amount=tontine.round_amount,
+        contribution_kind=getattr(tontine, "contribution_kind", "money"),
+        asset_label=getattr(tontine, "asset_label", None),
         frequency=tontine.frequency,
         custom_interval_days=tontine.custom_interval_days,
+        cycle_mode=getattr(tontine, "cycle_mode", "by_beneficiaries"),
         beneficiaries_per_round=tontine.beneficiaries_per_round,
+        target_rounds=getattr(tontine, "target_rounds", None),
         beneficiary_pays=tontine.beneficiary_pays,
         selection_method=tontine.selection_method,
         created_at=tontine.created_at,
@@ -502,53 +513,61 @@ async def create_tontine(
 
     slug = await _unique_slug(db, payload.association_id, payload.name)
 
+    is_asset = payload.contribution_kind == "asset"
     tontine = Tontine(
         association_id=payload.association_id,
         name=payload.name,
         slug=slug,
         description=payload.description,
         round_amount=payload.round_amount,
+        contribution_kind=payload.contribution_kind,
+        asset_label=payload.asset_label if is_asset else None,
         frequency=payload.frequency,
         custom_interval_days=payload.custom_interval_days,
+        cycle_mode=payload.cycle_mode,
         beneficiaries_per_round=payload.beneficiaries_per_round,
+        target_rounds=payload.target_rounds if payload.cycle_mode == "by_duration" else None,
         beneficiary_pays=payload.beneficiary_pays,
         selection_method=payload.selection_method,
     )
     db.add(tontine)
     await db.flush()
 
-    # Caisse système + fonds dédiés à la tontine (réutilisés par tous ses cycles).
-    treasury = await get_or_create_treasury(db, assoc)
-    fund = Fund(
-        treasury_id=treasury.id,
-        kind=FundKind.TONTINE,
-        ref_key=slug,
-        name=f"Tontine — {payload.name}",
-        description="Fonds dédié à cette tontine.",
-        is_system=True,
-    )
-    db.add(fund)
-    await db.flush()
-    db.add(
-        Caisse(
-            association_id=payload.association_id,
-            fund_id=fund.id,
+    # Caisse système + fonds + activité de collecte : UNIQUEMENT pour les
+    # tontines en ARGENT. Une tontine en avoir physique ne touche pas la
+    # trésorerie (on ne suit que le nom + la quantité, hors caisse).
+    if not is_asset:
+        treasury = await get_or_create_treasury(db, assoc)
+        fund = Fund(
+            treasury_id=treasury.id,
+            kind=FundKind.TONTINE,
+            ref_key=slug,
             name=f"Tontine — {payload.name}",
-            slug=slug,
-            description="Caisse système liée à cette tontine (auto-créée).",
-            category=CaisseCategory.SYSTEM,
+            description="Fonds dédié à cette tontine.",
             is_system=True,
         )
-    )
+        db.add(fund)
+        await db.flush()
+        db.add(
+            Caisse(
+                association_id=payload.association_id,
+                fund_id=fund.id,
+                name=f"Tontine — {payload.name}",
+                slug=slug,
+                description="Caisse système liée à cette tontine (auto-créée).",
+                category=CaisseCategory.SYSTEM,
+                is_system=True,
+            )
+        )
 
-    await upsert_tontine_activity(
-        db,
-        association_id=payload.association_id,
-        cycle_id=tontine.id,  # l'activité pointe sur la tontine (durable)
-        name=payload.name,
-        slug=slug,
-        round_amount=payload.round_amount,
-    )
+        await upsert_tontine_activity(
+            db,
+            association_id=payload.association_id,
+            cycle_id=tontine.id,  # l'activité pointe sur la tontine (durable)
+            name=payload.name,
+            slug=slug,
+            round_amount=payload.round_amount,
+        )
 
     # Sans participant → 1er cycle créé en brouillon (membres ajoutés ensuite via
     # la config de la tontine). Avec participants → cycle actif + séances d'office.
@@ -764,31 +783,40 @@ async def payout_round(
         raise HTTPException(409, "Ce tour a déjà été versé")
 
     pot = rnd.expected_amount
-    treasury = await get_or_create_treasury(db, assoc)
-    fund = await _get_tontine_fund(db, treasury, tontine)
-    if fund is None:
-        raise HTTPException(500, "Fonds tontine introuvable")
 
-    related = rnd.beneficiaries[0].membership_id if len(rnd.beneficiaries) == 1 else None
-    movement = await post_movement(
-        db,
-        treasury=treasury,
-        direction=MovementDirection.OUT,
-        amount=pot,
-        allocations=[Allocation(fund=fund, is_credit=False, amount=pot)],
-        occurred_on=date.today(),
-        source_type="tontine_payout",
-        source_id=rnd.id,
-        recorded_by_id=current_user.id,
-        related_membership_id=related,
-        description=f"Tontine {tontine.name} — tour {rnd.round_number}",
-        commit=False,
-    )
-    rnd.status = TontineRoundStatus.PAID_OUT
-    rnd.paid_out_date = date.today()
-    rnd.paid_out_amount = pot
-    rnd.collected_amount = pot
-    rnd.payout_movement_id = movement.id
+    # Tontine en AVOIR PHYSIQUE : aucun mouvement de trésorerie (pas de fonds).
+    # On marque juste le tour comme servi (l'objet est remis au bénéficiaire).
+    if getattr(tontine, "contribution_kind", "money") == "asset":
+        rnd.status = TontineRoundStatus.PAID_OUT
+        rnd.paid_out_date = date.today()
+        rnd.paid_out_amount = pot
+        rnd.collected_amount = pot
+    else:
+        treasury = await get_or_create_treasury(db, assoc)
+        fund = await _get_tontine_fund(db, treasury, tontine)
+        if fund is None:
+            raise HTTPException(500, "Fonds tontine introuvable")
+
+        related = rnd.beneficiaries[0].membership_id if len(rnd.beneficiaries) == 1 else None
+        movement = await post_movement(
+            db,
+            treasury=treasury,
+            direction=MovementDirection.OUT,
+            amount=pot,
+            allocations=[Allocation(fund=fund, is_credit=False, amount=pot)],
+            occurred_on=date.today(),
+            source_type="tontine_payout",
+            source_id=rnd.id,
+            recorded_by_id=current_user.id,
+            related_membership_id=related,
+            description=f"Tontine {tontine.name} — tour {rnd.round_number}",
+            commit=False,
+        )
+        rnd.status = TontineRoundStatus.PAID_OUT
+        rnd.paid_out_date = date.today()
+        rnd.paid_out_amount = pot
+        rnd.collected_amount = pot
+        rnd.payout_movement_id = movement.id
 
     nxt = next(
         (r for r in sorted(cycle.rounds, key=lambda x: x.round_number)

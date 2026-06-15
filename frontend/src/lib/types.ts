@@ -398,9 +398,13 @@ export interface Tontine {
   description?: string | null;
   is_active: boolean;
   round_amount: number;
+  contribution_kind?: "money" | "asset";
+  asset_label?: string | null;
   frequency: string;
   custom_interval_days?: number | null;
+  cycle_mode?: "by_beneficiaries" | "by_duration";
   beneficiaries_per_round: number;
+  target_rounds?: number | null;
   beneficiary_pays: boolean;
   selection_method: string;
   created_at: string;

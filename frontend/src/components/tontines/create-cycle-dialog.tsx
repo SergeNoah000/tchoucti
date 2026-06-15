@@ -58,6 +58,10 @@ export function CreateTontineDialog({ association }: { association: Association 
   );
   const [frequency, setFrequency] = useState<string>("monthly");
   const [customDays, setCustomDays] = useState("30");
+  const [contributionKind, setContributionKind] = useState<"money" | "asset">("money");
+  const [assetLabel, setAssetLabel] = useState("");
+  const [cycleMode, setCycleMode] = useState<"by_beneficiaries" | "by_duration">("by_beneficiaries");
+  const [targetRounds, setTargetRounds] = useState("12");
   const [beneficiariesPerRound, setBeneficiariesPerRound] = useState("1");
   const [beneficiaryPays, setBeneficiaryPays] = useState(true);
   const [selectionMethod, setSelectionMethod] = useState<string>("manual");
@@ -110,9 +114,13 @@ export function CreateTontineDialog({ association }: { association: Association 
         association_id: association.id,
         name: name.trim(),
         round_amount: parseInt(amount, 10),
+        contribution_kind: contributionKind,
+        asset_label: contributionKind === "asset" ? assetLabel.trim() : undefined,
         frequency,
         custom_interval_days: frequency === "custom" ? parseInt(customDays, 10) || 30 : undefined,
+        cycle_mode: cycleMode,
         beneficiaries_per_round: k,
+        target_rounds: cycleMode === "by_duration" ? parseInt(targetRounds, 10) || 12 : undefined,
         beneficiary_pays: beneficiaryPays,
         selection_method: selectionMethod,
         start_date: startDate,
@@ -136,6 +144,10 @@ export function CreateTontineDialog({ association }: { association: Association 
     setAmount(association.config?.tontine?.contribution_amount?.toString() ?? "");
     setFrequency("monthly");
     setCustomDays("30");
+    setContributionKind("money");
+    setAssetLabel("");
+    setCycleMode("by_beneficiaries");
+    setTargetRounds("12");
     setBeneficiariesPerRound("1");
     setBeneficiaryPays(true);
     setSelectionMethod("manual");
@@ -207,9 +219,36 @@ export function CreateTontineDialog({ association }: { association: Association 
             />
           </div>
 
+          {/* Nature de la cotisation : argent ou avoir physique. */}
+          <div className="space-y-1.5">
+            <Label>{t("contributionKind")}</Label>
+            <Select value={contributionKind} onValueChange={(v) => setContributionKind(v as "money" | "asset")}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="money">{t("kindMoney")}</SelectItem>
+                <SelectItem value="asset">{t("kindAsset")}</SelectItem>
+              </SelectContent>
+            </Select>
+            {contributionKind === "asset" && (
+              <Input
+                className="mt-2"
+                value={assetLabel}
+                onChange={(e) => setAssetLabel(e.target.value)}
+                placeholder={t("assetLabelPlaceholder")}
+                required
+              />
+            )}
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="tc-amount">{`${t("roundAmount")} (${association.currency})`}</Label>
+              <Label htmlFor="tc-amount">
+                {contributionKind === "asset"
+                  ? t("assetQuantity")
+                  : `${t("roundAmount")} (${association.currency})`}
+              </Label>
               <Input
                 id="tc-amount"
                 type="number"
@@ -219,7 +258,9 @@ export function CreateTontineDialog({ association }: { association: Association 
                 onChange={(e) => setAmount(e.target.value)}
                 required
               />
-              <p className="text-xs text-muted-foreground">{t("roundAmountHint")}</p>
+              <p className="text-xs text-muted-foreground">
+                {contributionKind === "asset" ? t("assetQuantityHint") : t("roundAmountHint")}
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tc-date">{t("startDate")}</Label>
@@ -259,17 +300,45 @@ export function CreateTontineDialog({ association }: { association: Association 
               </div>
             )}
             <div className="space-y-1.5">
-              <Label htmlFor="tc-bpr">{t("beneficiariesPerRound")}</Label>
-              <Input
-                id="tc-bpr"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={20}
-                value={beneficiariesPerRound}
-                onChange={(e) => setBeneficiariesPerRound(e.target.value)}
-              />
+              <Label>{t("cycleMode")}</Label>
+              <Select value={cycleMode} onValueChange={(v) => setCycleMode(v as "by_beneficiaries" | "by_duration")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="by_beneficiaries">{t("modeByBeneficiaries")}</SelectItem>
+                  <SelectItem value="by_duration">{t("modeByDuration")}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+            {cycleMode === "by_beneficiaries" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="tc-bpr">{t("beneficiariesPerRound")}</Label>
+                <Input
+                  id="tc-bpr"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={20}
+                  value={beneficiariesPerRound}
+                  onChange={(e) => setBeneficiariesPerRound(e.target.value)}
+                />
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="tc-target">{t("targetRounds")}</Label>
+                <Input
+                  id="tc-target"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={120}
+                  value={targetRounds}
+                  onChange={(e) => setTargetRounds(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">{t("targetRoundsHint")}</p>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>{t("selectionMethod")}</Label>
               <Select value={selectionMethod} onValueChange={setSelectionMethod}>

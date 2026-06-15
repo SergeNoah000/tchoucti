@@ -70,11 +70,32 @@ class Tontine(BaseModel):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     # ── Config par défaut (héritée par chaque cycle) ──────────────────────────
+    # round_amount = montant en argent (kind=money) OU quantité de l'avoir
+    # physique cotisée par membre et par tour (kind=asset).
     round_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    # Nature de la cotisation : "money" (argent) ou "asset" (avoir physique :
+    # ni argent ni mouvement de caisse, on suit juste le nom + la quantité).
+    contribution_kind: Mapped[str] = mapped_column(
+        String(10), default="money", nullable=False, server_default="money"
+    )
+    # Libellé de l'avoir physique (ex. « Sac de riz 25 kg ») si kind=asset.
+    asset_label: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+
     # weekly | biweekly | monthly | bimonthly | custom
     frequency: Mapped[str] = mapped_column(String(20), default="monthly", nullable=False)
     custom_interval_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     beneficiaries_per_round: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    # Mode de calcul : "by_beneficiaries" (on fixe les bénéficiaires/tour → la
+    # durée en découle) ou "by_duration" (on fixe une durée max en nombre de
+    # séances → les bénéficiaires/tour en découlent = participants / target_rounds).
+    cycle_mode: Mapped[str] = mapped_column(
+        String(20), default="by_beneficiaries", nullable=False,
+        server_default="by_beneficiaries",
+    )
+    target_rounds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     # Le bénéficiaire d'un tour verse-t-il aussi sa cotisation à son propre tour ?
     beneficiary_pays: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # manual | random | seniority | vote | auction | need

@@ -878,7 +878,18 @@
     "cycleStartedHint": "Nach dem Start des Zyklus können keine Mitglieder mehr hinzugefügt werden. Namen können weiterhin auf der Tontine-Seite umbenannt werden.",
     "noDraftCycle": "Kein Entwurfszyklus",
     "noDraftCycleHint": "Für diese Tontine wird kein Zyklus konfiguriert.",
-    "configureFromButton": "Mitglieder und ihre Namen über die Schaltfläche Konfigurieren hinzufügen."
+    "configureFromButton": "Mitglieder und ihre Namen über die Schaltfläche Konfigurieren hinzufügen.",
+    "contributionKind": "Beitragsart",
+    "kindMoney": "Geld",
+    "kindAsset": "Sachwert (Gegenstand)",
+    "assetLabelPlaceholder": "Z. B. 25-kg-Sack Reis",
+    "assetQuantity": "Menge pro Mitglied / Runde",
+    "assetQuantityHint": "Anzahl Einheiten, die jedes Mitglied pro Runde beiträgt.",
+    "cycleMode": "Zyklusberechnung",
+    "modeByBeneficiaries": "Nach Begünstigten/Runde (Dauer abgeleitet)",
+    "modeByDuration": "Nach max. Dauer (Begünstigte abgeleitet)",
+    "targetRounds": "Max. Anzahl Sitzungen",
+    "targetRoundsHint": "Gewinner pro Sitzung = Teilnehmer ÷ Anzahl Sitzungen."
   },
   "finance": {
     "title": "Finanzen",

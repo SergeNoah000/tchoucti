@@ -878,7 +878,18 @@
     "cycleStartedHint": "On ne peut plus ajouter de membre une fois le cycle lancé. Vous pouvez encore renommer les noms depuis la page de la tontine.",
     "noDraftCycle": "Aucun cycle en brouillon",
     "noDraftCycleHint": "Il n'y a pas de cycle en cours de configuration pour cette tontine.",
-    "configureFromButton": "Ajoutez les membres et leurs noms depuis le bouton Configurer."
+    "configureFromButton": "Ajoutez les membres et leurs noms depuis le bouton Configurer.",
+    "contributionKind": "Nature de la cotisation",
+    "kindMoney": "Argent",
+    "kindAsset": "Avoir physique (objet)",
+    "assetLabelPlaceholder": "Ex : Sac de riz 25 kg",
+    "assetQuantity": "Quantité par membre / tour",
+    "assetQuantityHint": "Nombre d'unités cotisées par membre à chaque tour.",
+    "cycleMode": "Calcul du cycle",
+    "modeByBeneficiaries": "Par bénéficiaires/tour (durée déduite)",
+    "modeByDuration": "Par durée max (bénéficiaires déduits)",
+    "targetRounds": "Nombre de séances max",
+    "targetRoundsHint": "Le nombre de gagnants par séance est calculé : participants ÷ nombre de séances."
   },
   "finance": {
     "title": "Finances",

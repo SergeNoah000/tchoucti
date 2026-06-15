@@ -878,7 +878,18 @@
     "cycleStartedHint": "You can no longer add a member once the cycle has started. You can still rename names from the tontine page.",
     "noDraftCycle": "No draft cycle",
     "noDraftCycleHint": "There is no cycle being configured for this tontine.",
-    "configureFromButton": "Add members and their names from the Configure button."
+    "configureFromButton": "Add members and their names from the Configure button.",
+    "contributionKind": "Contribution type",
+    "kindMoney": "Money",
+    "kindAsset": "Physical asset (item)",
+    "assetLabelPlaceholder": "E.g. 25 kg bag of rice",
+    "assetQuantity": "Quantity per member / round",
+    "assetQuantityHint": "Number of units each member contributes per round.",
+    "cycleMode": "Cycle calculation",
+    "modeByBeneficiaries": "By beneficiaries/round (duration derived)",
+    "modeByDuration": "By max duration (beneficiaries derived)",
+    "targetRounds": "Max number of sessions",
+    "targetRoundsHint": "Winners per session = participants ÷ number of sessions."
   },
   "finance": {
     "title": "Finance",

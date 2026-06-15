@@ -3,7 +3,7 @@ from datetime import date, datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ── Inputs ──────────────────────────────────────────────────────────────────
@@ -14,13 +14,20 @@ class TontineCreate(BaseModel):
     association_id: UUID
     name: str = Field(..., min_length=2, max_length=150)
     description: Optional[str] = Field(None, max_length=500)
-    round_amount: int = Field(..., gt=0, description="Montant versé par participant à chaque tour")
+    round_amount: int = Field(..., gt=0, description="Montant (argent) OU quantité (avoir) par participant et par tour")
+
+    # Nature de la cotisation : argent ou avoir physique (nom + quantité, sans argent).
+    contribution_kind: str = Field("money", pattern=r"^(money|asset)$")
+    asset_label: Optional[str] = Field(None, max_length=120)
 
     # Cadence des séances/tours
     frequency: str = Field("monthly", pattern=r"^(weekly|biweekly|monthly|bimonthly|custom)$")
     custom_interval_days: Optional[int] = Field(None, ge=1, le=365)
 
+    # Mode de calcul du cycle.
+    cycle_mode: str = Field("by_beneficiaries", pattern=r"^(by_beneficiaries|by_duration)$")
     beneficiaries_per_round: int = Field(1, ge=1, le=20)
+    target_rounds: Optional[int] = Field(None, ge=1, le=120)  # nb max de séances (mode by_duration)
     beneficiary_pays: bool = True
     selection_method: str = Field("manual", pattern=r"^(manual|random|seniority|vote|auction|need)$")
 
@@ -37,6 +44,14 @@ class TontineCreate(BaseModel):
     excluded_membership_ids: List[UUID] = Field(default_factory=list)
     # Mélanger l'ordre de passage (tirage au sort).
     shuffle: bool = False
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.contribution_kind == "asset" and not (self.asset_label and self.asset_label.strip()):
+            raise ValueError("Le nom de l'avoir physique est requis.")
+        if self.cycle_mode == "by_duration" and not self.target_rounds:
+            raise ValueError("La durée max (nombre de séances) est requise en mode 'by_duration'.")
+        return self
 
 
 class NextCycleCreate(BaseModel):
@@ -123,9 +138,13 @@ class TontineOut(BaseModel):
     description: Optional[str]
     is_active: bool
     round_amount: int
+    contribution_kind: str = "money"
+    asset_label: Optional[str] = None
     frequency: str
     custom_interval_days: Optional[int]
+    cycle_mode: str = "by_beneficiaries"
     beneficiaries_per_round: int
+    target_rounds: Optional[int] = None
     beneficiary_pays: bool
     selection_method: str
     created_at: datetime

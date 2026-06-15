@@ -446,9 +446,13 @@ export const tontinesApi = {
     name: string;
     description?: string;
     round_amount: number;
+    contribution_kind?: "money" | "asset";
+    asset_label?: string;
     frequency: string; // weekly|biweekly|monthly|bimonthly|custom
     custom_interval_days?: number;
+    cycle_mode?: "by_beneficiaries" | "by_duration";
     beneficiaries_per_round?: number;
+    target_rounds?: number;
     beneficiary_pays?: boolean;
     selection_method?: string; // manual|random|seniority|vote|auction|need
     start_date: string;
