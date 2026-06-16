@@ -8,11 +8,13 @@ from .caisses_domain import CaissesDomainImporter
 from .loan_types import LoanTypesImporter
 from .members import MembersImporter
 from .tontines import TontinesImporter
+from .tontines_domain import TontinesDomainImporter
 
 # Ordre = ordre d'affichage / de dépendance recommandé.
 _IMPORTERS: list[Importer] = [
     MembersImporter(),
     CaissesDomainImporter(),
+    TontinesDomainImporter(),
     CaissesImporter(),
     LoanTypesImporter(),
     AidTypesImporter(),

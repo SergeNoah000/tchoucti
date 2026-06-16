@@ -218,10 +218,9 @@ class MembersImporter(Importer):
         if password is not None and len(password) < 6:
             errors.append("Mot de passe trop court (6 caractères minimum).")
 
-        # Un membre doit avoir un EMAIL (pour le lien d'activation) OU un mot de
-        # passe (connexion directe) — sinon le compte serait inaccessible.
-        if not email and not password:
-            errors.append("Email ou mot de passe requis (compte sinon inaccessible).")
+        # Sans email ni mot de passe, le membre est créé pour le suivi mais SANS
+        # accès (inactif). L'admin pourra lui ajouter un email/mot de passe plus
+        # tard. C'est utile pour migrer d'anciens membres (juste nom + numéro).
 
         if errors:
             return None, errors
