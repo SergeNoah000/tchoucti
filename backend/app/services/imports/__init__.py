@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from .aid_types import AidTypesImporter
+from .aides_domain import AidesDomainImporter
 from .base import Importer
 from .caisses import CaissesImporter
 from .caisses_domain import CaissesDomainImporter
@@ -17,6 +18,7 @@ _IMPORTERS: list[Importer] = [
     CaissesDomainImporter(),
     TontinesDomainImporter(),
     LoansDomainImporter(),
+    AidesDomainImporter(),
     CaissesImporter(),
     LoanTypesImporter(),
     AidTypesImporter(),

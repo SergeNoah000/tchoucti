@@ -69,9 +69,24 @@ class AidTypesImporter(Importer):
                 select(AidType.slug).where(AidType.association_id == association_id)
             )
         ).scalars().all()
+        fund_by_caisse = {c.id: c.fund_id for c in caisses}
+        existing = (
+            await db.execute(select(AidType).where(AidType.association_id == association_id))
+        ).scalars().all()
+        aid_type_by_name = {
+            at.name.strip().lower(): {
+                "id": at.id, "funding_mode": at.funding_mode,
+                "source_caisse_id": at.source_caisse_id,
+                "insurance_caisse_id": at.insurance_caisse_id,
+                "fund_id": fund_by_caisse.get(at.source_caisse_id or at.insurance_caisse_id),
+                "aid_ceiling_amount": at.aid_ceiling_amount,
+            }
+            for at in existing
+        }
         return {
             "caisses_by_name": {c.name.strip().lower(): c for c in caisses},
             "slugs": set(slugs),
+            "aid_type_by_name": aid_type_by_name,
         }
 
     async def validate_row(self, db, association_id, values, ctx):
@@ -132,6 +147,17 @@ class AidTypesImporter(Importer):
         db.add(at)
         await db.flush()
 
+        # Alimente le cache de liaison (classeur Aides).
+        cby = ctx.get("caisses_by_name", {})
+        caisse_id = payload["source_caisse_id"] or payload["insurance_caisse_id"]
+        fund_id = next((c.fund_id for c in cby.values() if c.id == caisse_id), None)
+        ctx.setdefault("aid_type_by_name", {})[payload["name"].strip().lower()] = {
+            "id": at.id, "funding_mode": payload["funding_mode"],
+            "source_caisse_id": payload["source_caisse_id"],
+            "insurance_caisse_id": payload["insurance_caisse_id"],
+            "fund_id": fund_id, "aid_ceiling_amount": payload["aid_ceiling_amount"],
+        }
+
         await upsert_aid_type_activity(
             db,
             association_id=association_id,
@@ -140,4 +166,13 @@ class AidTypesImporter(Importer):
             slug=payload["slug"],
             member_contribution_amount=0,
             is_recurring=False,
+        )
+
+    async def preview_register(self, payload, ctx):
+        ctx.setdefault("aid_type_by_name", {}).setdefault(
+            payload["name"].strip().lower(),
+            {"id": "__preview__", "funding_mode": payload["funding_mode"],
+             "source_caisse_id": payload["source_caisse_id"],
+             "insurance_caisse_id": payload["insurance_caisse_id"],
+             "fund_id": "__preview__", "aid_ceiling_amount": payload["aid_ceiling_amount"]},
         )
