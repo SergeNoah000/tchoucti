@@ -95,12 +95,25 @@ class CaissesImporter(Importer):
         assoc = (
             await db.execute(select(Association).where(Association.id == association_id))
         ).scalar_one()
-        existing = (
+        rows = (
             await db.execute(
-                select(Caisse.slug).where(Caisse.association_id == association_id)
+                select(Caisse.id, Caisse.name, Caisse.slug, Caisse.category, Caisse.fund_id).where(
+                    Caisse.association_id == association_id
+                )
             )
-        ).scalars().all()
-        return {"assoc": assoc, "slugs": set(existing)}
+        ).all()
+        # Cache de liaison partagé : nom/slug (minuscule) → infos caisse, pour
+        # que la feuille « mouvements » résolve la caisse cible.
+        caisse_by_key: dict = {}
+        for cid, cname, cslug, ccat, cfund in rows:
+            info = {"id": cid, "fund_id": cfund, "category": ccat.value if hasattr(ccat, "value") else ccat}
+            caisse_by_key[(cname or "").strip().lower()] = info
+            caisse_by_key[(cslug or "").strip().lower()] = info
+        return {
+            "assoc": assoc,
+            "slugs": {s for _, _, s, _, _ in rows},
+            "caisse_by_key": caisse_by_key,
+        }
 
     async def validate_row(self, db, association_id, values, ctx):
         errors: list[str] = []
@@ -150,6 +163,13 @@ class CaissesImporter(Importer):
             "objective_deadline": deadline,
         }, []
 
+    async def preview_register(self, payload, ctx):
+        # Aperçu : simule la caisse pour la feuille « mouvements ».
+        info = {"id": "__preview__", "fund_id": "__preview__", "category": payload["category"]}
+        cache = ctx.setdefault("caisse_by_key", {})
+        cache.setdefault(payload["name"].strip().lower(), info)
+        cache.setdefault(payload["slug"].strip().lower(), info)
+
     async def create_row(self, db, association_id, payload, ctx):
         assoc: Association = ctx["assoc"]
         treasury = await get_or_create_treasury(db, assoc)
@@ -185,6 +205,12 @@ class CaissesImporter(Importer):
         )
         db.add(caisse)
         await db.flush()
+
+        # Alimente le cache de liaison (classeurs multi-feuilles).
+        info = {"id": caisse.id, "fund_id": fund.id, "category": payload["category"]}
+        cache = ctx.setdefault("caisse_by_key", {})
+        cache[payload["name"].strip().lower()] = info
+        cache[payload["slug"].strip().lower()] = info
 
         await upsert_caisse_activity(
             db,

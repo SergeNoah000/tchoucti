@@ -616,16 +616,36 @@ export interface ImportRow {
   errors: string[];
   ok: boolean;
 }
-export interface ImportPreview {
-  entity: string;
+export interface ImportSheetPreview {
+  key: string;
+  title: string;
+  label: string;
   columns: ImportColumn[];
   rows: ImportRow[];
   total: number;
   valid: number;
   invalid: number;
 }
+export interface ImportPreview {
+  entity: string;
+  sheets: ImportSheetPreview[];
+  total: number;
+  valid: number;
+  invalid: number;
+  // Compat mono-feuille (1re feuille).
+  columns: ImportColumn[];
+  rows: ImportRow[];
+}
+export interface ImportSheetCommit {
+  key: string;
+  title: string;
+  created: number;
+  failed: number;
+  errors: ImportRow[];
+}
 export interface ImportCommitResult {
   entity: string;
+  sheets: ImportSheetCommit[];
   created: number;
   failed: number;
   errors: ImportRow[];

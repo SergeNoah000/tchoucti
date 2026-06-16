@@ -70,7 +70,17 @@ class Importer:
     label: str = ""               # libellé (ex. "Membres")
     description: str = ""         # phrase d'aide
     sheet_title: str = "Données"
+    sheet_key: str = ""           # clé de feuille (défaut : entity)
     columns: list[ImportColumn] = []
+
+    @property
+    def sheets(self) -> list["Importer"]:
+        """Feuilles composant ce classeur. Un importer simple = une feuille."""
+        return [self]
+
+    @property
+    def key(self) -> str:
+        return self.sheet_key or self.entity
 
     # ── À implémenter par les sous-classes ───────────────────────────────────
     async def validate_row(
@@ -96,12 +106,27 @@ class Importer:
         """Hook exécuté APRÈS le commit global (envoi de mails, etc.)."""
         return None
 
+    async def preview_register(self, payload: dict, ctx: dict) -> None:
+        """APERÇU uniquement : enregistre dans les caches partagés ce que cette
+        ligne CRÉERAIT (clé de liaison), pour que les feuilles aval valident
+        comme si l'amont existait — sans rien écrire en base. À surcharger pour
+        les feuilles « config » référencées par d'autres feuilles."""
+        return None
+
     # ── Template .xlsx ───────────────────────────────────────────────────────
     def build_template(self) -> bytes:
+        """Classeur : un onglet par feuille (self.sheets)."""
         wb = Workbook()
-        ws = wb.active
-        ws.title = self.sheet_title[:31]
+        wb.remove(wb.active)
+        for sheet in self.sheets:
+            ws = wb.create_sheet(title=sheet.sheet_title[:31])
+            sheet._render_template_ws(ws)
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
 
+    def _render_template_ws(self, ws) -> None:
+        """Remplit un onglet avec les colonnes de CETTE feuille."""
         header_fill = PatternFill("solid", fgColor="0F766E")
         req_fill = PatternFill("solid", fgColor="B45309")
         header_font = Font(bold=True, color="FFFFFF")
@@ -147,16 +172,17 @@ class Importer:
 
         ws.freeze_panes = "A2"
 
-        buf = io.BytesIO()
-        wb.save(buf)
-        return buf.getvalue()
-
     # ── Parsing d'un fichier re-uploadé ──────────────────────────────────────
     def parse(self, data: bytes) -> list[dict[str, Any]]:
-        """Lit le .xlsx : mappe les en-têtes → clés internes, ignore la ligne
-        d'exemple et les lignes vides. Renvoie une liste de dicts normalisés."""
+        """Lit l'onglet de CETTE feuille (par titre, sinon le 1er) et renvoie
+        ses lignes normalisées (ignore la ligne d'exemple/les lignes vides)."""
         wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-        ws = wb.active
+        ws = wb[self.sheet_title] if self.sheet_title in wb.sheetnames else wb.active
+        return self._parse_ws(ws)
+
+    def _parse_ws(self, ws) -> list[dict[str, Any]]:
+        if ws is None:
+            return []
         rows = list(ws.iter_rows(values_only=True))
         if not rows:
             return []
@@ -189,3 +215,30 @@ class Importer:
         if not ex:
             return False
         return all(values.get(k) == v for k, v in ex.items())
+
+
+class DomainImporter(Importer):
+    """Classeur multi-feuilles (un domaine : Caisses, Tontines, Prêts, Aides).
+
+    `sheet_importers` est la liste ORDONNÉE des feuilles. Le ctx est PARTAGÉ
+    entre toutes les feuilles (caches de liaison : membres par n°, caisses par
+    nom, références…) afin que les feuilles « mouvements » résolvent ce que les
+    feuilles « config » ont créé.
+    """
+
+    sheet_importers: list[Importer] = []
+
+    @property
+    def sheets(self) -> list[Importer]:
+        return self.sheet_importers
+
+    async def new_ctx(self, db: AsyncSession, association_id) -> dict:
+        # Un seul ctx PLAT partagé par toutes les feuilles : chaque feuille y
+        # lit/écrit ses caches (assoc, slugs, seen_*, et les caches de liaison
+        # membership_by_number, caisse_by_name… alimentés par les create_row).
+        ctx: dict = {}
+        for sh in self.sheets:
+            sub = await sh.new_ctx(db, association_id)
+            for k, v in sub.items():
+                ctx.setdefault(k, v)
+        return ctx

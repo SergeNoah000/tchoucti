@@ -4,6 +4,7 @@ from __future__ import annotations
 from .aid_types import AidTypesImporter
 from .base import Importer
 from .caisses import CaissesImporter
+from .caisses_domain import CaissesDomainImporter
 from .loan_types import LoanTypesImporter
 from .members import MembersImporter
 from .tontines import TontinesImporter
@@ -11,6 +12,7 @@ from .tontines import TontinesImporter
 # Ordre = ordre d'affichage / de dépendance recommandé.
 _IMPORTERS: list[Importer] = [
     MembersImporter(),
+    CaissesDomainImporter(),
     CaissesImporter(),
     LoanTypesImporter(),
     AidTypesImporter(),

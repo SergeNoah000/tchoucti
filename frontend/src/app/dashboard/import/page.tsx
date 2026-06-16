@@ -206,40 +206,61 @@ export default function ImportPage() {
               {preview.total === 0 ? (
                 <EmptyState icon={AlertTriangle} title={t("noRows")} />
               ) : (
-                <div className="max-h-[420px] overflow-auto rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                      <tr>
-                        <th className="px-3 py-2 font-medium">#</th>
-                        <th className="px-3 py-2 font-medium">{t("statusCol")}</th>
-                        {preview.columns.map((c) => (
-                          <th key={c.key} className="px-3 py-2 font-medium whitespace-nowrap">{c.header}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {preview.rows.map((r) => (
-                        <tr key={r.index} className={cn(!r.ok && "bg-destructive/5")}>
-                          <td className="px-3 py-2 text-muted-foreground">{r.index}</td>
-                          <td className="px-3 py-2">
-                            {r.ok ? (
-                              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                            ) : (
-                              <span title={r.errors.join(" ")} className="flex items-center gap-1 text-destructive">
-                                <AlertTriangle className="h-4 w-4 shrink-0" />
-                                <span className="text-xs">{r.errors.join(" ")}</span>
-                              </span>
+                <div className="space-y-5">
+                  {preview.sheets
+                    .filter((s) => s.total > 0)
+                    .map((sheet) => (
+                      <div key={sheet.key} className="space-y-1.5">
+                        {preview.sheets.length > 1 && (
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <span>{sheet.label}</span>
+                            <Badge variant="secondary" className="text-[10px]">
+                              {t("rowsValid", { n: sheet.valid })}
+                            </Badge>
+                            {sheet.invalid > 0 && (
+                              <Badge variant="destructive" className="text-[10px]">
+                                {t("rowsInvalid", { n: sheet.invalid })}
+                              </Badge>
                             )}
-                          </td>
-                          {preview.columns.map((c) => (
-                            <td key={c.key} className="px-3 py-2 whitespace-nowrap">
-                              {String(r.values[c.key] ?? "")}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </div>
+                        )}
+                        <div className="max-h-[360px] overflow-auto rounded-lg border border-border">
+                          <table className="w-full text-sm">
+                            <thead className="sticky top-0 bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                              <tr>
+                                <th className="px-3 py-2 font-medium">#</th>
+                                <th className="px-3 py-2 font-medium">{t("statusCol")}</th>
+                                {sheet.columns.map((c) => (
+                                  <th key={c.key} className="px-3 py-2 font-medium whitespace-nowrap">{c.header}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {sheet.rows.map((r) => (
+                                <tr key={r.index} className={cn(!r.ok && "bg-destructive/5")}>
+                                  <td className="px-3 py-2 text-muted-foreground">{r.index}</td>
+                                  <td className="px-3 py-2">
+                                    {r.ok ? (
+                                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                    ) : (
+                                      <span title={r.errors.join(" ")} className="flex items-center gap-1 text-destructive">
+                                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                                        <span className="text-xs">{r.errors.join(" ")}</span>
+                                      </span>
+                                    )}
+                                  </td>
+                                  {sheet.columns.map((c) => (
+                                    <td key={c.key} className="px-3 py-2 whitespace-nowrap">
+                                      {String(r.values[c.key] ?? "")}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ))}
                 </div>
               )}
 

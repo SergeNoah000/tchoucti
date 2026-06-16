@@ -151,11 +151,23 @@ class MembersImporter(Importer):
             await db.execute(select(Association).where(Association.id == association_id))
         ).scalar_one()
         roles = (await db.execute(select(Role))).scalars().all()
+        # Cache de liaison partagé (classeurs multi-feuilles) : n° d'adhérent →
+        # membership_id. Préchargé avec les membres existants ; alimenté à la
+        # création. Les feuilles « mouvements » s'en servent pour résoudre.
+        existing = (
+            await db.execute(
+                select(Membership.member_number, Membership.id).where(
+                    Membership.association_id == association_id,
+                    Membership.member_number.isnot(None),
+                )
+            )
+        ).all()
         return {
             "assoc": assoc,
             "roles_by_code": {r.code: r for r in roles},
             "seen_emails": set(),
             "seen_numbers": set(),
+            "membership_by_number": {num: mid for num, mid in existing},
         }
 
     async def validate_row(self, db, association_id, values, ctx):
@@ -233,6 +245,12 @@ class MembersImporter(Importer):
             "notes": values.get("notes"),
         }, []
 
+    async def preview_register(self, payload, ctx):
+        # Aperçu : simule la liaison n° → membre (id factice) pour les feuilles aval.
+        num = payload.get("member_number")
+        if num:
+            ctx.setdefault("membership_by_number", {}).setdefault(num, "__preview__")
+
     async def create_row(self, db, association_id, payload, ctx):
         assoc: Association = ctx["assoc"]
 
@@ -309,6 +327,10 @@ class MembersImporter(Importer):
         )
         db.add(membership)
         await db.flush()
+
+        # Alimente le cache de liaison (classeurs multi-feuilles).
+        if payload["member_number"]:
+            ctx.setdefault("membership_by_number", {})[payload["member_number"]] = membership.id
 
         now = datetime.now(timezone.utc)
         for code in payload["role_codes"]:

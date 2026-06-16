@@ -43,8 +43,10 @@ class RowOut(BaseModel):
     ok: bool
 
 
-class PreviewOut(BaseModel):
-    entity: str
+class SheetPreviewOut(BaseModel):
+    key: str
+    title: str
+    label: str
     columns: list[ColumnOut]
     rows: list[RowOut]
     total: int
@@ -52,11 +54,31 @@ class PreviewOut(BaseModel):
     invalid: int
 
 
-class CommitOut(BaseModel):
+class PreviewOut(BaseModel):
     entity: str
+    sheets: list[SheetPreviewOut]
+    total: int
+    valid: int
+    invalid: int
+    # Compat mono-feuille (1re feuille) — l'UI actuelle peut continuer à lire ça.
+    columns: list[ColumnOut] = []
+    rows: list[RowOut] = []
+
+
+class SheetCommitOut(BaseModel):
+    key: str
+    title: str
     created: int
     failed: int
     errors: list[RowOut]
+
+
+class CommitOut(BaseModel):
+    entity: str
+    sheets: list[SheetCommitOut] = []
+    created: int
+    failed: int
+    errors: list[RowOut] = []
 
 
 def _require_importer(entity: str):
@@ -111,29 +133,51 @@ async def preview_import(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_association_admin_for),
 ):
-    """Dry-run : valide chaque ligne sans rien créer."""
+    """Dry-run : valide chaque feuille du classeur sans rien créer."""
     imp = _require_importer(entity)
     data = await _read_xlsx(file)
-    raw_rows = imp.parse(data)
     ctx = await imp.new_ctx(db, association_id)
 
-    rows: list[RowOut] = []
-    valid = 0
-    for idx, values in enumerate(raw_rows, start=1):
-        if imp._is_example_row(values):
-            continue
-        _payload, errs = await imp.validate_row(db, association_id, values, ctx)
-        ok = not errs
-        valid += 1 if ok else 0
-        rows.append(RowOut(index=idx, values=values, errors=errs, ok=ok))
+    sheets_out: list[SheetPreviewOut] = []
+    g_total = g_valid = 0
+    for sheet in imp.sheets:
+        raw_rows = sheet.parse(data)
+        rows: list[RowOut] = []
+        valid = 0
+        for idx, values in enumerate(raw_rows, start=1):
+            if sheet._is_example_row(values):
+                continue
+            payload, errs = await sheet.validate_row(db, association_id, values, ctx)
+            ok = not errs
+            if ok and payload is not None:
+                # Simule la création (cache partagé) pour valider les feuilles aval.
+                await sheet.preview_register(payload, ctx)
+            valid += 1 if ok else 0
+            rows.append(RowOut(index=idx, values=values, errors=errs, ok=ok))
+        sheets_out.append(
+            SheetPreviewOut(
+                key=sheet.key,
+                title=sheet.sheet_title,
+                label=sheet.label or sheet.sheet_title,
+                columns=[ColumnOut(key=c.key, header=c.header, required=c.required) for c in sheet.columns],
+                rows=rows,
+                total=len(rows),
+                valid=valid,
+                invalid=len(rows) - valid,
+            )
+        )
+        g_total += len(rows)
+        g_valid += valid
 
+    first = sheets_out[0] if sheets_out else None
     return PreviewOut(
         entity=entity,
-        columns=[ColumnOut(key=c.key, header=c.header, required=c.required) for c in imp.columns],
-        rows=rows,
-        total=len(rows),
-        valid=valid,
-        invalid=len(rows) - valid,
+        sheets=sheets_out,
+        total=g_total,
+        valid=g_valid,
+        invalid=g_total - g_valid,
+        columns=first.columns if first else [],
+        rows=first.rows if first else [],
     )
 
 
@@ -145,36 +189,52 @@ async def commit_import(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_association_admin_for),
 ):
-    """Crée réellement les lignes valides. Une ligne en erreur est ignorée et
-    rapportée, sans annuler les lignes déjà créées."""
+    """Crée réellement les lignes valides, feuille par feuille (ordre du
+    classeur). Une ligne en erreur est ignorée et rapportée, sans annuler le
+    reste. Le ctx est partagé : une feuille « mouvements » résout ce que les
+    feuilles « config » ont créé."""
     imp = _require_importer(entity)
     data = await _read_xlsx(file)
-    raw_rows = imp.parse(data)
     ctx = await imp.new_ctx(db, association_id)
 
-    created = 0
-    errors: list[RowOut] = []
-    for idx, values in enumerate(raw_rows, start=1):
-        if imp._is_example_row(values):
-            continue
-        payload, errs = await imp.validate_row(db, association_id, values, ctx)
-        if errs:
-            errors.append(RowOut(index=idx, values=values, errors=errs, ok=False))
-            continue
-        try:
-            async with db.begin_nested():
-                await imp.create_row(db, association_id, payload, ctx)
-            created += 1
-        except Exception as exc:  # noqa: BLE001 — on rapporte l'erreur par ligne
-            errors.append(
-                RowOut(index=idx, values=values, errors=[str(exc)], ok=False)
+    sheets_out: list[SheetCommitOut] = []
+    g_created = g_failed = 0
+    for sheet in imp.sheets:
+        raw_rows = sheet.parse(data)
+        created = 0
+        errors: list[RowOut] = []
+        for idx, values in enumerate(raw_rows, start=1):
+            if sheet._is_example_row(values):
+                continue
+            payload, errs = await sheet.validate_row(db, association_id, values, ctx)
+            if errs:
+                errors.append(RowOut(index=idx, values=values, errors=errs, ok=False))
+                continue
+            try:
+                async with db.begin_nested():
+                    await sheet.create_row(db, association_id, payload, ctx)
+                created += 1
+            except Exception as exc:  # noqa: BLE001 — on rapporte l'erreur par ligne
+                errors.append(RowOut(index=idx, values=values, errors=[str(exc)], ok=False))
+        sheets_out.append(
+            SheetCommitOut(
+                key=sheet.key, title=sheet.sheet_title,
+                created=created, failed=len(errors), errors=errors,
             )
+        )
+        g_created += created
+        g_failed += len(errors)
 
     await db.commit()
-    # Hook post-commit (ex. envoi des mails de bienvenue/activation pour les
-    # membres). Les erreurs d'envoi ne doivent pas faire échouer l'import.
-    try:
-        await imp.after_commit(db, ctx)
-    except Exception:  # noqa: BLE001
-        pass
-    return CommitOut(entity=entity, created=created, failed=len(errors), errors=errors)
+    # Hook post-commit (ex. envoi des mails de bienvenue/activation).
+    for sheet in imp.sheets:
+        try:
+            await sheet.after_commit(db, ctx)
+        except Exception:  # noqa: BLE001
+            pass
+
+    all_errors = [e for s in sheets_out for e in s.errors]
+    return CommitOut(
+        entity=entity, sheets=sheets_out,
+        created=g_created, failed=g_failed, errors=all_errors,
+    )
