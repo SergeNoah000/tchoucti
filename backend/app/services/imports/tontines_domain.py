@@ -410,7 +410,7 @@ class TontineWinnersSheet(Importer):
                         occurred_on=payload["paid_date"], source_type="import_tontine_payout",
                         source_id=rk["round_id"], recorded_by_id=None,
                         related_membership_id=payload["membership_id"],
-                        description="Versement tontine (import)", commit=False,
+                        description="Versement tontine (import)", commit=False, allow_overdraw=True,
                     )
 
 

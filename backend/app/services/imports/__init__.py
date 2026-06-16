@@ -6,6 +6,7 @@ from .base import Importer
 from .caisses import CaissesImporter
 from .caisses_domain import CaissesDomainImporter
 from .loan_types import LoanTypesImporter
+from .loans_domain import LoansDomainImporter
 from .members import MembersImporter
 from .tontines import TontinesImporter
 from .tontines_domain import TontinesDomainImporter
@@ -15,6 +16,7 @@ _IMPORTERS: list[Importer] = [
     MembersImporter(),
     CaissesDomainImporter(),
     TontinesDomainImporter(),
+    LoansDomainImporter(),
     CaissesImporter(),
     LoanTypesImporter(),
     AidTypesImporter(),

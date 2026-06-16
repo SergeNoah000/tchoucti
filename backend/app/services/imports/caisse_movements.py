@@ -166,7 +166,7 @@ class CaisseMovementsSheet(Importer):
             recorded_by_id=None,
             related_membership_id=payload["membership_id"],
             description=payload["label"] or ("Dépôt" if is_deposit else "Retrait"),
-            commit=False,
+            commit=False, allow_overdraw=True,
         )
 
         # Caisse PERSONAL : met à jour le solde individuel du membre.

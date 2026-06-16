@@ -79,9 +79,29 @@ class LoanTypesImporter(Importer):
                 select(LoanType.slug).where(LoanType.association_id == association_id)
             )
         ).scalars().all()
+        # Cache de liaison (classeur Prêts) : nom du type → infos (id, caisse
+        # source + son fonds, taux, durée). Préchargé avec les types existants.
+        existing = (
+            await db.execute(
+                select(LoanType).where(LoanType.association_id == association_id)
+            )
+        ).scalars().all()
+        caisse_fund = {c.id: c.fund_id for c in caisses}
+        loan_type_by_name = {
+            lt.name.strip().lower(): {
+                "id": lt.id,
+                "source_caisse_id": lt.source_caisse_id,
+                "fund_id": caisse_fund.get(lt.source_caisse_id),
+                "interest_rate_pct": lt.interest_rate_pct,
+                "late_fee_pct": lt.late_fee_pct,
+                "max_duration_months": lt.max_duration_months,
+            }
+            for lt in existing
+        }
         return {
             "caisses_by_name": {c.name.strip().lower(): c for c in caisses},
             "slugs": set(slugs),
+            "loan_type_by_name": loan_type_by_name,
         }
 
     async def validate_row(self, db, association_id, values, ctx):
@@ -145,3 +165,26 @@ class LoanTypesImporter(Importer):
         )
         db.add(lt)
         await db.flush()
+
+        # Alimente le cache de liaison (classeur Prêts).
+        caisse = ctx.get("caisses_by_name", {})
+        fund_id = None
+        for c in caisse.values():
+            if c.id == payload["source_caisse_id"]:
+                fund_id = c.fund_id
+                break
+        ctx.setdefault("loan_type_by_name", {})[payload["name"].strip().lower()] = {
+            "id": lt.id, "source_caisse_id": payload["source_caisse_id"], "fund_id": fund_id,
+            "interest_rate_pct": payload["interest_rate_pct"],
+            "late_fee_pct": payload["late_fee_pct"],
+            "max_duration_months": payload["max_duration_months"],
+        }
+
+    async def preview_register(self, payload, ctx):
+        ctx.setdefault("loan_type_by_name", {}).setdefault(
+            payload["name"].strip().lower(),
+            {"id": "__preview__", "source_caisse_id": payload["source_caisse_id"],
+             "fund_id": "__preview__", "interest_rate_pct": payload["interest_rate_pct"],
+             "late_fee_pct": payload["late_fee_pct"],
+             "max_duration_months": payload["max_duration_months"]},
+        )

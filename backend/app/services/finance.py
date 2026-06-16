@@ -104,6 +104,7 @@ async def post_movement(
     related_membership_id: Optional[UUID] = None,
     description: Optional[str] = None,
     commit: bool = True,
+    allow_overdraw: bool = False,
 ) -> TreasuryMovement:
     """Post a balanced movement.
 
@@ -135,12 +136,13 @@ async def post_movement(
         if credits[0].fund.id == debits[0].fund.id:
             raise HTTPException(422, "Les fonds source et destination doivent différer")
 
-    # Guard against overdrawing a fund.
-    for a in debits:
-        if a.fund.balance < a.amount:
-            raise HTTPException(
-                409, f"Solde insuffisant du fonds « {a.fund.name} »"
-            )
+    # Guard against overdrawing a fund (sauf import historique : allow_overdraw).
+    if not allow_overdraw:
+        for a in debits:
+            if a.fund.balance < a.amount:
+                raise HTTPException(
+                    409, f"Solde insuffisant du fonds « {a.fund.name} »"
+                )
 
     delta = amount if direction == MovementDirection.IN else (-amount if direction == MovementDirection.OUT else 0)
     new_treasury_balance = treasury.balance + delta
