@@ -110,11 +110,14 @@ export default function TontineDetailPage() {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: key });
 
+  const isAssetTontine = tontine?.contribution_kind === "asset";
   const payoutMutation = useMutation({
     mutationFn: ({ cycleId, roundId }: { cycleId: string; roundId: string }) =>
       tontinesApi.payout(cycleId, roundId),
     onSuccess: () => {
-      toast.success(t("payoutDone"));
+      // Avoir physique : servi immédiatement. Argent : préparé, en attente du
+      // trésorier (validation qui déclenche réellement le versement).
+      toast.success(isAssetTontine ? t("payoutDone") : t("payoutPreparedToast"));
       refresh();
     },
     onError: (err) => toast.error(extractError(err) ?? tCommon("error")),
@@ -222,6 +225,7 @@ export default function TontineDetailPage() {
           tontineId={id}
           onPayout={(roundId) => payoutMutation.mutate({ cycleId: current.id, roundId })}
           payoutPending={payoutMutation.isPending}
+          isAssetTontine={isAssetTontine}
           onCancel={() => cancelMutation.mutate(current.id)}
           fmt={fmt}
           t={t}
@@ -248,6 +252,7 @@ export default function TontineDetailPage() {
               tontineId={id}
               onPayout={() => {}}
               payoutPending={false}
+              isAssetTontine={isAssetTontine}
               onCancel={() => {}}
               fmt={fmt}
               t={t}
@@ -269,6 +274,7 @@ function CycleCard({
   tontineId,
   onPayout,
   payoutPending,
+  isAssetTontine,
   onCancel,
   fmt,
   t,
@@ -282,6 +288,7 @@ function CycleCard({
   tontineId: string;
   onPayout: (roundId: string) => void;
   payoutPending: boolean;
+  isAssetTontine: boolean;
   onCancel: () => void;
   fmt: ReturnType<typeof useFormatters>;
   t: ReturnType<typeof useTranslations>;
@@ -394,21 +401,23 @@ function CycleCard({
                     <AlertDialogTrigger asChild>
                       <Button size="sm" className="gap-1.5">
                         <HandCoins className="h-3.5 w-3.5" />
-                        {t("payout")}
+                        {isAssetTontine ? t("payout") : t("payoutPrepare")}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>{t("payoutConfirmTitle")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                          {t("payoutConfirmDesc", { round: r.round_number })}
+                          {isAssetTontine
+                            ? t("payoutConfirmDesc", { round: r.round_number })
+                            : t("payoutConfirmDescMoney", { round: r.round_number })}
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
                         <AlertDialogAction onClick={() => onPayout(r.id)} disabled={payoutPending}>
                           {payoutPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          {t("payout")}
+                          {isAssetTontine ? t("payout") : t("payoutPrepare")}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
