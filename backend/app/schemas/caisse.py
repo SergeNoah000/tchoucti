@@ -184,10 +184,13 @@ class CaisseWithdrawRequest(BaseModel):
 
 
 class CaisseWithdrawResponse(BaseModel):
-    movement_id: UUID
+    # movement_id est None tant que la sortie attend la validation du trésorier.
+    movement_id: Optional[UUID] = None
     amount: int
     apport_cum_after: int
     fund_balance_after: int
+    # True : demande créée, en attente de validation du trésorier (argent non sorti).
+    pending: bool = False
 
 
 class MyShareItem(BaseModel):

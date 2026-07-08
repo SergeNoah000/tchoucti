@@ -22,6 +22,7 @@ from app.api.v1 import (
     public,
     notifications,
     imports,
+    payouts,
 )
 
 api_router = APIRouter()
@@ -77,4 +78,5 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 
 # Imports en masse (templates Excel)
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
+api_router.include_router(payouts.router, prefix="/payouts", tags=["payouts"])
 

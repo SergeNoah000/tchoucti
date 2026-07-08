@@ -80,6 +80,8 @@ class SocialAidCaseOut(BaseModel):
     insurance_minimum: Optional[int] = None
     insurance_below_min: Optional[bool] = None
     per_member_share: Optional[int] = None
+    # True si un versement est préparé et attend la validation du trésorier.
+    pending_payout: bool = False
 
 
 class SocialAidCaseDetail(SocialAidCaseOut):

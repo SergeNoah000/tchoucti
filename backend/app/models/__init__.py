@@ -32,6 +32,13 @@ from app.models.finance import (  # noqa: F401
     LedgerEntry,
 )
 
+# Sorties d'argent — validation trésorier
+from app.models.payout_request import (  # noqa: F401
+    PayoutRequest,
+    PayoutKind,
+    PayoutRequestStatus,
+)
+
 # Caisse layer (config-v2) — user-facing wrapper around Fund
 from app.models.caisse import (  # noqa: F401
     Caisse,

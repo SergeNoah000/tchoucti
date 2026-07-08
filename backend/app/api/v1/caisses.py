@@ -18,10 +18,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
+    _user_has_bureau_role,
     get_current_user,
     get_db,
     require_association_admin_for,
 )
+from app.models.notification import NotificationKind
+from app.models.payout_request import PayoutKind, PayoutRequest
 from app.models.association import Association
 from app.models.caisse import (
     Caisse,
@@ -52,6 +55,8 @@ from app.schemas.caisse import (
 )
 from app.services.caisse_distribution import close_distribution_period
 from app.services.meeting_agenda import upsert_caisse_activity
+from app.services.notify import notify_users, treasurer_users_of
+from app.services import payouts
 
 router = APIRouter()
 
@@ -666,35 +671,87 @@ async def withdraw(
     if not fund or fund.balance < payload.amount:
         raise HTTPException(409, "Solde de la caisse insuffisant pour ce retrait.")
 
-    # Mouvement OUT
+    # PRÉPARE la sortie : aucun argent ne bouge tant que le trésorier n'a pas
+    # validé. On enregistre le contexte nécessaire à la finalisation.
+    await payouts.create_request(
+        db,
+        association_id=assoc.id,
+        kind=PayoutKind.CAISSE_WITHDRAWAL,
+        source_type="caisse_withdrawal",
+        source_id=caisse.id,
+        amount=payload.amount,
+        fund_id=fund.id,
+        related_membership_id=membership.id,
+        description=payload.note or f"Retrait apport — {caisse.name}",
+        prepared_by_id=current_user.id,
+        enforce_unique=False,  # plusieurs retraits d'une même caisse coexistent
+        commit=False,
+    )
+    validators = await treasurer_users_of(db, assoc.id)
+    await notify_users(
+        db,
+        users=validators,
+        kind=NotificationKind.WARNING,
+        title="Retrait de caisse à valider",
+        body=f"Un retrait de {payload.amount} {assoc.currency} "
+        f"(caisse {caisse.name}) attend votre validation.",
+        action_url="/dashboard/finance/validations",
+        association_id=assoc.id,
+    )
+    await db.commit()
+    return CaisseWithdrawResponse(
+        movement_id=None,
+        amount=payload.amount,
+        apport_cum_after=bal.apport_cum,
+        fund_balance_after=fund.balance,
+        pending=True,
+    )
+
+
+async def complete_caisse_withdrawal(
+    db: AsyncSession, request: PayoutRequest, current_user: User
+):
+    """Finalise un retrait de caisse validé : sort l'argent + décrémente l'apport
+    cumulé du cotisant. Appelé par le routeur de validation (payouts)."""
+    cres = await db.execute(select(Caisse).where(Caisse.id == request.source_id))
+    caisse = cres.scalar_one_or_none()
+    if not caisse:
+        raise HTTPException(404, "Caisse introuvable")
+    assoc = await _check_access(db, current_user, caisse.association_id)
+
+    amount = request.amount
+    bal_res = await db.execute(
+        select(CaisseContributorBalance).where(
+            CaisseContributorBalance.caisse_id == caisse.id,
+            CaisseContributorBalance.membership_id == request.related_membership_id,
+        )
+    )
+    bal = bal_res.scalar_one_or_none()
+    if bal is None or bal.apport_cum < amount:
+        raise HTTPException(409, "Apport cumulé insuffisant pour ce retrait.")
+
+    fund_res = await db.execute(select(Fund).where(Fund.id == caisse.fund_id))
+    fund = fund_res.scalar_one_or_none()
+    if not fund or fund.balance < amount:
+        raise HTTPException(409, "Solde de la caisse insuffisant pour ce retrait.")
+
     treasury = await get_or_create_treasury(db, assoc)
     movement = await post_movement(
         db,
         treasury=treasury,
         direction=MovementDirection.OUT,
-        amount=payload.amount,
-        allocations=[Allocation(fund=fund, is_credit=False, amount=payload.amount)],
+        amount=amount,
+        allocations=[Allocation(fund=fund, is_credit=False, amount=amount)],
         occurred_on=_date.today(),
         source_type="caisse_withdrawal",
         source_id=caisse.id,
         recorded_by_id=current_user.id,
-        related_membership_id=membership.id,
-        description=payload.note or f"Retrait apport — {caisse.name}",
+        related_membership_id=request.related_membership_id,
+        description=request.description or f"Retrait apport — {caisse.name}",
         commit=False,
     )
-
-    # Décrémente apport_cum + snapshot (pour ne pas surévaluer la prochaine base).
-    bal.apport_cum -= payload.amount
-    bal.apport_cum_at_period_start = max(
-        0, bal.apport_cum_at_period_start - payload.amount
-    )
-    await db.commit()
-    await db.refresh(fund)
-    return CaisseWithdrawResponse(
-        movement_id=movement.id,
-        amount=payload.amount,
-        apport_cum_after=bal.apport_cum,
-        fund_balance_after=fund.balance,
-    )
+    bal.apport_cum -= amount
+    bal.apport_cum_at_period_start = max(0, bal.apport_cum_at_period_start - amount)
+    return movement
 
 

@@ -32,6 +32,7 @@ from app.schemas.finance import (
     VoidRequest,
 )
 from app.services.finance import Allocation, get_or_create_treasury, post_movement, void_movement
+from app.services import payouts
 
 router = APIRouter()
 
@@ -252,6 +253,17 @@ async def create_movement(
         raise HTTPException(422, "Fonds introuvable dans cette caisse")
 
     direction = MovementDirection(payload.direction)
+
+    # Une SORTIE d'argent manuelle est réservée au trésorier (ou à l'admin) :
+    # c'est lui qui déclenche l'argent (cf. workflow de validation des sorties).
+    # Les entrées (IN) et transferts inter-fonds (XFER) ne quittent pas la caisse.
+    if direction == MovementDirection.OUT:
+        if not await payouts.user_can_validate_payout(db, current_user, assoc.id):
+            raise HTTPException(
+                403,
+                "Une sortie d'argent manuelle est réservée au trésorier "
+                "(ou à l'administrateur).",
+            )
 
     if direction == MovementDirection.IN:
         allocations = [Allocation(fund=fund, is_credit=True, amount=payload.amount)]

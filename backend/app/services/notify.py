@@ -43,6 +43,30 @@ async def bureau_users_of(db: AsyncSession, association_id: UUID) -> list[User]:
     return list(res.scalars().all())
 
 
+async def treasurer_users_of(db: AsyncSession, association_id: UUID) -> list[User]:
+    """Trésoriers (et admins d'association) d'une association, ACTIFS. Sert à
+    notifier les valideurs quand une sortie d'argent attend leur validation.
+    Repli sur tout le bureau si aucun trésorier n'est désigné."""
+    res = await db.execute(
+        select(User)
+        .distinct()
+        .join(Membership, Membership.user_id == User.id)
+        .join(MembershipRole, MembershipRole.membership_id == Membership.id)
+        .join(Role, Role.id == MembershipRole.role_id)
+        .where(
+            Membership.association_id == association_id,
+            Membership.status == MembershipStatus.ACTIVE,
+            Role.code.in_(("treasurer", "association_admin")),
+            User.is_active.is_(True),
+        )
+    )
+    users = list(res.scalars().all())
+    if users:
+        return users
+    # Aucun trésorier désigné → prévenir tout le bureau (repli).
+    return await bureau_users_of(db, association_id)
+
+
 async def notify_user(
     db: AsyncSession,
     *,

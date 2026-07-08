@@ -40,9 +40,16 @@ from app.schemas.loan import (
 )
 from app.core.config import settings
 from app.models.notification import NotificationKind
+from app.models.payout_request import PayoutKind, PayoutRequest
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.services.loan_calculator import compute_schedule
-from app.services.notify import bureau_users_of, notify_user, notify_users
+from app.services.notify import (
+    bureau_users_of,
+    notify_user,
+    notify_users,
+    treasurer_users_of,
+)
+from app.services import payouts
 
 router = APIRouter()
 
@@ -166,7 +173,16 @@ async def list_loans(
     if status_filter:
         stmt = stmt.where(Loan.status == LoanStatus(status_filter))
     res = await db.execute(stmt)
-    return [_loan_out(loan) for loan in res.scalars().all()]
+    loans = list(res.scalars().all())
+    pending = await payouts.pending_source_ids(
+        db, "loan_disbursement", [l.id for l in loans]
+    )
+    out = []
+    for loan in loans:
+        o = _loan_out(loan)
+        o.pending_payout = loan.id in pending
+        out.append(o)
+    return out
 
 
 @router.get("/{loan_id}", response_model=LoanDetail)
@@ -178,7 +194,11 @@ async def get_loan(
     loan = await _load_loan(db, loan_id)
     assoc = await _get_assoc_or_404(db, loan.association_id)
     _check_access(current_user, assoc)
-    return _loan_detail(loan)
+    detail = _loan_detail(loan)
+    detail.pending_payout = (
+        await payouts.pending_for_source(db, "loan_disbursement", loan.id)
+    ) is not None
+    return detail
 
 
 @router.post("", response_model=LoanDetail, status_code=status.HTTP_201_CREATED)
@@ -448,14 +468,62 @@ async def disburse_loan(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Disburse an approved loan — OUT `principal` from the GENERAL fund."""
+    """PRÉPARE le décaissement d'un prêt approuvé : crée une demande de sortie
+    EN ATTENTE. L'argent ne sort qu'à la validation du trésorier."""
     loan = await _load_loan(db, loan_id)
     assoc = await _get_assoc_or_404(db, loan.association_id)
     _check_access(current_user, assoc)
-    _require_admin(current_user)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Action réservée aux membres du bureau")
 
     if loan.status != LoanStatus.APPROVED:
         raise HTTPException(409, "Seul un prêt approuvé peut être décaissé")
+
+    treasury = await get_or_create_treasury(db, assoc)
+    fund = await _source_fund_for(db, loan, treasury)
+
+    await payouts.create_request(
+        db,
+        association_id=assoc.id,
+        kind=PayoutKind.LOAN_DISBURSEMENT,
+        source_type="loan_disbursement",
+        source_id=loan.id,
+        amount=loan.principal,
+        fund_id=fund.id,
+        related_membership_id=loan.borrower_membership_id,
+        description=f"Décaissement prêt {loan.reference}",
+        prepared_by_id=current_user.id,
+        commit=False,
+    )
+
+    # Prévenir le(s) trésorier(s) qu'une sortie attend leur validation.
+    validators = await treasurer_users_of(db, assoc.id)
+    await notify_users(
+        db,
+        users=validators,
+        kind=NotificationKind.WARNING,
+        title="Décaissement à valider",
+        body=f"Un décaissement de {loan.principal} {assoc.currency} "
+        f"(prêt {loan.reference}) attend votre validation.",
+        action_url="/dashboard/finance/validations",
+        association_id=assoc.id,
+    )
+    await db.commit()
+    loan = await _load_loan(db, loan_id)
+    detail = _loan_detail(loan)
+    detail.pending_payout = True
+    return detail
+
+
+async def complete_loan_disbursement(
+    db: AsyncSession, request: PayoutRequest, current_user: User
+):
+    """Finalise un décaissement validé : sort réellement l'argent + passe le
+    prêt en REMBOURSEMENT. Appelé par le routeur de validation (payouts)."""
+    loan = await _load_loan(db, request.source_id)
+    assoc = await _get_assoc_or_404(db, loan.association_id)
+    if loan.status != LoanStatus.APPROVED:
+        raise HTTPException(409, "Le prêt n'est plus dans un état décaissable")
 
     treasury = await get_or_create_treasury(db, assoc)
     fund = await _source_fund_for(db, loan, treasury)
@@ -474,13 +542,10 @@ async def disburse_loan(
         description=f"Décaissement prêt {loan.reference}",
         commit=False,
     )
-
     loan.disbursed_on = date.today()
     loan.disbursement_movement_id = movement.id
     loan.status = LoanStatus.REPAYING
-    await db.commit()
-    loan = await _load_loan(db, loan_id)
-    return _loan_detail(loan)
+    return movement
 
 
 @router.post("/{loan_id}/repay", response_model=LoanDetail)

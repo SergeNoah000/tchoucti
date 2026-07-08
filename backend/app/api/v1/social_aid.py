@@ -45,9 +45,16 @@ from app.models.meeting import (
     Meeting,
     MeetingActivityEntry,
 )
+from app.models.payout_request import PayoutKind, PayoutRequest
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.services.meeting_agenda import upsert_caisse_activity
-from app.services.notify import bureau_users_of, notify_user, notify_users
+from app.services.notify import (
+    bureau_users_of,
+    notify_user,
+    notify_users,
+    treasurer_users_of,
+)
+from app.services import payouts
 
 router = APIRouter()
 
@@ -318,6 +325,9 @@ async def _insurance_state(
 async def _build_case_detail(db: AsyncSession, case: SocialAidCase) -> SocialAidCaseDetail:
     """Détail d'un dossier + critère « caisse d'assurance » du bénéficiaire."""
     detail = _case_detail(case)
+    detail.pending_payout = (
+        await payouts.pending_for_source(db, "aid_payout", case.id)
+    ) is not None
     if case.aid_type_id is None:
         return detail
     at_res = await db.execute(select(AidType).where(AidType.id == case.aid_type_id))
@@ -359,6 +369,12 @@ async def list_cases(
     res = await db.execute(stmt)
     cases = list(res.scalars().all())
     outs = [_case_out(c) for c in cases]
+
+    pending = await payouts.pending_source_ids(
+        db, "aid_payout", [c.id for c in cases]
+    )
+    for out, c in zip(outs, cases):
+        out.pending_payout = c.id in pending
 
     # Critère « caisse d'assurance » : enrichit les dossiers liés à un type
     # member_insurance (solde de la caisse de débit du bénéficiaire vs minimum).
@@ -721,14 +737,71 @@ async def payout_case(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Pay out an approved case — OUT movement from the INSURANCE fund."""
+    """PRÉPARE le versement d'une aide approuvée : crée une demande de sortie
+    EN ATTENTE. L'argent ne sort qu'à la validation du trésorier."""
     case = await _load_case(db, case_id)
     assoc = await _get_assoc_or_404(db, case.association_id)
     _check_access(current_user, assoc)
-    _require_admin(current_user)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Action réservée aux membres du bureau")
 
     if case.status != SocialAidCaseStatus.APPROVED:
         raise HTTPException(409, "Seul un dossier approuvé peut être décaissé")
+    if case.approved_amount <= 0:
+        raise HTTPException(422, "Montant approuvé invalide")
+
+    treasury = await get_or_create_treasury(db, assoc)
+    # Fonds indicatif (non résolu pour le mode member_insurance).
+    fund_id = None
+    at_res0 = None
+    if case.aid_type_id is not None:
+        at_res0 = await db.execute(select(AidType).where(AidType.id == case.aid_type_id))
+        at0 = at_res0.scalar_one_or_none()
+        if not (at0 and getattr(at0, "funding_mode", "fixed") == "member_insurance"):
+            try:
+                fund_id = (await _source_fund_for(db, case, treasury)).id
+            except Exception:
+                fund_id = None
+
+    await payouts.create_request(
+        db,
+        association_id=assoc.id,
+        kind=PayoutKind.AID_PAYOUT,
+        source_type="aid_payout",
+        source_id=case.id,
+        amount=case.approved_amount,
+        fund_id=fund_id,
+        related_membership_id=case.beneficiary_membership_id,
+        description=f"Aide sociale {case.reference} — {case.title}",
+        prepared_by_id=current_user.id,
+        commit=False,
+    )
+    validators = await treasurer_users_of(db, assoc.id)
+    await notify_users(
+        db,
+        users=validators,
+        kind=NotificationKind.WARNING,
+        title="Versement d'aide à valider",
+        body=f"Un versement de {case.approved_amount} {assoc.currency} "
+        f"(aide {case.reference}) attend votre validation.",
+        action_url="/dashboard/finance/validations",
+        association_id=assoc.id,
+    )
+    await db.commit()
+    db.expire(case)
+    case = await _load_case(db, case_id)
+    return await _build_case_detail(db, case)
+
+
+async def complete_aid_payout(
+    db: AsyncSession, request: PayoutRequest, current_user: User
+):
+    """Finalise un versement d'aide validé : sort l'argent + passe le dossier en
+    PAYÉ. Appelé par le routeur de validation (payouts)."""
+    case = await _load_case(db, request.source_id)
+    assoc = await _get_assoc_or_404(db, case.association_id)
+    if case.status != SocialAidCaseStatus.APPROVED:
+        raise HTTPException(409, "Le dossier n'est plus dans un état décaissable")
     if case.approved_amount <= 0:
         raise HTTPException(422, "Montant approuvé invalide")
 
@@ -801,10 +874,8 @@ async def payout_case(
                 if act:
                     act.is_visible_in_meeting = False
 
-    await db.commit()
-    db.expire(case)  # recharge SEULEMENT le dossier (expire_all() expirait aussi
-    case = await _load_case(db, case_id)  # d'autres objets → MissingGreenlet)
-    return await _build_case_detail(db, case)
+    # Le routeur de validation (payouts) commit et notifie.
+    return movement
 
 
 # ── Phase 5 — historique des cotisations d'aides sociales ──────────────────

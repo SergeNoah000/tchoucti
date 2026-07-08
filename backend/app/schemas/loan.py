@@ -90,6 +90,8 @@ class LoanOut(BaseModel):
     status: str
     purpose: Optional[str]
     created_at: datetime
+    # True si un décaissement est préparé et attend la validation du trésorier.
+    pending_payout: bool = False
 
 
 class LoanDetail(LoanOut):

@@ -37,8 +37,12 @@ from app.models.tontine import (
     TontineRoundStatus,
 )
 from app.models.user import User
+from app.models.notification import NotificationKind
+from app.models.payout_request import PayoutKind, PayoutRequest
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.services.meeting_agenda import upsert_tontine_activity
+from app.services.notify import notify_users, treasurer_users_of
+from app.services import payouts
 from app.schemas.tontine import (
     BeneficiaryRename,
     CycleParticipantsUpdate,
@@ -778,6 +782,8 @@ async def payout_round(
     assoc = await _get_assoc_or_404(db, tontine.association_id)
     _check_access(current_user, assoc)
 
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Action réservée aux membres du bureau")
     if cycle.status != TontineCycleStatus.ACTIVE:
         raise HTTPException(409, "Le cycle n'est pas actif")
     rnd = next((r for r in cycle.rounds if r.id == round_id), None)
@@ -788,40 +794,60 @@ async def payout_round(
 
     pot = rnd.expected_amount
 
-    # Tontine en AVOIR PHYSIQUE : aucun mouvement de trésorerie (pas de fonds).
-    # On marque juste le tour comme servi (l'objet est remis au bénéficiaire).
+    # Tontine en AVOIR PHYSIQUE : aucun mouvement de trésorerie (pas d'argent),
+    # donc pas de validation trésorier — on sert l'objet immédiatement.
     if getattr(tontine, "contribution_kind", "money") == "asset":
         rnd.status = TontineRoundStatus.PAID_OUT
         rnd.paid_out_date = date.today()
         rnd.paid_out_amount = pot
         rnd.collected_amount = pot
-    else:
-        treasury = await get_or_create_treasury(db, assoc)
-        fund = await _get_tontine_fund(db, treasury, tontine)
-        if fund is None:
-            raise HTTPException(500, "Fonds tontine introuvable")
+        _advance_cycle_after_payout(cycle)
+        await db.commit()
+        cycle = await _load_cycle(db, cycle_id)
+        mm = await _meeting_map_for_cycle(db, cycle.id)
+        return _cycle_detail(cycle, mm)
 
-        related = rnd.beneficiaries[0].membership_id if len(rnd.beneficiaries) == 1 else None
-        movement = await post_movement(
-            db,
-            treasury=treasury,
-            direction=MovementDirection.OUT,
-            amount=pot,
-            allocations=[Allocation(fund=fund, is_credit=False, amount=pot)],
-            occurred_on=date.today(),
-            source_type="tontine_payout",
-            source_id=rnd.id,
-            recorded_by_id=current_user.id,
-            related_membership_id=related,
-            description=f"Tontine {tontine.name} — tour {rnd.round_number}",
-            commit=False,
-        )
-        rnd.status = TontineRoundStatus.PAID_OUT
-        rnd.paid_out_date = date.today()
-        rnd.paid_out_amount = pot
-        rnd.collected_amount = pot
-        rnd.payout_movement_id = movement.id
+    # Tontine EN ARGENT : on PRÉPARE la sortie ; le versement (et l'avancée du
+    # cycle) n'ont lieu qu'à la validation du trésorier.
+    treasury = await get_or_create_treasury(db, assoc)
+    fund = await _get_tontine_fund(db, treasury, tontine)
+    if fund is None:
+        raise HTTPException(500, "Fonds tontine introuvable")
+    related = rnd.beneficiaries[0].membership_id if len(rnd.beneficiaries) == 1 else None
 
+    await payouts.create_request(
+        db,
+        association_id=assoc.id,
+        kind=PayoutKind.TONTINE_PAYOUT,
+        source_type="tontine_payout",
+        source_id=rnd.id,
+        amount=pot,
+        fund_id=fund.id,
+        related_membership_id=related,
+        description=f"Tontine {tontine.name} — tour {rnd.round_number}",
+        prepared_by_id=current_user.id,
+        commit=False,
+    )
+    validators = await treasurer_users_of(db, assoc.id)
+    await notify_users(
+        db,
+        users=validators,
+        kind=NotificationKind.WARNING,
+        title="Versement tontine à valider",
+        body=f"Un versement de {pot} {assoc.currency} "
+        f"(tontine {tontine.name}, tour {rnd.round_number}) attend votre validation.",
+        action_url="/dashboard/finance/validations",
+        association_id=assoc.id,
+    )
+    await db.commit()
+    cycle = await _load_cycle(db, cycle_id)
+    mm = await _meeting_map_for_cycle(db, cycle.id)
+    return _cycle_detail(cycle, mm)
+
+
+def _advance_cycle_after_payout(cycle: TontineCycle) -> None:
+    """Après un tour servi : passe le tour PENDING suivant en COLLECTING, ou
+    clôt le cycle s'il n'en reste plus."""
     nxt = next(
         (r for r in sorted(cycle.rounds, key=lambda x: x.round_number)
          if r.status == TontineRoundStatus.PENDING),
@@ -833,10 +859,55 @@ async def payout_round(
     else:
         cycle.status = TontineCycleStatus.COMPLETED
 
-    await db.commit()
-    cycle = await _load_cycle(db, cycle_id)
-    mm = await _meeting_map_for_cycle(db, cycle.id)
-    return _cycle_detail(cycle, mm)
+
+async def complete_tontine_payout(
+    db: AsyncSession, request: PayoutRequest, current_user: User
+):
+    """Finalise un versement tontine validé : sort l'argent, marque le tour
+    servi et avance le cycle. Appelé par le routeur de validation (payouts)."""
+    rnd = (
+        await db.execute(select(TontineRound).where(TontineRound.id == request.source_id))
+    ).scalar_one_or_none()
+    if rnd is None:
+        raise HTTPException(404, "Tour introuvable")
+    cycle = await _load_cycle(db, rnd.cycle_id)
+    tontine = await _load_tontine(db, cycle.tontine_id)
+    assoc = await _get_assoc_or_404(db, tontine.association_id)
+    # Recharge le tour depuis le cycle (objets liés chargés).
+    rnd = next((r for r in cycle.rounds if r.id == request.source_id), None)
+    if rnd is None:
+        raise HTTPException(404, "Tour introuvable")
+    if rnd.status == TontineRoundStatus.PAID_OUT:
+        raise HTTPException(409, "Ce tour a déjà été versé")
+
+    pot = rnd.expected_amount
+    treasury = await get_or_create_treasury(db, assoc)
+    fund = await _get_tontine_fund(db, treasury, tontine)
+    if fund is None:
+        raise HTTPException(500, "Fonds tontine introuvable")
+    related = rnd.beneficiaries[0].membership_id if len(rnd.beneficiaries) == 1 else None
+
+    movement = await post_movement(
+        db,
+        treasury=treasury,
+        direction=MovementDirection.OUT,
+        amount=pot,
+        allocations=[Allocation(fund=fund, is_credit=False, amount=pot)],
+        occurred_on=date.today(),
+        source_type="tontine_payout",
+        source_id=rnd.id,
+        recorded_by_id=current_user.id,
+        related_membership_id=related,
+        description=f"Tontine {tontine.name} — tour {rnd.round_number}",
+        commit=False,
+    )
+    rnd.status = TontineRoundStatus.PAID_OUT
+    rnd.paid_out_date = date.today()
+    rnd.paid_out_amount = pot
+    rnd.collected_amount = pot
+    rnd.payout_movement_id = movement.id
+    _advance_cycle_after_payout(cycle)
+    return movement
 
 
 @router.post("/cycles/{cycle_id}/cancel", response_model=TontineCycleDetail)
