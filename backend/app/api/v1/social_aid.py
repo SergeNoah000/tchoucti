@@ -802,8 +802,8 @@ async def payout_case(
                     act.is_visible_in_meeting = False
 
     await db.commit()
-    db.expire_all()  # drop stale collections so the reload sees the new payout
-    case = await _load_case(db, case_id)
+    db.expire(case)  # recharge SEULEMENT le dossier (expire_all() expirait aussi
+    case = await _load_case(db, case_id)  # d'autres objets → MissingGreenlet)
     return await _build_case_detail(db, case)
 
 

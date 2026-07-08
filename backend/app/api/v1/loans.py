@@ -376,8 +376,13 @@ async def approve_loan(
         )
 
     await db.commit()
-    db.expire_all()  # drop stale collections so the reload sees new installments
-    loan = await _load_loan(db, loan_id)
+    db.expire(loan)  # recharge SEULEMENT le prêt (expire_all() expirait aussi
+    loan = await _load_loan(db, loan_id)  # `assoc` → MissingGreenlet ensuite)
+
+    # Construit le détail AVANT toute notification : notify_user(commit=True)
+    # committe et ré-expire le prêt, ce qui provoquait un lazy-load hors contexte
+    # async (MissingGreenlet) au moment de sérialiser.
+    result = _loan_detail(loan)
 
     # Notifie l'emprunteur de l'approbation.
     borrower_user = getattr(loan.borrower, "user", None)
@@ -395,7 +400,7 @@ async def approve_loan(
             send_mail=True,
             commit=True,
         )
-    return _loan_detail(loan)
+    return result
 
 
 @router.post("/{loan_id}/reject", response_model=LoanDetail)
@@ -418,6 +423,7 @@ async def reject_loan(
     loan.notes = payload.reason
     await db.commit()
     loan = await _load_loan(db, loan_id)
+    result = _loan_detail(loan)  # avant la notif (commit=True ré-expire le prêt)
 
     borrower_user = getattr(loan.borrower, "user", None)
     if borrower_user:
@@ -433,7 +439,7 @@ async def reject_loan(
             send_mail=True,
             commit=True,
         )
-    return _loan_detail(loan)
+    return result
 
 
 @router.post("/{loan_id}/disburse", response_model=LoanDetail)
@@ -589,6 +595,6 @@ async def repay_loan(
         loan.closed_on = paid_on
 
     await db.commit()
-    db.expire_all()  # drop stale collections so the reload sees the new repayment
+    db.expire(loan)  # recharge SEULEMENT le prêt (voir approve_loan)
     loan = await _load_loan(db, loan_id)
     return _loan_detail(loan)

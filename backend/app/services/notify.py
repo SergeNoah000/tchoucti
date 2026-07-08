@@ -60,9 +60,17 @@ async def notify_user(
 
     Le caller commit (ou passe commit=True). Email best-effort.
     """
+    # Capture les attributs de l'utilisateur AVANT tout commit : un commit
+    # expire les objets ORM, et y accéder ensuite (pour l'email) déclencherait
+    # un lazy-load hors contexte async (MissingGreenlet).
+    user_id = user.id
+    user_email = user.email
+    user_name = user.full_name
+    user_active = user.is_active
+
     try:
         notif = Notification(
-            user_id=user.id,
+            user_id=user_id,
             association_id=association_id,
             kind=kind,
             title=title,
@@ -77,13 +85,13 @@ async def notify_user(
         else:
             await db.flush()
     except Exception:  # pragma: no cover — ne bloque jamais le flux métier.
-        logger.exception("Échec de création de notification in-app pour %s", user.id)
+        logger.exception("Échec de création de notification in-app pour %s", user_id)
         notif = None
 
-    if send_mail and user.email and user.is_active:
+    if send_mail and user_email and user_active:
         try:
             html = (
-                f"<p style='margin:0 0 12px;font-size:18px;font-weight:600;'>Bonjour {user.full_name},</p>"
+                f"<p style='margin:0 0 12px;font-size:18px;font-weight:600;'>Bonjour {user_name},</p>"
                 f"<p style='margin:0 0 16px;'>{body or title}</p>"
                 + (
                     f"<p style='margin:16px 0 0;text-align:center;'><a href='{action_url}' "
@@ -95,16 +103,16 @@ async def notify_user(
             from app.services.mailer import _wrap_html
 
             await send_email(
-                to=user.email,
+                to=user_email,
                 subject=title,
-                text_body=f"Bonjour {user.full_name},\n\n{body or title}\n"
+                text_body=f"Bonjour {user_name},\n\n{body or title}\n"
                 + (f"\n{action_url}\n" if action_url else ""),
                 html_body=_wrap_html(html),
             )
         except MailError:
             pass
         except Exception:  # pragma: no cover
-            logger.exception("Échec d'envoi d'email de notification à %s", user.email)
+            logger.exception("Échec d'envoi d'email de notification à %s", user_email)
 
     return notif
 

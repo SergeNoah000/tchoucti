@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { ArrowLeft, AlertCircle, Eye, EyeOff, Sparkles, Copy, Check } from "lucide-react";
+import { ArrowLeft, AlertCircle, Eye, EyeOff } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,24 +36,6 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [expired, setExpired] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
-  const [revealDemoPasswords, setRevealDemoPasswords] = useState(false);
-
-  const demoAccounts = [
-    { label: "Super Admin", email: "admin@tchoucti.cm", password: "admin123", accent: "from-violet-500 to-fuchsia-500" },
-    { label: "Admin Groupement", email: "admin@demo.tchoucti.cm", password: "groupement123", accent: "from-sky-500 to-cyan-500" },
-    { label: "Admin Association", email: "secretaire@demo.tchoucti.cm", password: "assoc123", accent: "from-emerald-500 to-teal-500" },
-    { label: "Membre", email: "membre@demo.tchoucti.cm", password: "membre123", accent: "from-amber-500 to-orange-500" },
-  ];
-
-  const fillDemo = (i: number) => {
-    const a = demoAccounts[i];
-    setEmail(a.email);
-    setPassword(a.password);
-    setError("");
-    setCopiedIdx(i);
-    setTimeout(() => setCopiedIdx(null), 1500);
-  };
 
 
   useEffect(() => {
@@ -181,55 +163,6 @@ export default function LoginPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Demo accounts panel */}
-        <div className="mt-6 rounded-xl border border-border/60 bg-card/50 p-4 backdrop-blur-sm">
-          <div className="mb-3 flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-              <Sparkles className="h-3.5 w-3.5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold leading-tight">{t("demoTitle")}</p>
-              <p className="text-xs text-muted-foreground">{t("demoSubtitle")}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setRevealDemoPasswords((v) => !v)}
-              className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              aria-pressed={revealDemoPasswords}
-            >
-              {revealDemoPasswords ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              {revealDemoPasswords ? t("hidePasswords") : t("revealPasswords")}
-            </button>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {demoAccounts.map((a, i) => (
-              <button
-                key={a.email}
-                type="button"
-                onClick={() => fillDemo(i)}
-                disabled={isLoading}
-                className="group relative flex flex-col items-start gap-1 overflow-hidden rounded-lg border border-border/60 bg-background/70 p-3 text-left transition-all hover:border-brand-300 hover:shadow-md disabled:opacity-50 dark:hover:border-brand-700"
-              >
-                <span className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${a.accent}`} />
-                <div className="flex w-full items-center justify-between">
-                  <span className="text-xs font-semibold">{a.label}</span>
-                  {copiedIdx === i ? (
-                    <Check className="h-3.5 w-3.5 text-emerald-600" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                  )}
-                </div>
-                <div className="flex w-full flex-col gap-0.5 text-[11px] text-muted-foreground">
-                  <span className="truncate font-mono">{a.email}</span>
-                  <span className="font-mono">
-                    {revealDemoPasswords ? a.password : t("passwordHidden")}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
