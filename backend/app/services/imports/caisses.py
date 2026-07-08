@@ -91,6 +91,29 @@ class CaissesImporter(Importer):
                      help="Facultatif. Format JJ/MM/AAAA.", example="31/12/2026"),
     ]
 
+    async def export_rows(self, db, association_id, ctx):
+        res = await db.execute(
+            select(Caisse)
+            .where(Caisse.association_id == association_id)
+            .order_by(Caisse.name)
+        )
+        rows = []
+        for c in res.scalars().all():
+            if getattr(c, "is_system", False):
+                continue  # caisses système (fonds tontine/assurance) non éditables
+            rows.append({
+                "name": c.name,
+                "category": c.category,
+                "description": c.description,
+                "collected_each_meeting": "yes" if c.is_recurring else "no",
+                "recurring_amount": c.recurring_amount or None,
+                "member_required_amount": (c.member_required_amount or None) if c.is_member_required else None,
+                "ceiling_amount": (c.ceiling_amount or None) if c.has_ceiling else None,
+                "objective_amount": (c.objective_amount or None) if c.has_objective else None,
+                "objective_deadline": c.objective_deadline,
+            })
+        return rows
+
     async def new_ctx(self, db: AsyncSession, association_id) -> dict:
         assoc = (
             await db.execute(select(Association).where(Association.id == association_id))

@@ -101,6 +101,40 @@ class LoansSheet(Importer):
         ImportColumn("purpose", "Motif", help="Facultatif."),
     ]
 
+    async def export_rows(self, db, association_id, ctx):
+        from app.models.loan import LoanType
+        from .export_helpers import membership_number_map
+
+        mem_num = await membership_number_map(db, association_id, ctx)
+        type_name = {
+            tid: name
+            for tid, name in (
+                await db.execute(
+                    select(LoanType.id, LoanType.name).where(
+                        LoanType.association_id == association_id
+                    )
+                )
+            ).all()
+        }
+        res = await db.execute(
+            select(Loan)
+            .where(Loan.association_id == association_id)
+            .order_by(Loan.requested_on)
+        )
+        rows = []
+        for l in res.scalars().all():
+            rows.append({
+                "reference": l.reference,
+                "member_number": mem_num.get(l.borrower_membership_id),
+                "loan_type": type_name.get(l.loan_type_id),
+                "principal": l.principal,
+                "requested_date": l.requested_on,
+                "disbursed_date": l.disbursed_on,
+                "status": l.status,
+                "purpose": l.purpose,
+            })
+        return rows
+
     async def new_ctx(self, db, association_id) -> dict:
         assoc = (await db.execute(select(Association).where(Association.id == association_id))).scalar_one()
         refs = (
@@ -222,6 +256,25 @@ class LoanRepaymentsSheet(Importer):
         ImportColumn("amount", "Montant", required=True, example="20000"),
         ImportColumn("notes", "Notes", help="Facultatif."),
     ]
+
+    async def export_rows(self, db, association_id, ctx):
+        from app.models.loan import LoanRepayment
+
+        res = await db.execute(
+            select(LoanRepayment, Loan.reference)
+            .join(Loan, Loan.id == LoanRepayment.loan_id)
+            .where(Loan.association_id == association_id)
+            .order_by(LoanRepayment.paid_on)
+        )
+        rows = []
+        for rp, ref in res.all():
+            rows.append({
+                "loan_reference": ref,
+                "date": rp.paid_on,
+                "amount": rp.total_paid,
+                "notes": rp.notes,
+            })
+        return rows
 
     async def new_ctx(self, db, association_id) -> dict:
         assoc = (await db.execute(select(Association).where(Association.id == association_id))).scalar_one()

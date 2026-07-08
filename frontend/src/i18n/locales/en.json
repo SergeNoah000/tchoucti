@@ -1600,6 +1600,8 @@
     "entityLabel": "Data type",
     "entityPlaceholder": "Choose…",
     "downloadTemplate": "Download Excel template",
+    "exportData": "Export data",
+    "exportError": "Data export failed.",
     "step2Title": "Fill in the template then import it",
     "dropHint": "Click to choose your filled .xlsx file",
     "dropSub": "Expected format: the Excel template downloaded above",

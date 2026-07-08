@@ -58,6 +58,29 @@ class AidTypesImporter(Importer):
         ImportColumn("description", "Description", help="Facultatif."),
     ]
 
+    async def export_rows(self, db, association_id, ctx):
+        from .export_helpers import caisse_name_by_id_map
+
+        caisse_name = await caisse_name_by_id_map(db, association_id, ctx)
+        res = await db.execute(
+            select(AidType)
+            .where(AidType.association_id == association_id)
+            .order_by(AidType.name)
+        )
+        rows = []
+        for at in res.scalars().all():
+            fmode = at.funding_mode.value if hasattr(at.funding_mode, "value") else at.funding_mode
+            source_mode = "individual" if fmode == "member_insurance" else "collective"
+            caisse_id = getattr(at, "source_caisse_id", None) or getattr(at, "insurance_caisse_id", None)
+            rows.append({
+                "name": at.name,
+                "source_mode": source_mode,
+                "source_caisse": caisse_name.get(caisse_id),
+                "amount": getattr(at, "aid_ceiling_amount", None),
+                "description": at.description,
+            })
+        return rows
+
     async def new_ctx(self, db: AsyncSession, association_id) -> dict:
         caisses = (
             await db.execute(

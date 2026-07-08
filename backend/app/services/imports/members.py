@@ -146,6 +146,41 @@ class MembersImporter(Importer):
         ImportColumn("notes", "Notes", help="Remarque libre facultative."),
     ]
 
+    async def export_rows(self, db, association_id, ctx):
+        from sqlalchemy.orm import selectinload
+        from .export_helpers import is_placeholder_email
+
+        res = await db.execute(
+            select(Membership)
+            .options(
+                selectinload(Membership.user),
+                selectinload(Membership.membership_roles).selectinload(MembershipRole.role),
+            )
+            .where(Membership.association_id == association_id)
+            .order_by(Membership.member_number)
+        )
+        rows = []
+        for m in res.scalars().all():
+            user = m.user
+            roles = ",".join(
+                mr.role.code for mr in m.membership_roles if mr.role and mr.role.code != "member"
+            )
+            email = None if is_placeholder_email(getattr(user, "email", None)) else getattr(user, "email", None)
+            rows.append({
+                "full_name": getattr(user, "full_name", None),
+                "member_number": m.member_number,
+                "email": email,
+                "password": None,  # non exportable
+                "phone": getattr(user, "phone", None),
+                "status": m.status,
+                "category": m.category,
+                "joined_at": m.joined_at,
+                "roles": roles or None,
+                "cumulative_contributions": m.cumulative_contributions or None,
+                "notes": m.notes,
+            })
+        return rows
+
     async def new_ctx(self, db: AsyncSession, association_id) -> dict:
         assoc = (
             await db.execute(select(Association).where(Association.id == association_id))

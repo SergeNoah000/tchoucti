@@ -125,6 +125,25 @@ async def download_template(
     )
 
 
+@router.get("/{entity}/export")
+async def export_data(
+    entity: str,
+    association_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_association_admin_for),
+):
+    """Exporte les données de l'association au MÊME format que le template
+    d'import (ré-importable : aller-retour export → édition → ré-import)."""
+    imp = _require_importer(entity)
+    data = await imp.build_export(db, association_id)
+    filename = f"export-{entity}.xlsx"
+    return StreamingResponse(
+        iter([data]),
+        media_type=_XLSX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/{entity}/preview", response_model=PreviewOut)
 async def preview_import(
     entity: str,

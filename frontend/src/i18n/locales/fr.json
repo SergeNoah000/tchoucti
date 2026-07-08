@@ -1600,6 +1600,8 @@
     "entityLabel": "Type de données",
     "entityPlaceholder": "Choisir…",
     "downloadTemplate": "Télécharger le modèle Excel",
+    "exportData": "Exporter les données",
+    "exportError": "Échec de l'export des données.",
     "step2Title": "Remplir le modèle puis l'importer",
     "dropHint": "Cliquez pour choisir votre fichier .xlsx rempli",
     "dropSub": "Format attendu : le modèle Excel téléchargé ci-dessus",

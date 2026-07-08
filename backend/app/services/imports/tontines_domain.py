@@ -97,6 +97,37 @@ class TontineConfigSheet(Importer):
         ImportColumn("description", "Description", help="Facultatif."),
     ]
 
+    async def export_rows(self, db, association_id, ctx):
+        from app.models.tontine import TontineCycle
+
+        # 1re date de cycle par tontine (pour la colonne « Date de début »).
+        first_start: dict = {}
+        for tid, sd in (
+            await db.execute(
+                select(TontineCycle.tontine_id, TontineCycle.start_date)
+                .where(TontineCycle.start_date.isnot(None))
+                .order_by(TontineCycle.start_date)
+            )
+        ).all():
+            first_start.setdefault(tid, sd)
+        res = await db.execute(
+            select(Tontine)
+            .where(Tontine.association_id == association_id)
+            .order_by(Tontine.name)
+        )
+        rows = []
+        for tn in res.scalars().all():
+            rows.append({
+                "name": tn.name,
+                "round_amount": tn.round_amount,
+                "contribution_kind": getattr(tn, "contribution_kind", "money"),
+                "asset_label": getattr(tn, "asset_label", None),
+                "frequency": tn.frequency,
+                "start_date": first_start.get(tn.id),
+                "description": tn.description,
+            })
+        return rows
+
     async def new_ctx(self, db, association_id) -> dict:
         assoc = (
             await db.execute(select(Association).where(Association.id == association_id))
@@ -211,6 +242,30 @@ class TontineRoundsSheet(Importer):
         ImportColumn("status", "Statut", choices=_RSTATUS, help="Défaut : En collecte."),
     ]
 
+    async def export_rows(self, db, association_id, ctx):
+        from app.models.tontine import TontineCycle, TontineRound
+        from .export_helpers import tontine_name_map
+
+        tname = await tontine_name_map(db, association_id, ctx)
+        if not tname:
+            return []
+        res = await db.execute(
+            select(TontineRound, TontineCycle.tontine_id)
+            .join(TontineCycle, TontineCycle.id == TontineRound.cycle_id)
+            .where(TontineCycle.tontine_id.in_(list(tname.keys())))
+            .order_by(TontineCycle.tontine_id, TontineRound.round_number)
+        )
+        rows = []
+        for rnd, tid in res.all():
+            rows.append({
+                "tontine": tname.get(tid),
+                "round_number": rnd.round_number,
+                "date": rnd.scheduled_date,
+                "expected_amount": rnd.expected_amount,
+                "status": rnd.status,
+            })
+        return rows
+
     async def new_ctx(self, db, association_id) -> dict:
         return {}
 
@@ -282,6 +337,33 @@ class TontineContributionsSheet(Importer):
         ImportColumn("date", "Date", help="Format JJ/MM/AAAA.", example="01/03/2024"),
         ImportColumn("late", "En retard", choices=_YESNO, help="Défaut : Non."),
     ]
+
+    async def export_rows(self, db, association_id, ctx):
+        from app.models.tontine import TontineContribution, TontineCycle, TontineRound
+        from .export_helpers import membership_number_map, tontine_name_map
+
+        tname = await tontine_name_map(db, association_id, ctx)
+        if not tname:
+            return []
+        mem_num = await membership_number_map(db, association_id, ctx)
+        res = await db.execute(
+            select(TontineContribution, TontineRound.round_number, TontineCycle.tontine_id)
+            .join(TontineRound, TontineRound.id == TontineContribution.round_id)
+            .join(TontineCycle, TontineCycle.id == TontineRound.cycle_id)
+            .where(TontineCycle.tontine_id.in_(list(tname.keys())))
+            .order_by(TontineCycle.tontine_id, TontineRound.round_number)
+        )
+        rows = []
+        for contrib, rnum, tid in res.all():
+            rows.append({
+                "tontine": tname.get(tid),
+                "round_number": rnum,
+                "member_number": mem_num.get(contrib.membership_id),
+                "amount": contrib.amount,
+                "date": contrib.contributed_on,
+                "late": "yes" if contrib.is_late else "no",
+            })
+        return rows
 
     async def new_ctx(self, db, association_id) -> dict:
         assoc = (await db.execute(select(Association).where(Association.id == association_id))).scalar_one()
@@ -357,6 +439,44 @@ class TontineWinnersSheet(Importer):
         ImportColumn("paid_date", "Date de versement", help="Si versé. JJ/MM/AAAA.",
                      example="01/03/2024"),
     ]
+
+    async def export_rows(self, db, association_id, ctx):
+        from app.models.tontine import (
+            TontineCycle,
+            TontineRound,
+            TontineRoundBeneficiary,
+            TontineRoundStatus,
+        )
+        from .export_helpers import membership_number_map, tontine_name_map
+
+        tname = await tontine_name_map(db, association_id, ctx)
+        if not tname:
+            return []
+        mem_num = await membership_number_map(db, association_id, ctx)
+        res = await db.execute(
+            select(
+                TontineRoundBeneficiary,
+                TontineRound.round_number,
+                TontineRound.paid_out_date,
+                TontineRound.status,
+                TontineCycle.tontine_id,
+            )
+            .join(TontineRound, TontineRound.id == TontineRoundBeneficiary.round_id)
+            .join(TontineCycle, TontineCycle.id == TontineRound.cycle_id)
+            .where(TontineCycle.tontine_id.in_(list(tname.keys())))
+            .order_by(TontineCycle.tontine_id, TontineRound.round_number)
+        )
+        rows = []
+        for ben, rnum, paid_date, status, tid in res.all():
+            rows.append({
+                "tontine": tname.get(tid),
+                "round_number": rnum,
+                "member_number": mem_num.get(ben.membership_id),
+                "name_label": ben.name_label,
+                "share_amount": ben.share_amount,
+                "paid_date": paid_date if status == TontineRoundStatus.PAID_OUT else None,
+            })
+        return rows
 
     async def new_ctx(self, db, association_id) -> dict:
         assoc = (await db.execute(select(Association).where(Association.id == association_id))).scalar_one()

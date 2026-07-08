@@ -68,6 +68,30 @@ class LoanTypesImporter(Importer):
         ImportColumn("description", "Description", help="Facultatif."),
     ]
 
+    async def export_rows(self, db, association_id, ctx):
+        from .export_helpers import caisse_name_by_id_map
+
+        caisse_name = await caisse_name_by_id_map(db, association_id, ctx)
+        res = await db.execute(
+            select(LoanType)
+            .where(LoanType.association_id == association_id)
+            .order_by(LoanType.name)
+        )
+        rows = []
+        for lt in res.scalars().all():
+            rows.append({
+                "name": lt.name,
+                "source_caisse": caisse_name.get(lt.source_caisse_id),
+                "interest_rate_pct": lt.interest_rate_pct,
+                "late_fee_pct": lt.late_fee_pct,
+                "max_duration_months": lt.max_duration_months,
+                "max_simultaneous": lt.max_simultaneous,
+                "max_per_year": lt.max_per_year,
+                "eligibility_min_seniority_months": lt.eligibility_min_seniority_months,
+                "description": lt.description,
+            })
+        return rows
+
     async def new_ctx(self, db: AsyncSession, association_id) -> dict:
         caisses = (
             await db.execute(

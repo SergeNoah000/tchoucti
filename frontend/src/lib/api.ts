@@ -814,6 +814,21 @@ export const importsApi = {
     a.remove();
     window.URL.revokeObjectURL(url);
   },
+  /** Export des données (même format que l'import → ré-importable). */
+  exportData: async (entity: string, associationId: string) => {
+    const res = await api.get(`/imports/${entity}/export`, {
+      params: { association_id: associationId },
+      responseType: "blob",
+    });
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `export-${entity}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
   preview: async (entity: string, associationId: string, file: File): Promise<ImportPreview> => {
     const fd = new FormData();
     fd.append("file", file);

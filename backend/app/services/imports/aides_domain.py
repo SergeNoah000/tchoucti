@@ -96,6 +96,41 @@ class AidRequestsSheet(Importer):
         ImportColumn("decided_date", "Date de décision", help="JJ/MM/AAAA.", example="03/03/2024"),
     ]
 
+    async def export_rows(self, db, association_id, ctx):
+        from app.models.social_aid import AidType
+        from .export_helpers import membership_number_map
+
+        mem_num = await membership_number_map(db, association_id, ctx)
+        type_name = {
+            tid: name
+            for tid, name in (
+                await db.execute(
+                    select(AidType.id, AidType.name).where(
+                        AidType.association_id == association_id
+                    )
+                )
+            ).all()
+        }
+        res = await db.execute(
+            select(SocialAidCase)
+            .where(SocialAidCase.association_id == association_id)
+            .order_by(SocialAidCase.requested_on)
+        )
+        rows = []
+        for a in res.scalars().all():
+            rows.append({
+                "reference": a.reference,
+                "member_number": mem_num.get(a.beneficiary_membership_id),
+                "aid_type": type_name.get(a.aid_type_id),
+                "title": a.title,
+                "event_date": a.event_date,
+                "requested_amount": a.requested_amount,
+                "approved_amount": a.approved_amount or None,
+                "status": a.status,
+                "decided_date": a.decided_on,
+            })
+        return rows
+
     async def new_ctx(self, db, association_id) -> dict:
         assoc = (await db.execute(select(Association).where(Association.id == association_id))).scalar_one()
         refs = (
@@ -201,6 +236,45 @@ class AidContributionsSheet(Importer):
         ImportColumn("amount", "Montant", required=True, example="2000"),
         ImportColumn("date", "Date", help="JJ/MM/AAAA.", example="03/03/2024"),
     ]
+
+    async def export_rows(self, db, association_id, ctx):
+        from app.models.finance import Treasury, TreasuryMovement
+        from .export_helpers import membership_number_map
+
+        mem_num = await membership_number_map(db, association_id, ctx)
+        # Les cotisations d'aide sont matérialisées par des mouvements
+        # source_type="import_aid_contribution", source_id = id du dossier.
+        case_ref = {
+            cid: ref
+            for cid, ref in (
+                await db.execute(
+                    select(SocialAidCase.id, SocialAidCase.reference).where(
+                        SocialAidCase.association_id == association_id
+                    )
+                )
+            ).all()
+        }
+        res = await db.execute(
+            select(TreasuryMovement)
+            .join(Treasury, Treasury.id == TreasuryMovement.treasury_id)
+            .where(
+                Treasury.association_id == association_id,
+                TreasuryMovement.source_type == "import_aid_contribution",
+            )
+            .order_by(TreasuryMovement.occurred_on)
+        )
+        rows = []
+        for mv in res.scalars().all():
+            ref = case_ref.get(mv.source_id)
+            if not ref:
+                continue
+            rows.append({
+                "aid_reference": ref,
+                "member_number": mem_num.get(mv.related_membership_id) if mv.related_membership_id else None,
+                "amount": mv.amount,
+                "date": mv.occurred_on,
+            })
+        return rows
 
     async def new_ctx(self, db, association_id) -> dict:
         assoc = (await db.execute(select(Association).where(Association.id == association_id))).scalar_one()

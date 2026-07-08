@@ -109,9 +109,19 @@ Architecture : **table générique `PayoutRequest`** = file de validation unique
    (vue locale, sa part projetée). i18n FR/EN/DE.
 
 ## Lot 6 — Imports (vérif complète) + Export
-⬜ Vérifier à fond les imports **prêts / aides / caisses** (mouvements/actions).
-⬜ **Export** : classeurs multi-feuilles (même format que l'import, ré-importable)
-   ET rapports lisibles.
+- ✅ **Export aller-retour** : `GET /imports/{entity}/export?association_id=`
+   génère le MÊME classeur multi-feuilles que le template d'import, rempli des
+   données réelles (ré-importable). Socle : `Importer.export_rows()` +
+   `build_export()` (styles/listes déroulantes identiques ; labels des choix,
+   dates ISO, Oui/Non). Couvre membres, caisses (config + mouvements), prêts
+   (types + prêts + remboursements), aides (types + demandes + cotisations),
+   tontines (config + séances + participations + gagnants). Bouton **Exporter
+   les données** sur la page Import. Testé E2E (export → re-parse OK).
+- 🔎 **Vérif imports** : le round-trip export→parse re-valide les contrats de
+   colonnes des imports prêts/aides/caisses/tontines (déjà testés E2E au commit
+   de l'import). RAS.
+- ⏳ **Rapports lisibles** (PDF/Excel de synthèse, hors format ré-importable) :
+   à faire — chantier séparé (le PV de séance existe déjà en PDF).
 
 ## Rappel infra
 Le backend reperd `openpyxl` et le frontend `geist`/`next@15.5.19` à chaque

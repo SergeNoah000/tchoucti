@@ -49,7 +49,7 @@ export default function ImportPage() {
   const [entity, setEntity] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [busy, setBusy] = useState<"download" | "preview" | "commit" | null>(null);
+  const [busy, setBusy] = useState<"download" | "export" | "preview" | "commit" | null>(null);
 
   useEffect(() => {
     if (!entity && entities.length > 0) setEntity(entities[0].entity);
@@ -86,6 +86,18 @@ export default function ImportPage() {
       await importsApi.downloadTemplate(entity, association.id);
     } catch {
       toast.error(t("downloadError"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onExport = async () => {
+    if (!entity) return;
+    setBusy("export");
+    try {
+      await importsApi.exportData(entity, association.id);
+    } catch {
+      toast.error(t("exportError"));
     } finally {
       setBusy(null);
     }
@@ -152,6 +164,10 @@ export default function ImportPage() {
             <Button onClick={onDownload} disabled={!entity || busy !== null} variant="outline" className="gap-2">
               {busy === "download" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {t("downloadTemplate")}
+            </Button>
+            <Button onClick={onExport} disabled={!entity || busy !== null} variant="outline" className="gap-2">
+              {busy === "export" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+              {t("exportData")}
             </Button>
           </div>
           {selected && <p className="text-sm text-muted-foreground">{selected.description}</p>}

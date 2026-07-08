@@ -172,6 +172,79 @@ class Importer:
 
         ws.freeze_panes = "A2"
 
+    # ── Export .xlsx (aller-retour : même format que l'import) ───────────────
+    async def export_rows(
+        self, db: AsyncSession, association_id, ctx: dict
+    ) -> list[dict[str, Any]]:
+        """Renvoie les lignes de CETTE feuille à exporter (clé interne → valeur
+        native : str/int/date/bool/enum). À surcharger. Défaut : rien."""
+        return []
+
+    def _export_value(self, col: "ImportColumn", value: Any) -> Any:
+        """Convertit une valeur native en valeur de cellule, cohérente avec le
+        template (label pour les listes, ISO pour les dates, Oui/Non pour les
+        booléens) — de sorte que le fichier exporté soit ré-importable."""
+        from datetime import date as _date, datetime as _datetime
+        from decimal import Decimal as _Decimal
+
+        if value is None:
+            return None
+        v = value.value if hasattr(value, "value") else value
+        if col.choices:
+            for c in col.choices:
+                if str(v) == c.value:
+                    return c.label
+            return v
+        if isinstance(value, bool):
+            return "Oui" if value else "Non"
+        if isinstance(value, _datetime):
+            return value.date().isoformat()
+        if isinstance(value, _date):
+            return value.isoformat()
+        if isinstance(v, _Decimal):
+            # openpyxl n'écrit pas les Decimal : normalise en int si entier.
+            f = float(v)
+            return int(f) if f.is_integer() else f
+        return v
+
+    def _render_export_ws(self, ws, rows: list[dict[str, Any]]) -> None:
+        """En-têtes (même style que le template) + lignes de données."""
+        header_fill = PatternFill("solid", fgColor="0F766E")
+        req_fill = PatternFill("solid", fgColor="B45309")
+        header_font = Font(bold=True, color="FFFFFF")
+        for col_idx, col in enumerate(self.columns, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=col.header)
+            cell.font = header_font
+            cell.fill = req_fill if col.required else header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            ws.column_dimensions[get_column_letter(col_idx)].width = max(16, len(col.header) + 4)
+            if col.choices:
+                letter = get_column_letter(col_idx)
+                dv = DataValidation(
+                    type="list",
+                    formula1='"' + ",".join(c.label for c in col.choices) + '"',
+                    allow_blank=not col.required,
+                )
+                ws.add_data_validation(dv)
+                dv.add(f"{letter}2:{letter}100000")
+        for r_idx, row in enumerate(rows, start=2):
+            for col_idx, col in enumerate(self.columns, start=1):
+                ws.cell(row=r_idx, column=col_idx, value=self._export_value(col, row.get(col.key)))
+        ws.freeze_panes = "A2"
+
+    async def build_export(self, db: AsyncSession, association_id) -> bytes:
+        """Classeur exporté : un onglet par feuille, rempli des données réelles."""
+        wb = Workbook()
+        wb.remove(wb.active)
+        ctx = await self.new_ctx(db, association_id)
+        for sheet in self.sheets:
+            ws = wb.create_sheet(title=sheet.sheet_title[:31])
+            rows = await sheet.export_rows(db, association_id, ctx)
+            sheet._render_export_ws(ws, rows)
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
     # ── Parsing d'un fichier re-uploadé ──────────────────────────────────────
     def parse(self, data: bytes) -> list[dict[str, Any]]:
         """Lit l'onglet de CETTE feuille (par titre, sinon le 1er) et renvoie

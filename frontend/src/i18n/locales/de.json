@@ -1600,6 +1600,8 @@
     "entityLabel": "Datentyp",
     "entityPlaceholder": "Wählen…",
     "downloadTemplate": "Excel-Vorlage herunterladen",
+    "exportData": "Daten exportieren",
+    "exportError": "Datenexport fehlgeschlagen.",
     "step2Title": "Vorlage ausfüllen und importieren",
     "dropHint": "Klicken, um Ihre ausgefüllte .xlsx-Datei zu wählen",
     "dropSub": "Erwartetes Format: die oben heruntergeladene Excel-Vorlage",

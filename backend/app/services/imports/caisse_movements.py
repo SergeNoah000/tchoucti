@@ -83,6 +83,48 @@ class CaisseMovementsSheet(Importer):
                      example="Cotisation mensuelle"),
     ]
 
+    async def export_rows(self, db, association_id, ctx):
+        from app.models.finance import LedgerEntry, Treasury, TreasuryMovement
+        from .export_helpers import (
+            caisse_name_by_fund_map,
+            membership_number_map,
+        )
+
+        fund_to_caisse = await caisse_name_by_fund_map(db, association_id, ctx)
+        mem_num = await membership_number_map(db, association_id, ctx)
+        caisse_fund_ids = set(fund_to_caisse.keys())
+        if not caisse_fund_ids:
+            return []
+        # Mouvements dont une écriture touche un fonds de caisse et qui sont des
+        # dépôts/retraits « caisse » (import historique ou retrait validé).
+        res = await db.execute(
+            select(TreasuryMovement, LedgerEntry.fund_id)
+            .join(Treasury, Treasury.id == TreasuryMovement.treasury_id)
+            .join(LedgerEntry, LedgerEntry.movement_id == TreasuryMovement.id)
+            .where(
+                Treasury.association_id == association_id,
+                LedgerEntry.fund_id.in_(caisse_fund_ids),
+                TreasuryMovement.source_type.in_(
+                    ("import_caisse_movement", "caisse_withdrawal")
+                ),
+            )
+            .order_by(TreasuryMovement.occurred_on)
+        )
+        rows = []
+        for mv, fund_id in res.all():
+            cname = fund_to_caisse.get(fund_id)
+            if not cname:
+                continue
+            rows.append({
+                "caisse": cname,
+                "direction": "deposit" if mv.direction == MovementDirection.IN else "withdrawal",
+                "amount": mv.amount,
+                "member_number": mem_num.get(mv.related_membership_id) if mv.related_membership_id else None,
+                "date": mv.occurred_on,
+                "label": mv.description,
+            })
+        return rows
+
     async def new_ctx(self, db: AsyncSession, association_id) -> dict:
         assoc = (
             await db.execute(select(Association).where(Association.id == association_id))
