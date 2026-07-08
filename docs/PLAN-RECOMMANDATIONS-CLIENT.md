@@ -24,19 +24,19 @@ Légende statut : ✅ fait · 🟡 en cours · ⬜ à faire · 🔎 vérifié (c
   attributs user avant commit ; détail construit avant la notif. Reject/repay/
   aides couverts.
 - ✅ **Login** : suppression du panneau de comptes de démonstration (`ccdb35a`).
-- 🔎 **Séances passées (item 3)** : création manuelle / édition / génération
-  bloquent déjà les dates passées. L'import de domaine tontine ne crée pas de
-  séances. **Seule fuite** : `_populate_cycle` (génération auto des séances d'une
-  tontine) crée des séances *planifiées* à dates passées si `start_date` est
-  passé. → ⬜ petit correctif : marquer ces séances « clôturées » plutôt que
-  « planifiées » OU refuser un `start_date` passé à la création UI.
+- ✅ **Séances passées (item 3)** : création manuelle / édition / génération
+  bloquaient déjà les dates passées. Fix ajouté : `_populate_cycle` crée
+  désormais une séance CLÔTURÉE (pas PLANIFIÉE) quand la date du tour est
+  passée, + `min=aujourd'hui` sur la date de début du dialog de création de
+  tontine. → seules les séances *importées/passées* sont dans le passé.
 - 🔎 **Slug URL de connexion par association (item 5)** : implémenté
   (`{groupement}.myappsuite.com/a/{slug}`, `public.py` + route `app/a/[slug]`).
   → à confirmer en live sur le domaine.
-- ⬜ **1 email = 1 association par session (item 4)** : NON verrouillé. Un
-  utilisateur d'un groupement peut couvrir plusieurs associations ; la session
-  prend `associations[0]`. C'est le **modèle silo** (décidé, pas encore
-  implémenté). Chantier à part, pas une simple vérif.
+- 🔎 **1 email = 1 association par session (item 4)** : NON verrouillé. Un
+  utilisateur régulier voit les associations où il a une adhésion active
+  (`list_associations`) ; s'il en a plusieurs, la session prend `associations[0]`
+  sans verrou ni sélecteur. C'est le **modèle silo** (décidé, pas implémenté) →
+  **chantier à part** (Lot silo), hors périmètre des corrections rapides.
 
 ## Lot 2 — Sorties d'argent validées par le trésorier
 ⬜ Workflow prépare → EN ATTENTE → le trésorier valide, pour : décaissement prêt,

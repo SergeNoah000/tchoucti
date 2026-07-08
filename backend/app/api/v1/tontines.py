@@ -204,12 +204,16 @@ async def _populate_cycle(
         db.add(rnd)
         await db.flush()
 
-        # Séance d'office pour ce tour.
+        # Séance d'office pour ce tour. Une date passée (tontine démarrée dans le
+        # passé) → séance CLÔTURÉE, pas PLANIFIÉE : les séances planifiées ne
+        # doivent jamais être dans le passé (seules les passées le sont).
         meeting = Meeting(
             association_id=tontine.association_id,
             title=f"{tontine.name} — Tour {idx + 1}",
             scheduled_on=round_date,
-            status=MeetingStatus.PLANNED,
+            status=(
+                MeetingStatus.CLOSED if round_date < date.today() else MeetingStatus.PLANNED
+            ),
         )
         db.add(meeting)
         await db.flush()

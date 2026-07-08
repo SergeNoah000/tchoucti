@@ -267,6 +267,7 @@ export function CreateTontineDialog({ association }: { association: Association 
               <Input
                 id="tc-date"
                 type="date"
+                min={new Date().toISOString().split("T")[0]}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 required
