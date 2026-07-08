@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/common/page-header";
+import { MemberActivityView } from "@/components/members/member-activity-view";
 import { membersApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { canDoBureauActions } from "@/lib/roles";
@@ -26,6 +27,7 @@ function extractError(err: unknown): string | undefined {
 export default function MemberDetailPage() {
   const { id } = useParams<{ id: string }>();
   const t = useTranslations("memberDetail");
+  const tActivity = useTranslations("memberActivity");
   const { user } = useAuthStore();
   const isBureau = canDoBureauActions(user);
   const fmt = useFormatters();
@@ -157,6 +159,12 @@ export default function MemberDetailPage() {
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Activité du membre (cotisations / demandes / revenus) — vue globale bureau */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-semibold text-muted-foreground">{tActivity("sectionTitle")}</h2>
+        <MemberActivityView membershipId={m.id} />
       </div>
     </div>
   );

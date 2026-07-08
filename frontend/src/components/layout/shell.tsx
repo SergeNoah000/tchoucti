@@ -17,6 +17,7 @@ import {
   FolderKanban,
   FileText,
   BarChart3,
+  Activity as ActivityIcon,
   Settings,
   LogOut,
   Menu,
@@ -175,6 +176,7 @@ const MEMBER_NAV: NavSection[] = [
     label: "personal",
     items: [
       { href: "/dashboard/finance", icon: Wallet, key: "myContributions" },
+      { href: "/dashboard/my-activity", icon: ActivityIcon, key: "myActivity" },
       { href: "/dashboard/loans", icon: Banknote, key: "myLoans" },
       { href: "/dashboard/documents", icon: FileText, key: "documents" },
       { href: "/dashboard/settings", icon: Settings, key: "settings" },

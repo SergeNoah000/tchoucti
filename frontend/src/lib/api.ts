@@ -463,7 +463,38 @@ export const membersApi = {
   remove: async (id: string) => (await api.delete(`/memberships/${id}`)).data,
   resendInvitation: async (id: string): Promise<{ activation_url: string; sent: boolean }> =>
     (await api.post(`/memberships/${id}/resend-invitation`, {})).data,
+  /** Résumé d'activité d'un membre sur une période (Lot 3). */
+  activity: async (
+    membershipId: string,
+    params?: { since?: string; until?: string },
+  ): Promise<MemberActivity> =>
+    (await api.get(`/memberships/${membershipId}/activity`, { params })).data,
 };
+
+// ── Résumé d'activité membre (Lot 3) ──────────────────────────────────────
+export interface MemberActivityItem {
+  date?: string | null;
+  kind: string;
+  label: string;
+  amount: number;
+  reference?: string | null;
+  status?: string | null;
+  meeting_title?: string | null;
+}
+export interface MemberActivity {
+  membership_id: string;
+  member_name?: string | null;
+  member_number?: string | null;
+  since?: string | null;
+  until?: string | null;
+  currency?: string | null;
+  contributions: MemberActivityItem[];
+  requests: MemberActivityItem[];
+  incomes: MemberActivityItem[];
+  totals: { contributed?: number; requested?: number; received?: number };
+  contributions_by_kind: Record<string, number>;
+  incomes_by_kind: Record<string, number>;
+}
 
 export const tontinesApi = {
   // Liste des tontines (durables) de l'asso, avec résumé du cycle courant.

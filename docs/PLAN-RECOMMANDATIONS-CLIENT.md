@@ -66,13 +66,20 @@ Architecture : **table générique `PayoutRequest`** = file de validation unique
 - ⏳ Reste mineur : relabel boutons tontine/caisse (« préparer ») — le workflow
   fonctionne déjà, seul le libellé du bouton reste à ajuster.
 
-## Lot 3 — Page détail membre (admin)
-⬜ Résumé d'activité d'un membre sur une **période** :
-- Cotisations (tontine, caisse, aides), Demandes (prêts, aides), Revenus
-  (tontine, prêts, aides).
-- **2 formats** : chronologique (période) / groupé par activité (tontines,
-  caisses, aides, prêts).
-- **Vue locale** (le membre voit la sienne) + **vue globale** (admin).
+## Lot 3 — Page détail membre (admin) ✅
+- ✅ Endpoint `GET /memberships/{id}/activity?since=&until=` → cotisations
+  (tontine/caisse/aide, via `MeetingActivityEntry` typé par préfixe d'activité),
+  demandes (prêts + aides), revenus (mouvements OUT reçus : versement tontine /
+  décaissement prêt / versement aide), + totaux et ventilations par famille.
+- ✅ RBAC : bureau/admin = **vue globale** (n'importe quel membre) ; simple
+  membre = **vue locale** (403 sur autrui). Testé E2E.
+- ✅ Composant `MemberActivityView` : filtre de **période** + **2 formats**
+  (groupé par activité / chronologique) + 3 totaux (cotisé/demandé/reçu).
+  Intégré dans la page détail membre (bureau) + page **« Mon activité »**
+  (`/dashboard/my-activity`, lien nav membre). i18n FR/EN/DE.
+- Limite connue : tours de tontine à **bénéficiaires multiples**
+  (related_membership_id=None) non rattachés aux revenus (cas courant = 1
+  bénéficiaire, couvert). À compléter via `TontineRoundBeneficiary` si besoin.
 
 ## Lot 4 — Séances (réunions)
 ⬜ Bouton **réordonner l'ordre de passage** des membres.

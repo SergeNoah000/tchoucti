@@ -1,5 +1,5 @@
 """Memberships CRUD endpoints (invite flow wired to the invitation engine)."""
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
@@ -31,7 +31,17 @@ from app.models.role import (
     Role,
 )
 from app.models.user import User, UserType
+from app.models.meeting import (
+    Activity,
+    EntryStatus,
+    Meeting,
+    MeetingActivityEntry,
+)
+from app.models.loan import Loan
+from app.models.social_aid import SocialAidCase
+from app.models.finance import MovementDirection, TreasuryMovement
 from app.schemas.membership import MembershipCreate, MembershipOut, MembershipUpdate
+from app.schemas.member_activity import ActivityItem, MemberActivity
 
 router = APIRouter()
 
@@ -126,6 +136,174 @@ async def get_membership(
     assoc = await _get_assoc_or_404(db, m.association_id)
     _check_assoc_access(current_user, assoc)
     return _membership_to_out(m)
+
+
+def _contrib_kind(code: str) -> str:
+    if code.startswith("tontine-"):
+        return "tontine"
+    if code.startswith("caisse-"):
+        return "caisse"
+    if code.startswith("aid-"):
+        return "aid"
+    return "other"
+
+
+_INCOME_LABELS = {
+    "tontine_payout": "Versement tontine",
+    "loan_disbursement": "Décaissement prêt",
+    "aid_payout": "Versement aide",
+}
+
+
+@router.get("/{membership_id}/activity", response_model=MemberActivity)
+async def member_activity(
+    membership_id: UUID,
+    since: Optional[date] = Query(None),
+    until: Optional[date] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Résumé d'activité d'un membre sur une période : cotisations, demandes,
+    revenus. Vue GLOBALE pour le bureau/admin ; un simple membre ne peut voir
+    que SA propre activité (vue locale)."""
+    m = await _load_membership(db, membership_id)
+    assoc = await _get_assoc_or_404(db, m.association_id)
+    _check_assoc_access(current_user, assoc)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        if m.user_id != current_user.id:
+            raise HTTPException(403, "Vous ne pouvez consulter que votre propre activité")
+
+    lo = since or date(1970, 1, 1)
+    hi = until or date.today()
+
+    # ── Cotisations : entrées de séance (hors annulées), typées par activité ──
+    contributions: List[ActivityItem] = []
+    cby: dict[str, int] = {}
+    res = await db.execute(
+        select(
+            MeetingActivityEntry.amount,
+            Activity.code,
+            Activity.name,
+            Meeting.title,
+            Meeting.scheduled_on,
+            MeetingActivityEntry.status,
+        )
+        .join(Activity, Activity.id == MeetingActivityEntry.activity_id)
+        .join(Meeting, Meeting.id == MeetingActivityEntry.meeting_id)
+        .where(
+            MeetingActivityEntry.membership_id == membership_id,
+            MeetingActivityEntry.status != EntryStatus.VOIDED,
+            Meeting.scheduled_on >= lo,
+            Meeting.scheduled_on <= hi,
+        )
+        .order_by(Meeting.scheduled_on)
+    )
+    for amount, code, name, title, sched, st in res.all():
+        kind = _contrib_kind(code)
+        contributions.append(
+            ActivityItem(
+                date=sched,
+                kind=kind,
+                label=name,
+                amount=amount,
+                meeting_title=title,
+                status=st.value if hasattr(st, "value") else st,
+            )
+        )
+        cby[kind] = cby.get(kind, 0) + amount
+
+    # ── Demandes : prêts + aides ──
+    requests: List[ActivityItem] = []
+    res = await db.execute(
+        select(Loan)
+        .where(
+            Loan.borrower_membership_id == membership_id,
+            Loan.requested_on >= lo,
+            Loan.requested_on <= hi,
+        )
+        .order_by(Loan.requested_on)
+    )
+    for l in res.scalars().all():
+        requests.append(
+            ActivityItem(
+                date=l.requested_on,
+                kind="loan",
+                label=l.purpose or "Prêt",
+                amount=l.principal,
+                reference=l.reference,
+                status=l.status.value if hasattr(l.status, "value") else l.status,
+            )
+        )
+    res = await db.execute(
+        select(SocialAidCase)
+        .where(
+            SocialAidCase.beneficiary_membership_id == membership_id,
+            SocialAidCase.requested_on >= lo,
+            SocialAidCase.requested_on <= hi,
+        )
+        .order_by(SocialAidCase.requested_on)
+    )
+    for a in res.scalars().all():
+        requests.append(
+            ActivityItem(
+                date=a.requested_on,
+                kind="aid",
+                label=a.title,
+                amount=a.requested_amount or a.approved_amount or 0,
+                reference=a.reference,
+                status=a.status.value if hasattr(a.status, "value") else a.status,
+            )
+        )
+
+    # ── Revenus : sorties OUT reçues (versements/décaissements) ──
+    # NB : les tours de tontine à bénéficiaires multiples portent
+    # related_membership_id=None → non rattachés ici (cas le plus courant = 1
+    # bénéficiaire, couvert).
+    incomes: List[ActivityItem] = []
+    iby: dict[str, int] = {}
+    res = await db.execute(
+        select(TreasuryMovement)
+        .where(
+            TreasuryMovement.related_membership_id == membership_id,
+            TreasuryMovement.direction == MovementDirection.OUT,
+            TreasuryMovement.source_type.in_(list(_INCOME_LABELS.keys())),
+            TreasuryMovement.occurred_on >= lo,
+            TreasuryMovement.occurred_on <= hi,
+        )
+        .order_by(TreasuryMovement.occurred_on)
+    )
+    for mv in res.scalars().all():
+        if getattr(mv, "is_voided", False):
+            continue
+        incomes.append(
+            ActivityItem(
+                date=mv.occurred_on,
+                kind=mv.source_type,
+                label=mv.description or _INCOME_LABELS.get(mv.source_type, mv.source_type),
+                amount=mv.amount,
+            )
+        )
+        iby[mv.source_type] = iby.get(mv.source_type, 0) + mv.amount
+
+    totals = {
+        "contributed": sum(c.amount for c in contributions),
+        "requested": sum(r.amount for r in requests),
+        "received": sum(i.amount for i in incomes),
+    }
+    return MemberActivity(
+        membership_id=m.id,
+        member_name=getattr(m.user, "full_name", None),
+        member_number=m.member_number,
+        since=lo,
+        until=hi,
+        currency=assoc.currency,
+        contributions=contributions,
+        requests=requests,
+        incomes=incomes,
+        totals=totals,
+        contributions_by_kind=cby,
+        incomes_by_kind=iby,
+    )
 
 
 class ActivationLinkOut(BaseModel):
