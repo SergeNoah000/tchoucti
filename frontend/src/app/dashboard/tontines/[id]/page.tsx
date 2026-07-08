@@ -14,6 +14,7 @@ import {
   Plus,
   Pencil,
   Settings,
+  ListOrdered,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,6 +44,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/common/page-header";
+import { ReorderPassageDialog } from "@/components/tontines/reorder-passage-dialog";
 import { associationsApi, tontinesApi } from "@/lib/api";
 import type {
   Association,
@@ -306,6 +308,23 @@ function CycleCard({
               {t("pot")}: {fmt.currency(cycle.pot_amount)}
             </span>
           </div>
+          <div className="flex items-center gap-2">
+          {canPayout &&
+            (cycle.status === "draft" || cycle.status === "active") &&
+            cycle.rounds
+              .filter((r) => r.status === "pending")
+              .reduce((n, r) => n + r.beneficiaries.length, 0) >= 2 && (
+              <ReorderPassageDialog
+                cycle={cycle}
+                tontineId={tontineId}
+                trigger={
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <ListOrdered className="h-4 w-4" />
+                    {t("reorderTitle")}
+                  </Button>
+                }
+              />
+            )}
           {canConfigure && isActive && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -330,6 +349,7 @@ function CycleCard({
               </AlertDialogContent>
             </AlertDialog>
           )}
+          </div>
         </div>
 
         <div className="divide-y divide-border">

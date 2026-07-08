@@ -545,6 +545,12 @@ export const tontinesApi = {
   /** Renomme un nom/part d'un bénéficiaire (admin + bureau, à tout moment). */
   renameBeneficiary: async (beneficiaryId: string, name: string) =>
     (await api.patch(`/tontines/beneficiaries/${beneficiaryId}/rename`, { name })).data,
+  /** Réordonne l'ordre de passage des tours PAS ENCORE servis (brouillon = tous ;
+   *  actif = tours futurs). `orderedMembershipIds` = permutation exacte. */
+  reorderCycle: async (cycleId: string, orderedMembershipIds: string[]) =>
+    (await api.put(`/tontines/cycles/${cycleId}/reorder`, {
+      ordered_membership_ids: orderedMembershipIds,
+    })).data,
   /** Démarre un cycle brouillon (le 1er tour passe en collecte). */
   activateCycle: async (cycleId: string) =>
     (await api.post(`/tontines/cycles/${cycleId}/activate`, {})).data,

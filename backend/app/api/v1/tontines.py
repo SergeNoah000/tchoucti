@@ -46,6 +46,7 @@ from app.services import payouts
 from app.schemas.tontine import (
     BeneficiaryRename,
     CycleParticipantsUpdate,
+    CycleReorder,
     NextCycleCreate,
     TontineBeneficiaryOut,
     TontineCreate,
@@ -706,6 +707,92 @@ async def set_cycle_participants(
     db.expunge_all()
     tontine = await _load_tontine(db, tid)
     return await _tontine_detail(db, tontine)
+
+
+@router.put("/cycles/{cycle_id}/reorder", response_model=TontineCycleDetail)
+async def reorder_cycle(
+    cycle_id: UUID,
+    payload: CycleReorder,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Réordonne l'ordre de passage des bénéficiaires sur les tours PAS ENCORE
+    servis. Brouillon → tous les tours ; cycle actif → tours futurs (les tours
+    en cours/servis restent figés). La liste fournie doit être une permutation
+    exacte des bénéficiaires actuellement placés sur ces tours."""
+    from collections import Counter, defaultdict, deque
+
+    cycle = await _load_cycle(db, cycle_id)
+    tontine = await _load_tontine(db, cycle.tontine_id)
+    assoc = await _get_assoc_or_404(db, tontine.association_id)
+    _check_access(current_user, assoc)
+    if not await _user_has_bureau_role(db, current_user, assoc.id):
+        raise HTTPException(403, "Action réservée aux membres du bureau")
+    if cycle.status not in (TontineCycleStatus.DRAFT, TontineCycleStatus.ACTIVE):
+        raise HTTPException(409, "Ce cycle n'est pas réordonnable")
+
+    pending = sorted(
+        [r for r in cycle.rounds if r.status == TontineRoundStatus.PENDING],
+        key=lambda r: r.round_number,
+    )
+    if not pending:
+        raise HTTPException(409, "Aucun tour futur à réordonner")
+
+    # Séquence actuelle des bénéficiaires (ordre des tours), + métadonnées à
+    # préserver (libellé, parts) et taille de chaque tour.
+    current_seq: list[tuple[UUID, Optional[str], int]] = []
+    sizes: dict[UUID, int] = {}
+    for r in pending:
+        bens = sorted(r.beneficiaries, key=lambda x: x.id.hex)
+        sizes[r.id] = len(bens)
+        for b in bens:
+            current_seq.append((b.membership_id, b.name_label, b.share_parts or 1))
+    current_ids = [c[0] for c in current_seq]
+
+    if Counter(payload.ordered_membership_ids) != Counter(current_ids):
+        raise HTTPException(
+            422,
+            "La liste doit être une permutation exacte des bénéficiaires des "
+            "tours à venir.",
+        )
+
+    # File des métadonnées par membre (gère une même personne sur plusieurs tours).
+    meta: dict[UUID, deque] = defaultdict(deque)
+    for mid, label, parts in current_seq:
+        meta[mid].append((label, parts))
+
+    # Purge des anciens bénéficiaires des tours futurs, puis réassignation.
+    for r in pending:
+        for b in list(r.beneficiaries):
+            await db.delete(b)
+    await db.flush()
+
+    queue = deque(payload.ordered_membership_ids)
+    for r in pending:
+        size = sizes[r.id]
+        chosen = []
+        parts_list = []
+        for _ in range(size):
+            mid = queue.popleft()
+            label, parts = meta[mid].popleft()
+            chosen.append((mid, label, parts))
+            parts_list.append(parts)
+        shares = _shares(r.expected_amount, parts_list) if size else []
+        for (mid, label, parts), amt in zip(chosen, shares):
+            db.add(
+                TontineRoundBeneficiary(
+                    round_id=r.id,
+                    membership_id=mid,
+                    name_label=label,
+                    share_amount=amt,
+                    share_parts=parts,
+                )
+            )
+
+    await db.commit()
+    cycle = await _load_cycle(db, cycle_id)
+    mm = await _meeting_map_for_cycle(db, cycle.id)
+    return _cycle_detail(cycle, mm)
 
 
 @router.patch("/beneficiaries/{beneficiary_id}/rename", response_model=TontineDetail)

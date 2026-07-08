@@ -77,6 +77,15 @@ class BeneficiaryRename(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
 
 
+class CycleReorder(BaseModel):
+    """Réordonne l'ordre de passage : nouvelle séquence des bénéficiaires des
+    tours PAS ENCORE servis (brouillon = tous les tours ; cycle actif = tours
+    futurs). La liste doit être une permutation exacte des bénéficiaires actuels
+    de ces tours."""
+
+    ordered_membership_ids: List[UUID] = Field(..., max_length=400)
+
+
 # ── Outputs ─────────────────────────────────────────────────────────────────
 
 class TontineBeneficiaryOut(BaseModel):
