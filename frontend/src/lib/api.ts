@@ -386,11 +386,51 @@ export const caissesApi = {
     (await api.get(`/caisses/${caisseId}/distributions`)).data,
   closeDistribution: async (caisseId: string) =>
     (await api.post(`/caisses/${caisseId}/close-distribution`, {})).data,
+  /** Lot 5 — pronostics : rentabilité des prêts + part projetée au prorata. */
+  projections: async (caisseId: string): Promise<CaisseProjection> =>
+    (await api.get(`/caisses/${caisseId}/projections`)).data,
   withdraw: async (
     caisseId: string,
     payload: { membership_id: string; amount: number; note?: string },
   ) => (await api.post(`/caisses/${caisseId}/withdraw`, payload)).data,
 };
+
+// ── Pronostics caisse (Lot 5) ─────────────────────────────────────────────
+export interface ProjectionInstallment {
+  due_on: string;
+  interest: number;
+}
+export interface LoanProjection {
+  loan_id: string;
+  reference: string;
+  borrower_name?: string | null;
+  principal: number;
+  total_interest: number;
+  rentability_pct: number;
+  upcoming_interest: number;
+  remaining_installments: number;
+  schedule: ProjectionInstallment[];
+}
+export interface ContributorProjection {
+  membership_id: string;
+  member_name?: string | null;
+  apport_cum: number;
+  weight_pct: number;
+  projected_interest: number;
+}
+export interface CaisseProjection {
+  caisse_id: string;
+  caisse_name: string;
+  currency?: string | null;
+  interest_distribution: "kept" | "shared_pro_rata";
+  total_principal_active: number;
+  total_upcoming_interest: number;
+  total_apport: number;
+  loans: LoanProjection[];
+  contributors: ContributorProjection[];
+  my?: ContributorProjection | null;
+  is_admin_view: boolean;
+}
 
 export const meetingsApi = {
   list: async (params?: { association_id?: string; status?: string }) =>

@@ -1,15 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { Wallet, HandCoins, HeartHandshake, PiggyBank, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { Wallet, HandCoins, HeartHandshake, PiggyBank, ArrowDownLeft, ArrowUpRight, TrendingUp } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
 import { EmptyState } from "@/components/common/empty-state";
+import { CaissePronostics } from "@/components/caisses/caisse-pronostics";
 import { financeApi } from "@/lib/api";
 import { useFormatters } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -18,7 +26,9 @@ import type { MyFinanceSummary } from "@/lib/types";
 /** Vue « Mes cotisations » — historique financier propre au membre. */
 export function MyFinanceView({ associationId, currency }: { associationId: string; currency?: string }) {
   const t = useTranslations("myFinance");
+  const tPronostics = useTranslations("caissePronostics");
   const fmt = useFormatters(currency);
+  const [pronosticCaisse, setPronosticCaisse] = useState<{ id: string; name: string } | null>(null);
 
   const { data, isLoading } = useQuery<MyFinanceSummary>({
     queryKey: ["my-finance", associationId],
@@ -64,6 +74,7 @@ export function MyFinanceView({ associationId, currency }: { associationId: stri
                   <th className="px-4 py-3 font-medium">{t("caisse")}</th>
                   <th className="px-4 py-3 text-right font-medium">{t("contributed")}</th>
                   <th className="px-4 py-3 text-right font-medium">{t("balanceOrInterest")}</th>
+                  <th className="px-2 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -80,6 +91,17 @@ export function MyFinanceView({ associationId, currency }: { associationId: stri
                         : c.my_interest
                           ? <span className="text-emerald-700 dark:text-emerald-400">+{fmt.currency(c.my_interest)}</span>
                           : "—"}
+                    </td>
+                    <td className="px-2 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setPronosticCaisse({ id: c.caisse_id, name: c.caisse_name })}
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                        title={tPronostics("tab")}
+                      >
+                        <TrendingUp className="h-3.5 w-3.5" />
+                        {tPronostics("tab")}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -173,6 +195,21 @@ export function MyFinanceView({ associationId, currency }: { associationId: stri
           )}
         </CardContent>
       </Card>
+
+      {/* Pronostics d'une caisse — vue LOCALE du membre (sa part projetée) */}
+      <Dialog open={!!pronosticCaisse} onOpenChange={(o) => !o && setPronosticCaisse(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              {pronosticCaisse?.name} — {tPronostics("tab")}
+            </DialogTitle>
+          </DialogHeader>
+          {pronosticCaisse && (
+            <CaissePronostics caisseId={pronosticCaisse.id} currency={currency} />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

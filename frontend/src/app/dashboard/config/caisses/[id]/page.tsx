@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, PlayCircle, Settings, Users, History, AlertTriangle, Wallet } from "lucide-react";
+import { ArrowLeft, Loader2, PlayCircle, Settings, Users, History, AlertTriangle, Wallet, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/common/page-header";
+import { CaissePronostics } from "@/components/caisses/caisse-pronostics";
 import {
   associationsApi,
   caissesApi,
@@ -40,6 +41,7 @@ export default function CaisseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const t = useTranslations("configCaisses");
   const tCommon = useTranslations("common");
+  const tPronostics = useTranslations("caissePronostics");
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const canConfigure = canConfigureAssociation(user);
@@ -149,6 +151,10 @@ export default function CaisseDetailPage() {
           <TabsTrigger value="distributions" className="gap-1.5">
             <History className="h-3.5 w-3.5" />
             {t("tabDistributions")} ({distributions.length})
+          </TabsTrigger>
+          <TabsTrigger value="pronostics" className="gap-1.5">
+            <TrendingUp className="h-3.5 w-3.5" />
+            {tPronostics("tab")}
           </TabsTrigger>
         </TabsList>
 
@@ -339,6 +345,10 @@ export default function CaisseDetailPage() {
               ))}
             </ul>
           )}
+        </TabsContent>
+
+        <TabsContent value="pronostics" className="mt-4">
+          <CaissePronostics caisseId={id} currency={association?.currency} />
         </TabsContent>
       </Tabs>
     </div>

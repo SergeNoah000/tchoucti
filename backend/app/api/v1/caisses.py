@@ -16,9 +16,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import (
     _user_has_bureau_role,
+    _user_is_association_admin,
     get_current_user,
     get_db,
     require_association_admin_for,
@@ -39,6 +41,7 @@ from app.models.caisse import (
 from app.models.finance import MovementDirection
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.models.finance import Fund, FundKind, Treasury
+from app.models.loan import Loan, LoanInstallment, LoanInstallmentStatus, LoanStatus
 from app.models.role import Membership, MembershipStatus
 from app.models.user import User
 from app.schemas.caisse import (
@@ -47,7 +50,11 @@ from app.schemas.caisse import (
     CaisseDistributionOut,
     CaisseDistributionShareOut,
     CaisseOut,
+    CaisseProjection,
+    ContributorProjection,
+    LoanProjection,
     MemberBalanceOut,
+    ProjectionInstallment,
     CaisseUpdate,
     CaisseWithdrawRequest,
     CaisseWithdrawResponse,
@@ -178,6 +185,148 @@ async def get_caisse(
     caisse, kind = row
     await _check_access(db, current_user, caisse.association_id)
     return _to_out(caisse, kind.value if hasattr(kind, "value") else kind)
+
+
+@router.get("/{caisse_id}/projections", response_model=CaisseProjection)
+async def caisse_projections(
+    caisse_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pronostics de la caisse : rentabilité par prêt (intérêt total ÷ capital),
+    intérêts à venir par échéance, et part projetée de chaque contributeur au
+    prorata de son apport. Vue LOCALE (`my`) pour tous ; vue GLOBALE
+    (`contributors`) réservée aux administrateurs."""
+    cres = await db.execute(select(Caisse).where(Caisse.id == caisse_id))
+    caisse = cres.scalar_one_or_none()
+    if not caisse:
+        raise HTTPException(404, "Caisse introuvable")
+    assoc = await _check_access(db, current_user, caisse.association_id)
+    is_admin = (
+        current_user.is_super_admin
+        or current_user.is_groupement_admin
+        or await _user_is_association_admin(db, current_user, caisse.association_id)
+    )
+
+    # ── Prêts financés par cette caisse, en cours ──
+    loans = (
+        await db.execute(
+            select(Loan)
+            .options(
+                selectinload(Loan.installments),
+                selectinload(Loan.borrower).selectinload(Membership.user),
+            )
+            .where(
+                Loan.source_caisse_id == caisse_id,
+                Loan.status.in_([LoanStatus.DISBURSED, LoanStatus.REPAYING]),
+            )
+            .order_by(Loan.created_at.desc())
+        )
+    ).scalars().all()
+
+    loan_projs: list[LoanProjection] = []
+    total_upcoming = 0
+    total_principal = 0
+    for loan in loans:
+        upcoming = 0
+        sched: list[ProjectionInstallment] = []
+        n_remaining = 0
+        for inst in sorted(loan.installments, key=lambda i: i.number):
+            if inst.status in (LoanInstallmentStatus.PAID, LoanInstallmentStatus.WAIVED):
+                continue
+            due_i = max(0, inst.interest_part - inst.paid_interest)
+            if due_i <= 0:
+                continue
+            n_remaining += 1
+            upcoming += due_i
+            sched.append(ProjectionInstallment(due_on=inst.due_on, interest=due_i))
+        rentability = (loan.total_interest / loan.principal * 100.0) if loan.principal else 0.0
+        borrower = getattr(loan, "borrower", None)
+        buser = getattr(borrower, "user", None) if borrower else None
+        loan_projs.append(
+            LoanProjection(
+                loan_id=loan.id,
+                reference=loan.reference,
+                borrower_name=getattr(buser, "full_name", None),
+                principal=loan.principal,
+                total_interest=loan.total_interest,
+                rentability_pct=round(rentability, 2),
+                upcoming_interest=upcoming,
+                remaining_installments=n_remaining,
+                schedule=sched,
+            )
+        )
+        total_upcoming += upcoming
+        total_principal += loan.principal
+
+    # ── Contributeurs (poids au prorata de l'apport) ──
+    balances = (
+        await db.execute(
+            select(CaisseContributorBalance)
+            .options(
+                selectinload(CaisseContributorBalance.membership).selectinload(
+                    Membership.user
+                )
+            )
+            .where(CaisseContributorBalance.caisse_id == caisse_id)
+            .order_by(CaisseContributorBalance.created_at)
+        )
+    ).scalars().all()
+    total_apport = sum(b.apport_cum for b in balances)
+    shared = caisse.interest_distribution == InterestDistribution.SHARED_PRO_RATA
+
+    def _proj_for(bal: CaisseContributorBalance) -> ContributorProjection:
+        weight = (bal.apport_cum / total_apport) if total_apport else 0.0
+        projected = (
+            (total_upcoming * bal.apport_cum) // total_apport
+            if (shared and total_apport)
+            else 0
+        )
+        mem = getattr(bal, "membership", None)
+        muser = getattr(mem, "user", None) if mem else None
+        return ContributorProjection(
+            membership_id=bal.membership_id,
+            member_name=getattr(muser, "full_name", None),
+            apport_cum=bal.apport_cum,
+            weight_pct=round(weight * 100.0, 2),
+            projected_interest=int(projected),
+        )
+
+    contributors = [_proj_for(b) for b in balances] if is_admin else []
+
+    # Part locale du membre courant.
+    my_membership = (
+        await db.execute(
+            select(Membership).where(
+                Membership.user_id == current_user.id,
+                Membership.association_id == caisse.association_id,
+            )
+        )
+    ).scalar_one_or_none()
+    my_proj = None
+    if my_membership is not None:
+        mine = next((b for b in balances if b.membership_id == my_membership.id), None)
+        if mine is not None:
+            my_proj = _proj_for(mine)
+
+    idist = (
+        caisse.interest_distribution.value
+        if hasattr(caisse.interest_distribution, "value")
+        else str(caisse.interest_distribution)
+    )
+    return CaisseProjection(
+        caisse_id=caisse.id,
+        caisse_name=caisse.name,
+        currency=assoc.currency,
+        interest_distribution=idist,
+        total_principal_active=total_principal,
+        total_upcoming_interest=total_upcoming,
+        total_apport=total_apport,
+        loans=loan_projs,
+        contributors=contributors,
+        my=my_proj,
+        is_admin_view=is_admin,
+    )
 
 
 # ── Admin-only writes ──────────────────────────────────────────────────────

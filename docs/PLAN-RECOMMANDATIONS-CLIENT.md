@@ -94,10 +94,19 @@ Architecture : **table générique `PayoutRequest`** = file de validation unique
    Prêts / Aides). Ajout d'une **synthèse par type d'activité** (tontines /
    caisses / prêts / aides) dans le **PV** (rapport PDF de clôture).
 
-## Lot 5 — Pronostics caisse
-⬜ Page détail caisse : intérêts à venir des prêts (par échéance/date) +
-   **rentabilité par unité prêtée** (intérêt total ÷ capital) pour chaque prêt,
-   répartie aux contributeurs au prorata. Vue membre locale, admin locale+globale.
+## Lot 5 — Pronostics caisse ✅
+- ✅ `GET /caisses/{id}/projections` : prêts financés par la caisse (statut
+   disbursed/repaying) → **rentabilité par prêt** (intérêt total ÷ capital, %),
+   **intérêts à venir** par échéance (`interest_part - paid_interest` des
+   échéances non payées), et **part projetée** de chaque contributeur au prorata
+   de l'apport (formule identique à `close_distribution_period`). `kept` →
+   part membre = 0 (intérêts conservés).
+- ✅ RBAC : `my` (vue LOCALE) pour tous ; `contributors` (vue GLOBALE) réservé
+   aux admins (`is_admin_view`). Testé E2E (prorata 3500/6000 = 58,33% ; membre
+   voit sa part, contributeurs masqués).
+- ✅ Frontend : onglet **Pronostics** sur la page détail caisse (admin = local +
+   global) ; **membre** = dialog Pronostics depuis « Mes cotisations »
+   (vue locale, sa part projetée). i18n FR/EN/DE.
 
 ## Lot 6 — Imports (vérif complète) + Export
 ⬜ Vérifier à fond les imports **prêts / aides / caisses** (mouvements/actions).

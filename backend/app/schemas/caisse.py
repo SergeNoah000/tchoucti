@@ -183,6 +183,51 @@ class CaisseWithdrawRequest(BaseModel):
     note: Optional[str] = Field(None, max_length=500)
 
 
+class ProjectionInstallment(BaseModel):
+    due_on: date
+    interest: int
+
+
+class LoanProjection(BaseModel):
+    loan_id: UUID
+    reference: str
+    borrower_name: Optional[str] = None
+    principal: int
+    total_interest: int
+    # Rentabilité « par unité prêtée » = intérêt total ÷ capital (en %).
+    rentability_pct: float
+    # Intérêts À VENIR (échéances non encore payées).
+    upcoming_interest: int
+    remaining_installments: int
+    schedule: List[ProjectionInstallment] = []
+
+
+class ContributorProjection(BaseModel):
+    membership_id: UUID
+    member_name: Optional[str] = None
+    apport_cum: int
+    # Poids au prorata de l'apport dans la caisse (en %).
+    weight_pct: float
+    # Part projetée des intérêts à venir (0 si la caisse conserve ses intérêts).
+    projected_interest: int
+
+
+class CaisseProjection(BaseModel):
+    caisse_id: UUID
+    caisse_name: str
+    currency: Optional[str] = None
+    interest_distribution: str  # kept | shared_pro_rata
+    total_principal_active: int
+    total_upcoming_interest: int
+    total_apport: int
+    loans: List[LoanProjection] = []
+    # Vue GLOBALE (tous les contributeurs) — remplie pour les admins uniquement.
+    contributors: List[ContributorProjection] = []
+    # Vue LOCALE — part projetée du membre courant (None s'il n'a pas d'apport).
+    my: Optional[ContributorProjection] = None
+    is_admin_view: bool = False
+
+
 class CaisseWithdrawResponse(BaseModel):
     # movement_id est None tant que la sortie attend la validation du trésorier.
     movement_id: Optional[UUID] = None
