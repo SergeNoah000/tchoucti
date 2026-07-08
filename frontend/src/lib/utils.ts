@@ -5,13 +5,29 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Root domain the tenant subdomains hang off (e.g. myappsuite.com). Driven by
- *  NEXT_PUBLIC_ROOT_DOMAIN so dev shows `.localhost` and prod the real domain. */
+/** Domaine racine sur lequel pendent les sous-domaines des tenants.
+ *  Priorité : NEXT_PUBLIC_ROOT_DOMAIN si défini ; SINON on prend le DOMAINE RÉEL
+ *  sur lequel l'app est servie (au lieu de fixer « myappsuite.com »), en
+ *  retirant le sous-domaine courant (ex. admin.exemple.com → exemple.com). */
+export function rootDomain(): string {
+  const env = process.env.NEXT_PUBLIC_ROOT_DOMAIN;
+  if (env) return env.toLowerCase();
+  if (typeof window !== "undefined") {
+    const h = window.location.hostname.toLowerCase();
+    if (h === "localhost" || /^\d+(\.\d+){3}$/.test(h)) return h;
+    const parts = h.split(".");
+    // exemple.com → exemple.com ; admin.exemple.com → exemple.com.
+    return parts.length > 2 ? parts.slice(-2).join(".") : h;
+  }
+  return "myappsuite.com";
+}
+
+/** @deprecated Utilise rootDomain() (dynamique). Conservé pour compat. */
 export const ROOT_DOMAIN = (process.env.NEXT_PUBLIC_ROOT_DOMAIN || "myappsuite.com").toLowerCase();
 
 /** Public host of a groupement: `{subdomain}.{rootDomain}`. */
 export function groupementHost(g: { subdomain?: string | null; slug: string }): string {
-  return `${g.subdomain || g.slug}.${ROOT_DOMAIN}`;
+  return `${g.subdomain || g.slug}.${rootDomain()}`;
 }
 
 /** Canonical login URL for an association: `{protocol}//{groupement-subdomain}.{rootDomain}[:port]/a/{slug}`.
@@ -25,7 +41,7 @@ export function associationLoginUrl(association: {
   const sub = association.groupement_subdomain;
   if (!sub) return null;
   const port = window.location.port ? `:${window.location.port}` : "";
-  return `${window.location.protocol}//${sub}.${ROOT_DOMAIN}${port}/a/${association.slug}`;
+  return `${window.location.protocol}//${sub}.${rootDomain()}${port}/a/${association.slug}`;
 }
 
 /** Format a number as XAF currency (Cameroon default), no decimals. */

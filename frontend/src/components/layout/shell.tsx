@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { useQuery } from "@tanstack/react-query";
 import { ForcePasswordChange } from "@/components/auth/force-password-change";
 import {
   LayoutDashboard,
@@ -20,6 +21,7 @@ import {
   LogOut,
   Menu,
   Building2,
+  Check,
   CreditCard,
   ShieldCheck,
   ScrollText,
@@ -43,7 +45,12 @@ import { ThemeToggle } from "@/components/common/theme-toggle";
 import { LanguageToggle } from "@/components/common/language-toggle";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { useAuthStore, usePermissionStore } from "@/lib/store";
-import { authApi } from "@/lib/api";
+import {
+  authApi,
+  associationsApi,
+  getCurrentAssociationId,
+  setCurrentAssociationId,
+} from "@/lib/api";
 import { cn, initials } from "@/lib/utils";
 import { detectRole, ROLE_THEMES, ROLE_CLASSES, type AppRole } from "@/lib/roles";
 import { useRoleFavicon } from "@/lib/use-role-favicon";
@@ -213,6 +220,27 @@ export function Shell({ children, forceRole, homeHref }: ShellProps) {
 
   const nav = useMemo(() => navForRole(role), [role]);
 
+  // Associations de l'utilisateur (pour le verrou/sélecteur de session).
+  // Réservé aux utilisateurs réguliers : un admin plateforme n'a pas de
+  // « mon association ». La liste remonte déjà l'association courante en [0].
+  const { data: myAssociations } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ["associations"],
+    queryFn: () => associationsApi.list(),
+    enabled: hasHydrated && isAuthenticated && !!user && !user.is_platform_admin,
+  });
+  const associations = myAssociations ?? [];
+  const currentAssocId = getCurrentAssociationId();
+  const currentAssoc =
+    associations.find((a) => a.id === currentAssocId) ?? associations[0];
+
+  const switchAssociation = (id: string) => {
+    if (id === currentAssoc?.id) return;
+    setCurrentAssociationId(id);
+    // Rechargement dur : toutes les requêtes se re-scopent sur la nouvelle
+    // association (désormais en [0]) proprement.
+    window.location.assign("/dashboard");
+  };
+
   useRoleFavicon(role);
 
   useEffect(() => {
@@ -253,6 +281,38 @@ export function Shell({ children, forceRole, homeHref }: ShellProps) {
     return <ForcePasswordChange />;
   }
 
+  // Verrou de session : un utilisateur régulier appartenant à plusieurs
+  // associations doit en CHOISIR une avant d'accéder à l'app. Le choix scope
+  // toute la session (l'association devient [0] partout). Modifiable ensuite
+  // depuis le menu profil.
+  if (myAssociations && associations.length > 1 && !currentAssocId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-brand-50/40 to-background p-4 dark:via-brand-950/10">
+        <div className="w-full max-w-md rounded-xl border border-border/60 bg-card p-6 shadow-xl">
+          <div className="mb-1 flex items-center gap-2">
+            <Building2 className={cn("h-5 w-5", classes.iconText)} />
+            <h1 className="text-lg font-semibold">{tShell("chooseAssociationTitle")}</h1>
+          </div>
+          <p className="mb-5 text-sm text-muted-foreground">
+            {tShell("chooseAssociationHint")}
+          </p>
+          <div className="space-y-2">
+            {associations.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => switchAssociation(a.id)}
+                className="flex w-full items-center gap-3 rounded-lg border border-border/60 px-4 py-3 text-left transition-colors hover:border-brand-400 hover:bg-brand-50/50 dark:hover:bg-brand-950/20"
+              >
+                <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="flex-1 truncate font-medium">{a.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const handleLogout = async () => {
     try {
       await authApi.logout();
@@ -261,6 +321,9 @@ export function Shell({ children, forceRole, homeHref }: ShellProps) {
     }
     logout();
     clearPerms();
+    // Libère le verrou d'association : l'utilisateur suivant sur ce navigateur
+    // ne doit pas hériter du choix du précédent.
+    setCurrentAssociationId(null);
     // Navigation DURE (et non router.push) : détruit tout l'état React et les
     // requêtes en vol (poll des notifications, etc.). Sans ça, une requête qui
     // se termine en 401 après le logout déclenchait la redirection « dure » de
@@ -411,6 +474,27 @@ export function Shell({ children, forceRole, homeHref }: ShellProps) {
                     {tNav("settings")}
                   </Link>
                 </DropdownMenuItem>
+                {associations.length > 1 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                      {tShell("activeAssociation")}
+                    </DropdownMenuLabel>
+                    {associations.map((a) => (
+                      <DropdownMenuItem
+                        key={a.id}
+                        onClick={() => switchAssociation(a.id)}
+                        className="gap-2"
+                      >
+                        <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="flex-1 truncate">{a.name}</span>
+                        {a.id === currentAssoc?.id && (
+                          <Check className="h-4 w-4 shrink-0 text-brand-600" />
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
                   <LogOut className="h-4 w-4" />

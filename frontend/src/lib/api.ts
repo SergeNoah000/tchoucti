@@ -164,9 +164,39 @@ export const invitationsApi = {
     (await publicApi.post("/invitations/accept", payload)).data,
 };
 
+// ── Association « courante » de la session ────────────────────────────────
+// Verrou : une session est scopée sur UNE association choisie. On la stocke
+// localement et associationsApi.list() la remonte en [0] — les pages faisant
+// `associations[0]` utilisent donc automatiquement l'association courante.
+const CURRENT_ASSOC_KEY = "current_association_id";
+export function getCurrentAssociationId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(CURRENT_ASSOC_KEY);
+}
+export function setCurrentAssociationId(id: string | null) {
+  if (typeof window === "undefined") return;
+  if (id) localStorage.setItem(CURRENT_ASSOC_KEY, id);
+  else localStorage.removeItem(CURRENT_ASSOC_KEY);
+}
+
 export const associationsApi = {
-  list: async (groupementId?: string) =>
-    (await api.get("/associations", { params: groupementId ? { groupement_id: groupementId } : undefined })).data,
+  list: async (groupementId?: string) => {
+    const data = (
+      await api.get("/associations", {
+        params: groupementId ? { groupement_id: groupementId } : undefined,
+      })
+    ).data;
+    // Remonte l'association courante en tête (verrou de session).
+    const cur = getCurrentAssociationId();
+    if (Array.isArray(data) && cur) {
+      const idx = data.findIndex((a: { id: string }) => a.id === cur);
+      if (idx > 0) {
+        const [chosen] = data.splice(idx, 1);
+        data.unshift(chosen);
+      }
+    }
+    return data;
+  },
   get: async (id: string) => (await api.get(`/associations/${id}`)).data,
   create: async (payload: Record<string, unknown>) => (await api.post("/associations", payload)).data,
   update: async (id: string, payload: Record<string, unknown>) =>

@@ -73,6 +73,9 @@
     "footerTagline": "In Afrika für Gemeinschaften weltweit gestaltet."
   },
   "shell": {
+    "activeAssociation": "Aktiver Verein",
+    "chooseAssociationTitle": "Verein auswählen",
+    "chooseAssociationHint": "Sie gehören mehreren Vereinen an. Wählen Sie den Verein, mit dem Sie arbeiten möchten. Sie können später über Ihr Profil wechseln.",
     "contexts": {
       "platform": "Plattform",
       "groupement": "Gruppe",

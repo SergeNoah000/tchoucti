@@ -29,14 +29,20 @@ Légende statut : ✅ fait · 🟡 en cours · ⬜ à faire · 🔎 vérifié (c
   désormais une séance CLÔTURÉE (pas PLANIFIÉE) quand la date du tour est
   passée, + `min=aujourd'hui` sur la date de début du dialog de création de
   tontine. → seules les séances *importées/passées* sont dans le passé.
-- 🔎 **Slug URL de connexion par association (item 5)** : implémenté
-  (`{groupement}.myappsuite.com/a/{slug}`, `public.py` + route `app/a/[slug]`).
+- ✅ **Domaine dynamique (item 4)** : `rootDomain()` (`lib/utils.ts`) prend
+  désormais le **domaine réel** servi (dérivé de `window.location.hostname`,
+  sous-domaine retiré) au lieu de fixer `myappsuite.com` ; `NEXT_PUBLIC_ROOT_DOMAIN`
+  reste prioritaire. `groupementHost` / `associationLoginUrl` l'utilisent.
+- ✅ **Verrou association après connexion + switcher (item 5)** : la session est
+  scopée sur UNE association. `associationsApi.list()` remonte l'association
+  courante (`current_association_id` en localStorage) en `[0]` → toutes les pages
+  faisant `associations[0]` l'utilisent. Un utilisateur régulier avec **plusieurs**
+  associations doit **en choisir une après la connexion** (écran de sélection dans
+  le Shell) ; il peut **changer depuis le menu profil**. Le verrou est libéré à la
+  déconnexion. NB : silo complet (comptes séparés par association) = chantier à part.
+- 🔎 **Slug URL de connexion par association** : implémenté
+  (`{groupement}.{domaine}/a/{slug}`, `public.py` + route `app/a/[slug]`).
   → à confirmer en live sur le domaine.
-- 🔎 **1 email = 1 association par session (item 4)** : NON verrouillé. Un
-  utilisateur régulier voit les associations où il a une adhésion active
-  (`list_associations`) ; s'il en a plusieurs, la session prend `associations[0]`
-  sans verrou ni sélecteur. C'est le **modèle silo** (décidé, pas implémenté) →
-  **chantier à part** (Lot silo), hors périmètre des corrections rapides.
 
 ## Lot 2 — Sorties d'argent validées par le trésorier
 ⬜ Workflow prépare → EN ATTENTE → le trésorier valide, pour : décaissement prêt,

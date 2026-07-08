@@ -73,6 +73,9 @@
     "footerTagline": "Conçu en Afrique pour les communautés du monde."
   },
   "shell": {
+    "activeAssociation": "Association active",
+    "chooseAssociationTitle": "Choisir une association",
+    "chooseAssociationHint": "Vous appartenez à plusieurs associations. Sélectionnez celle sur laquelle travailler. Vous pourrez en changer depuis votre profil.",
     "contexts": {
       "platform": "Plateforme",
       "groupement": "Groupement",

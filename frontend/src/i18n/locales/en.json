@@ -73,6 +73,9 @@
     "footerTagline": "Designed in Africa for communities worldwide."
   },
   "shell": {
+    "activeAssociation": "Active association",
+    "chooseAssociationTitle": "Choose an association",
+    "chooseAssociationHint": "You belong to several associations. Select the one to work on. You can switch later from your profile.",
     "contexts": {
       "platform": "Platform",
       "groupement": "Group",
