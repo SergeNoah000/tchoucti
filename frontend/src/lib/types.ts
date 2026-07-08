@@ -192,6 +192,9 @@ export interface User {
   /** True if the user holds any role other than plain "member" on a membership
    *  (treasurer, secretary, manager, admin). Unlocks bureau actions in séances. */
   has_bureau_role?: boolean;
+  /** True si l'utilisateur tient le rôle `treasurer` : peut valider les sorties
+   *  d'argent (avec les admins). */
+  has_treasurer_role?: boolean;
   avatar_url?: string | null;
   groupement_id?: UUID | null;
   created_at: string;
@@ -706,6 +709,8 @@ export interface SocialAidCase {
   insurance_minimum?: number | null;
   insurance_below_min?: boolean | null;
   per_member_share?: number | null;
+  /** True si un versement est préparé et attend la validation du trésorier. */
+  pending_payout?: boolean;
 }
 
 export interface SocialAidCaseDetail extends SocialAidCase {
@@ -776,6 +781,8 @@ export interface Loan {
   status: LoanStatus;
   purpose?: string | null;
   created_at: string;
+  /** True si un décaissement est préparé et attend la validation du trésorier. */
+  pending_payout?: boolean;
 }
 
 export interface LoanDetail extends Loan {

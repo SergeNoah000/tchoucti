@@ -44,10 +44,27 @@ Légende statut : ✅ fait · 🟡 en cours · ⬜ à faire · 🔎 vérifié (c
   (`{groupement}.{domaine}/a/{slug}`, `public.py` + route `app/a/[slug]`).
   → à confirmer en live sur le domaine.
 
-## Lot 2 — Sorties d'argent validées par le trésorier
-⬜ Workflow prépare → EN ATTENTE → le trésorier valide, pour : décaissement prêt,
-versement aide, retrait caisse, versement tontine. Statut « en attente de
-validation trésorier » + écran de validation + notifications. Rôle `treasurer`.
+## Lot 2 — Sorties d'argent validées par le trésorier ✅
+Architecture : **table générique `PayoutRequest`** = file de validation unique
+(par `kind`), plutôt que d'ajouter des statuts à chaque domaine.
+- ✅ Modèle `PayoutRequest` (pending/validated/rejected/cancelled) + RBAC
+  `user_can_validate_payout` (trésorier OU admin). Flag `has_treasurer_role`
+  exposé sur `/auth/me`.
+- ✅ **Décaissement prêt / versement aide / versement tontine (argent) / retrait
+  caisse** : le bouton **PRÉPARE** une demande EN ATTENTE ; l'argent ne sort
+  qu'à la **validation du trésorier**. Tontine en avoir physique = pas de
+  validation (aucun argent). Mouvement manuel OUT = réservé au trésorier
+  (exécuté immédiatement).
+- ✅ Routeur `/payouts` (liste + validate/reject/cancel) + notifications
+  (préparation → trésoriers ; décision → préparateur).
+- ✅ Écran **Validation des sorties** (`/dashboard/finance/validations`) :
+  en attente + historique ; boutons Valider/Refuser (valideurs) ou Annuler
+  (préparateur). Lien de nav injecté pour le bureau/trésorier.
+- ✅ Anti-doublon par source ; `pending_payout` exposé sur prêts/aides (badge
+  « En attente du trésorier »). Testé E2E sur le flux prêt (prépare → file →
+  refus membre 403 → validation trésorier → prêt en remboursement).
+- ⏳ Reste mineur : relabel boutons tontine/caisse (« préparer ») — le workflow
+  fonctionne déjà, seul le libellé du bouton reste à ajuster.
 
 ## Lot 3 — Page détail membre (admin)
 ⬜ Résumé d'activité d'un membre sur une **période** :

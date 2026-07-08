@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { HeartHandshake, History, Plus, Loader2, Check, X, HandCoins, Pencil, ShieldCheck } from "lucide-react";
+import { HeartHandshake, History, Plus, Loader2, Check, X, HandCoins, Pencil, ShieldCheck, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -182,7 +182,7 @@ function CaseCard({
   const payoutMutation = useMutation({
     mutationFn: () => socialAidApi.payout(c.id),
     onSuccess: () => {
-      toast.success(t("paidToast"));
+      toast.success(t("payoutPreparedToast"));
       refreshAll();
     },
     onError: (err) => toast.error(extractError(err) ?? t("actionError")),
@@ -190,7 +190,8 @@ function CaseCard({
 
   const amount = c.status === "paid" ? c.paid_amount : c.approved_amount || c.requested_amount || 0;
   const canDecide = canManage && (c.status === "requested" || c.status === "reviewing");
-  const canPayout = canManage && c.status === "approved";
+  const canPayout = canManage && c.status === "approved" && !c.pending_payout;
+  const payoutPending = c.status === "approved" && !!c.pending_payout;
   const canEdit =
     canManage && c.status !== "paid" && c.status !== "rejected" && c.status !== "cancelled";
 
@@ -265,6 +266,12 @@ function CaseCard({
               <RejectDialog caseId={c.id} onDone={refresh} />
             </div>
           )}
+          {payoutPending && (
+            <Badge variant="secondary" className="gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              {t("pendingTreasurer")}
+            </Badge>
+          )}
           {canPayout && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -274,7 +281,7 @@ function CaseCard({
                   ) : (
                     <HandCoins className="h-3.5 w-3.5" />
                   )}
-                  {t("payout")}
+                  {t("payoutPrepare")}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -285,7 +292,7 @@ function CaseCard({
                 <AlertDialogFooter>
                   <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
                   <AlertDialogAction onClick={() => payoutMutation.mutate()}>
-                    {t("payout")}
+                    {t("payoutPrepare")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

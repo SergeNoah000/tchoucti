@@ -73,6 +73,29 @@ export function canDoBureauActions(
   );
 }
 
+/** True si l'utilisateur peut VALIDER les sorties d'argent (workflow trésorier).
+ *  = trésorier OU admin (plateforme / groupement / association). */
+export function canValidatePayouts(
+  user:
+    | Pick<
+        User,
+        | "is_platform_admin"
+        | "is_groupement_admin"
+        | "is_association_admin"
+        | "has_treasurer_role"
+      >
+    | null
+    | undefined,
+): boolean {
+  if (!user) return false;
+  return (
+    !!user.is_platform_admin ||
+    !!user.is_groupement_admin ||
+    !!user.is_association_admin ||
+    !!user.has_treasurer_role
+  );
+}
+
 export interface RoleTheme {
   /** dataset value applied on the shell root, used by globals.css to swap --primary */
   dataRole: AppRole;

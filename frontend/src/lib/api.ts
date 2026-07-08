@@ -629,6 +629,45 @@ export const loansApi = {
     (await api.post(`/loans/${id}/repay`, { amount })).data,
 };
 
+// ── Sorties d'argent — file de validation du trésorier ────────────────────
+export interface PayoutRequest {
+  id: string;
+  association_id: string;
+  kind: string;
+  status: string;
+  source_type: string;
+  source_id?: string | null;
+  amount: number;
+  currency?: string | null;
+  description?: string | null;
+  fund_id?: string | null;
+  fund_name?: string | null;
+  related_membership_id?: string | null;
+  beneficiary_name?: string | null;
+  prepared_by_id?: string | null;
+  prepared_by_name?: string | null;
+  prepared_at: string;
+  decided_by_id?: string | null;
+  decided_by_name?: string | null;
+  decided_at?: string | null;
+  decision_note?: string | null;
+  movement_id?: string | null;
+  created_at: string;
+}
+
+export const payoutsApi = {
+  list: async (associationId: string, status?: string) =>
+    (await api.get("/payouts", {
+      params: { association_id: associationId, status },
+    })).data as PayoutRequest[],
+  validate: async (id: string, note?: string) =>
+    (await api.post(`/payouts/${id}/validate`, { note })).data as PayoutRequest,
+  reject: async (id: string, note?: string) =>
+    (await api.post(`/payouts/${id}/reject`, { note })).data as PayoutRequest,
+  cancel: async (id: string) =>
+    (await api.post(`/payouts/${id}/cancel`, {})).data as PayoutRequest,
+};
+
 // ── Imports en masse (templates Excel) ────────────────────────────────────
 export interface ImportEntity {
   entity: string;

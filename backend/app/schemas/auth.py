@@ -73,6 +73,9 @@ class UserPublic(BaseModel):
     # (treasurer, secretary, manager, admin). Used to unlock bureau-only
     # operational actions during meetings.
     has_bureau_role: bool = False
+    # True si l'utilisateur tient le rôle `treasurer` sur une adhésion : peut
+    # valider les sorties d'argent (avec les admins).
+    has_treasurer_role: bool = False
     avatar_url: Optional[str] = None
     groupement_id: Optional[UUID] = None
     created_at: datetime

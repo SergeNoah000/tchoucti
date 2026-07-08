@@ -41,6 +41,7 @@ async def _public_user(db: AsyncSession, user: User) -> dict:
     is_assoc_admin = False
     has_assoc_role = False
     has_bureau_role = False
+    has_treasurer_role = False
     if user.user_type in (UserType.ASSOCIATION_USER, UserType.MEMBER):
         stmt = (
             select(Role.code)
@@ -58,6 +59,7 @@ async def _public_user(db: AsyncSession, user: User) -> dict:
         # Bureau = anything that lets the user act during meetings beyond just
         # attending. Plain "member" alone does NOT count.
         has_bureau_role = bool(role_codes - {"member"})
+        has_treasurer_role = "treasurer" in role_codes
 
     return {
         "id": user.id,
@@ -75,6 +77,7 @@ async def _public_user(db: AsyncSession, user: User) -> dict:
         "is_association_admin": is_assoc_admin,
         "has_association_role": has_assoc_role,
         "has_bureau_role": has_bureau_role,
+        "has_treasurer_role": has_treasurer_role,
         "avatar_url": user.avatar_url,
         "groupement_id": user.groupement_id,
         "created_at": user.created_at,

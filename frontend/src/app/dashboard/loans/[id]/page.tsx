@@ -17,6 +17,7 @@ import {
   X,
   HandCoins,
   Send,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -118,7 +119,7 @@ export default function LoanDetailPage() {
   });
   const disburseMutation = useMutation({
     mutationFn: () => loansApi.disburse(id),
-    onSuccess: () => { toast.success(t("disbursedToast")); refresh(); },
+    onSuccess: () => { toast.success(t("disbursePreparedToast")); refresh(); },
     onError: (err) => toast.error(extractError(err) ?? t("actionError")),
   });
 
@@ -178,20 +179,26 @@ export default function LoanDetailPage() {
                   <RejectDialog loanId={loan.id} onDone={refresh} />
                 </>
               )}
-              {loan.status === "approved" && (
-                <ConfirmAction
-                  trigger={
-                    <Button className="gap-1.5">
-                      <Send className="h-4 w-4" />
-                      {t("disburse")}
-                    </Button>
-                  }
-                  title={t("disburseConfirmTitle")}
-                  description={t("disburseConfirmDesc")}
-                  actionLabel={t("disburse")}
-                  onConfirm={() => disburseMutation.mutate()}
-                />
-              )}
+              {loan.status === "approved" &&
+                (loan.pending_payout ? (
+                  <Badge variant="secondary" className="gap-1.5 py-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    {t("pendingTreasurer")}
+                  </Badge>
+                ) : (
+                  <ConfirmAction
+                    trigger={
+                      <Button className="gap-1.5">
+                        <Send className="h-4 w-4" />
+                        {t("disbursePrepare")}
+                      </Button>
+                    }
+                    title={t("disburseConfirmTitle")}
+                    description={t("disburseConfirmDesc")}
+                    actionLabel={t("disbursePrepare")}
+                    onConfirm={() => disburseMutation.mutate()}
+                  />
+                ))}
               {canRepay && (
                 <RepayDialog
                   loanId={loan.id}
