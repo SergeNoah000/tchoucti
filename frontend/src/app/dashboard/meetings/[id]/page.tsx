@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MeetingAttachments } from "@/components/meetings/meeting-attachments";
+import { TontineObligationSection } from "@/components/meetings/tontine-obligation-section";
 import {
   Dialog,
   DialogContent,
@@ -826,7 +827,20 @@ function MemberRow({
     if (andNext) onSavedAdvance();
   };
 
+  // Obligation d'action tontine : un membre PRÉSENT (ou en retard) doit avoir
+  // décidé chaque tontine (tout donné / montant / rien confirmé) avant d'enregistrer.
+  const tontineUndecided = useMemo(() => {
+    if (!canEdit) return false;
+    if (local.attendance !== "present" && local.attendance !== "late") return false;
+    const rows = memberAgenda?.tontines ?? [];
+    return rows.some((r) => (local.amounts[r.activity_id] ?? "").trim() === "");
+  }, [canEdit, local.attendance, local.amounts, memberAgenda]);
+
   const handleSave = async (andNext: boolean) => {
+    if (tontineUndecided) {
+      toast.error(t("tontineObligationBlock"));
+      return;
+    }
     if (hadServerData && dirty) {
       setPendingNext(andNext);
       setConfirmOpen(true);
@@ -928,7 +942,7 @@ function MemberRow({
             memberAgenda.loans.length > 0 ||
             memberAgenda.aids.length > 0) ? (
             <>
-              <AgendaSection
+              <TontineObligationSection
                 title={t("sectionTontines")}
                 rows={memberAgenda.tontines}
                 amounts={local.amounts}
