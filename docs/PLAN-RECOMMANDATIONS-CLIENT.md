@@ -81,11 +81,18 @@ Architecture : **table générique `PayoutRequest`** = file de validation unique
   (related_membership_id=None) non rattachés aux revenus (cas courant = 1
   bénéficiaire, couvert). À compléter via `TontineRoundBeneficiary` si besoin.
 
-## Lot 4 — Séances (réunions)
-⬜ Bouton **réordonner l'ordre de passage** des membres.
-⬜ **Obligation d'action tontine** en séance : cocher « a tout donné » ou saisir
-   clairement 0 / le montant cotisé.
-⬜ Ajouter **prêts + aides** sur la page séance et dans les **rapports**.
+## Lot 4 — Séances (réunions) ✅
+- ✅ **Réordonner l'ordre de passage** (A) : `PUT /tontines/cycles/{id}/reorder`
+   permute les bénéficiaires des tours PAS ENCORE servis (brouillon = tous ;
+   cycle actif = tours futurs ; tours servis/en cours figés). Dialog
+   monter/descendre `ReorderPassageDialog`. Testé E2E.
+- ✅ **Obligation d'action tontine** (B, frontend) : section tontine dédiée en
+   séance — chaque tontine exige une décision explicite (toggle « a tout
+   donné », montant partiel, ou « rien » = 0 confirmé par modal). Un membre
+   présent ne peut être enregistré tant qu'une tontine reste « à décider ».
+- ✅ **Prêts + aides** (C) : déjà présents sur la page séance (agenda : sections
+   Prêts / Aides). Ajout d'une **synthèse par type d'activité** (tontines /
+   caisses / prêts / aides) dans le **PV** (rapport PDF de clôture).
 
 ## Lot 5 — Pronostics caisse
 ⬜ Page détail caisse : intérêts à venir des prêts (par échéance/date) +

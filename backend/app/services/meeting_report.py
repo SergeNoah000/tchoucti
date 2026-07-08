@@ -121,6 +121,56 @@ def _render_pdf(
                 story.append(Paragraph(paragraph.replace("\n", "<br/>"), body))
                 story.append(Spacer(1, 0.15 * cm))
 
+    # ── Synthèse par type d'activité (tontines / caisses / prêts / aides) ──
+    def _activity_kind(act: Activity | None) -> str:
+        if act is None:
+            return "other"
+        code = act.code or ""
+        atype = act.type.value if hasattr(act.type, "value") else str(act.type)
+        if atype == "tontine_contribution" or code.startswith("tontine-"):
+            return "tontine"
+        if code.startswith("caisse-"):
+            return "caisse"
+        if atype == "loan_repayment":
+            return "loan"
+        if code.startswith("aid-"):
+            return "aid"
+        return "other"
+
+    _KIND_LABEL = {
+        "tontine": "Tontines",
+        "caisse": "Caisses & cotisations",
+        "loan": "Remboursements de prêts",
+        "aid": "Aides sociales",
+        "other": "Autres",
+    }
+    synth: dict[str, list[int]] = {}  # kind -> [total, count]
+    for e in meeting.entries:
+        st = e.status.value if hasattr(e.status, "value") else str(e.status)
+        if st == "voided":
+            continue
+        kind = _activity_kind(activities.get(e.activity_id))
+        agg = synth.setdefault(kind, [0, 0])
+        agg[0] += e.amount
+        agg[1] += 1
+
+    if synth:
+        story.append(Spacer(1, 0.6 * cm))
+        story.append(Paragraph("3. Synthèse par activité", h2))
+        rows = [["Type d'activité", "Nombre", "Montant"]]
+        for kind in ("tontine", "caisse", "loan", "aid", "other"):
+            if kind not in synth:
+                continue
+            total, count = synth[kind]
+            rows.append([
+                _KIND_LABEL[kind],
+                str(count),
+                f"{total:,}".replace(",", " ") + f" {association.currency}",
+            ])
+        t = Table(rows, colWidths=[8 * cm, 3 * cm, 5 * cm])
+        t.setStyle(_table_style())
+        story.append(t)
+
     # ── Détail par membre ──────────────────────────────────────────────────
     member_ids: set[UUID] = set()
     for a in meeting.attendances:
@@ -130,7 +180,7 @@ def _render_pdf(
 
     if member_ids:
         story.append(Spacer(1, 0.6 * cm))
-        story.append(Paragraph("3. Actions par membre", h2))
+        story.append(Paragraph("4. Actions par membre", h2))
 
     att_by_member: dict[UUID, MeetingAttendance] = {a.membership_id: a for a in meeting.attendances}
     entries_by_member: dict[UUID, list[MeetingActivityEntry]] = {}
