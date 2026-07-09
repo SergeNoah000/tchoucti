@@ -1682,7 +1682,17 @@
     "colMember": "Member",
     "colApport": "Contribution",
     "colWeight": "Weight",
-    "colProjected": "Projected share"
+    "colProjected": "Projected share",
+    "collectedInterest": "Interest collected",
+    "myCollected": "My collected share",
+    "myUpcoming": "My upcoming share",
+    "rentab": "Rentability",
+    "collectedShort": "Collected",
+    "upcomingShort": "Upcoming",
+    "timelineTitle": "Consolidated schedule (by date)",
+    "colCollected": "Collected",
+    "me": "Me",
+    "noSchedule": "No installment"
   },
   "memberActivity": {
     "sectionTitle": "Activity",

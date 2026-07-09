@@ -1682,7 +1682,17 @@
     "colMember": "Membre",
     "colApport": "Apport",
     "colWeight": "Poids",
-    "colProjected": "Part projetée"
+    "colProjected": "Part projetée",
+    "collectedInterest": "Intérêts encaissés",
+    "myCollected": "Ma part encaissée",
+    "myUpcoming": "Ma part à venir",
+    "rentab": "Rentabilité",
+    "collectedShort": "Encaissé",
+    "upcomingShort": "À venir",
+    "timelineTitle": "Échéancier consolidé (par date)",
+    "colCollected": "Encaissé",
+    "me": "Moi",
+    "noSchedule": "Aucune échéance"
   },
   "memberActivity": {
     "sectionTitle": "Activité",

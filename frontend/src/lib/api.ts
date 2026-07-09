@@ -396,9 +396,10 @@ export const caissesApi = {
 };
 
 // ── Pronostics caisse (Lot 5) ─────────────────────────────────────────────
-export interface ProjectionInstallment {
+export interface ProjectionTimelineEntry {
   due_on: string;
   interest: number;
+  collected: boolean; // true = déjà encaissé, false = à venir
 }
 export interface LoanProjection {
   loan_id: string;
@@ -407,16 +408,17 @@ export interface LoanProjection {
   principal: number;
   total_interest: number;
   rentability_pct: number;
-  upcoming_interest: number;
-  remaining_installments: number;
-  schedule: ProjectionInstallment[];
+  interest_collected: number;
+  interest_upcoming: number;
+  schedule: ProjectionTimelineEntry[];
 }
 export interface ContributorProjection {
   membership_id: string;
   member_name?: string | null;
   apport_cum: number;
   weight_pct: number;
-  projected_interest: number;
+  interest_collected_share: number;
+  interest_upcoming_share: number;
 }
 export interface CaisseProjection {
   caisse_id: string;
@@ -424,9 +426,11 @@ export interface CaisseProjection {
   currency?: string | null;
   interest_distribution: "kept" | "shared_pro_rata";
   total_principal_active: number;
-  total_upcoming_interest: number;
+  total_interest_collected: number;
+  total_interest_upcoming: number;
   total_apport: number;
   loans: LoanProjection[];
+  timeline: ProjectionTimelineEntry[];
   contributors: ContributorProjection[];
   my?: ContributorProjection | null;
   is_admin_view: boolean;

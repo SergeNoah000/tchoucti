@@ -1682,7 +1682,17 @@
     "colMember": "Mitglied",
     "colApport": "Beitrag",
     "colWeight": "Gewicht",
-    "colProjected": "Prognostizierter Anteil"
+    "colProjected": "Prognostizierter Anteil",
+    "collectedInterest": "Eingenommene Zinsen",
+    "myCollected": "Mein eingenommener Anteil",
+    "myUpcoming": "Mein künftiger Anteil",
+    "rentab": "Rentabilität",
+    "collectedShort": "Eingenommen",
+    "upcomingShort": "Ausstehend",
+    "timelineTitle": "Konsolidierter Zeitplan (nach Datum)",
+    "colCollected": "Eingenommen",
+    "me": "Ich",
+    "noSchedule": "Keine Rate"
   },
   "memberActivity": {
     "sectionTitle": "Aktivität",

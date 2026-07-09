@@ -183,9 +183,11 @@ class CaisseWithdrawRequest(BaseModel):
     note: Optional[str] = Field(None, max_length=500)
 
 
-class ProjectionInstallment(BaseModel):
+class ProjectionTimelineEntry(BaseModel):
     due_on: date
     interest: int
+    # True = intérêt déjà encaissé ; False = intérêt à venir (prévu).
+    collected: bool
 
 
 class LoanProjection(BaseModel):
@@ -196,10 +198,10 @@ class LoanProjection(BaseModel):
     total_interest: int
     # Rentabilité « par unité prêtée » = intérêt total ÷ capital (en %).
     rentability_pct: float
-    # Intérêts À VENIR (échéances non encore payées).
-    upcoming_interest: int
-    remaining_installments: int
-    schedule: List[ProjectionInstallment] = []
+    interest_collected: int   # intérêts déjà encaissés sur ce prêt
+    interest_upcoming: int    # intérêts restant à venir sur ce prêt
+    # Échéancier des intérêts (encaissés + à venir), par date.
+    schedule: List[ProjectionTimelineEntry] = []
 
 
 class ContributorProjection(BaseModel):
@@ -208,8 +210,9 @@ class ContributorProjection(BaseModel):
     apport_cum: int
     # Poids au prorata de l'apport dans la caisse (en %).
     weight_pct: float
-    # Part projetée des intérêts à venir (0 si la caisse conserve ses intérêts).
-    projected_interest: int
+    # Quote-part des intérêts, au prorata de l'apport.
+    interest_collected_share: int   # sa part déjà encaissée
+    interest_upcoming_share: int    # sa part à venir
 
 
 class CaisseProjection(BaseModel):
@@ -218,12 +221,15 @@ class CaisseProjection(BaseModel):
     currency: Optional[str] = None
     interest_distribution: str  # kept | shared_pro_rata
     total_principal_active: int
-    total_upcoming_interest: int
+    total_interest_collected: int   # intérêts déjà encaissés (tous prêts)
+    total_interest_upcoming: int    # intérêts à venir (tous prêts)
     total_apport: int
     loans: List[LoanProjection] = []
-    # Vue GLOBALE (tous les contributeurs) — remplie pour les admins uniquement.
+    # Échéancier consolidé de la caisse (tous prêts), groupé par date.
+    timeline: List[ProjectionTimelineEntry] = []
+    # Répartition par contributeur — VISIBLE PAR TOUS les membres.
     contributors: List[ContributorProjection] = []
-    # Vue LOCALE — part projetée du membre courant (None s'il n'a pas d'apport).
+    # Part du membre courant (None s'il n'a pas d'apport).
     my: Optional[ContributorProjection] = None
     is_admin_view: bool = False
 

@@ -41,7 +41,13 @@ from app.models.caisse import (
 from app.models.finance import MovementDirection
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.models.finance import Fund, FundKind, Treasury
-from app.models.loan import Loan, LoanInstallment, LoanInstallmentStatus, LoanStatus
+from app.models.loan import (
+    Loan,
+    LoanInstallment,
+    LoanInstallmentStatus,
+    LoanRepayment,
+    LoanStatus,
+)
 from app.models.role import Membership, MembershipStatus
 from app.models.user import User
 from app.schemas.caisse import (
@@ -54,7 +60,7 @@ from app.schemas.caisse import (
     ContributorProjection,
     LoanProjection,
     MemberBalanceOut,
-    ProjectionInstallment,
+    ProjectionTimelineEntry,
     CaisseUpdate,
     CaisseWithdrawRequest,
     CaisseWithdrawResponse,
@@ -193,10 +199,10 @@ async def caisse_projections(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Pronostics de la caisse : rentabilité par prêt (intérêt total ÷ capital),
-    intérêts à venir par échéance, et part projetée de chaque contributeur au
-    prorata de son apport. Vue LOCALE (`my`) pour tous ; vue GLOBALE
-    (`contributors`) réservée aux administrateurs."""
+    """Pronostics de la caisse : pour chaque prêt financé par la caisse,
+    intérêts DÉJÀ ENCAISSÉS et intérêts À VENIR (échéancier par date, jusqu'à la
+    fin des remboursements), et la QUOTE-PART de chaque contributeur au prorata
+    de son apport. Visible par TOUS les membres (répartition comprise)."""
     cres = await db.execute(select(Caisse).where(Caisse.id == caisse_id))
     caisse = cres.scalar_one_or_none()
     if not caisse:
@@ -208,38 +214,58 @@ async def caisse_projections(
         or await _user_is_association_admin(db, current_user, caisse.association_id)
     )
 
-    # ── Prêts financés par cette caisse, en cours ──
+    # ── Prêts financés par cette caisse, DÉCAISSÉS (en activité) ──
     loans = (
         await db.execute(
             select(Loan)
             .options(
                 selectinload(Loan.installments),
+                selectinload(Loan.repayments),
                 selectinload(Loan.borrower).selectinload(Membership.user),
             )
             .where(
                 Loan.source_caisse_id == caisse_id,
-                Loan.status.in_([LoanStatus.DISBURSED, LoanStatus.REPAYING]),
+                Loan.status.in_([LoanStatus.DISBURSED, LoanStatus.REPAYING, LoanStatus.PAID]),
             )
             .order_by(Loan.created_at.desc())
         )
     ).scalars().all()
 
     loan_projs: list[LoanProjection] = []
+    total_collected = 0
     total_upcoming = 0
     total_principal = 0
+    # Échéancier consolidé de la caisse : (date, collected) → intérêt cumulé.
+    timeline_agg: dict[tuple, int] = {}
+
     for loan in loans:
+        sched: list[ProjectionTimelineEntry] = []
+        # 1) Intérêts DÉJÀ ENCAISSÉS — par date de remboursement.
+        collected = 0
+        for rp in sorted(loan.repayments, key=lambda r: r.paid_on):
+            interest = getattr(rp, "interest", 0) or 0
+            if interest > 0:
+                collected += interest
+                sched.append(ProjectionTimelineEntry(due_on=rp.paid_on, interest=interest, collected=True))
+                timeline_agg[(rp.paid_on, True)] = timeline_agg.get((rp.paid_on, True), 0) + interest
+        # 2) Intérêts À VENIR — échéances non payées, bornés au reste théorique
+        #    (évite les artefacts d'arrondi : Σ = total_interest − déjà payé).
+        remaining = max(0, loan.total_interest - loan.paid_interest)
         upcoming = 0
-        sched: list[ProjectionInstallment] = []
-        n_remaining = 0
         for inst in sorted(loan.installments, key=lambda i: i.number):
+            if remaining <= 0:
+                break
             if inst.status in (LoanInstallmentStatus.PAID, LoanInstallmentStatus.WAIVED):
                 continue
-            due_i = max(0, inst.interest_part - inst.paid_interest)
-            if due_i <= 0:
+            part = inst.interest_part - inst.paid_interest
+            part = max(0, min(part, remaining))
+            if part <= 0:
                 continue
-            n_remaining += 1
-            upcoming += due_i
-            sched.append(ProjectionInstallment(due_on=inst.due_on, interest=due_i))
+            upcoming += part
+            remaining -= part
+            sched.append(ProjectionTimelineEntry(due_on=inst.due_on, interest=part, collected=False))
+            timeline_agg[(inst.due_on, False)] = timeline_agg.get((inst.due_on, False), 0) + part
+
         rentability = (loan.total_interest / loan.principal * 100.0) if loan.principal else 0.0
         borrower = getattr(loan, "borrower", None)
         buser = getattr(borrower, "user", None) if borrower else None
@@ -251,15 +277,23 @@ async def caisse_projections(
                 principal=loan.principal,
                 total_interest=loan.total_interest,
                 rentability_pct=round(rentability, 2),
-                upcoming_interest=upcoming,
-                remaining_installments=n_remaining,
+                interest_collected=collected,
+                interest_upcoming=upcoming,
                 schedule=sched,
             )
         )
+        total_collected += collected
         total_upcoming += upcoming
-        total_principal += loan.principal
+        if loan.status != LoanStatus.PAID:
+            total_principal += loan.principal
 
-    # ── Contributeurs (poids au prorata de l'apport) ──
+    timeline = [
+        ProjectionTimelineEntry(due_on=d, interest=amt, collected=coll)
+        for (d, coll), amt in sorted(timeline_agg.items(), key=lambda kv: (kv[0][0], kv[0][1]))
+    ]
+
+    # ── Contributeurs : quote-part au prorata de l'apport (TOUJOURS calculée,
+    #    quel que soit le mode ; visible par tous). ──
     balances = (
         await db.execute(
             select(CaisseContributorBalance)
@@ -273,28 +307,41 @@ async def caisse_projections(
         )
     ).scalars().all()
     total_apport = sum(b.apport_cum for b in balances)
-    shared = caisse.interest_distribution == InterestDistribution.SHARED_PRO_RATA
+    apports = [b.apport_cum for b in balances]
 
-    def _proj_for(bal: CaisseContributorBalance) -> ContributorProjection:
+    def _split(total: int) -> list[int]:
+        """Répartit `total` au prorata des apports, méthode du plus grand reste
+        (les parts somment EXACTEMENT au total, pas de perte d'arrondi)."""
+        S = sum(apports)
+        if S <= 0 or total <= 0:
+            return [0] * len(apports)
+        raw = [total * a / S for a in apports]
+        floors = [int(x) for x in raw]
+        rem = total - sum(floors)
+        order = sorted(range(len(apports)), key=lambda i: raw[i] - floors[i], reverse=True)
+        for k in range(rem):
+            floors[order[k]] += 1
+        return floors
+
+    coll_shares = _split(total_collected)
+    up_shares = _split(total_upcoming)
+
+    contributors: list[ContributorProjection] = []
+    for i, bal in enumerate(balances):
         weight = (bal.apport_cum / total_apport) if total_apport else 0.0
-        projected = (
-            (total_upcoming * bal.apport_cum) // total_apport
-            if (shared and total_apport)
-            else 0
-        )
         mem = getattr(bal, "membership", None)
         muser = getattr(mem, "user", None) if mem else None
-        return ContributorProjection(
-            membership_id=bal.membership_id,
-            member_name=getattr(muser, "full_name", None),
-            apport_cum=bal.apport_cum,
-            weight_pct=round(weight * 100.0, 2),
-            projected_interest=int(projected),
+        contributors.append(
+            ContributorProjection(
+                membership_id=bal.membership_id,
+                member_name=getattr(muser, "full_name", None),
+                apport_cum=bal.apport_cum,
+                weight_pct=round(weight * 100.0, 2),
+                interest_collected_share=coll_shares[i],
+                interest_upcoming_share=up_shares[i],
+            )
         )
 
-    contributors = [_proj_for(b) for b in balances] if is_admin else []
-
-    # Part locale du membre courant.
     my_membership = (
         await db.execute(
             select(Membership).where(
@@ -305,9 +352,9 @@ async def caisse_projections(
     ).scalar_one_or_none()
     my_proj = None
     if my_membership is not None:
-        mine = next((b for b in balances if b.membership_id == my_membership.id), None)
-        if mine is not None:
-            my_proj = _proj_for(mine)
+        my_proj = next(
+            (c for c in contributors if c.membership_id == my_membership.id), None
+        )
 
     idist = (
         caisse.interest_distribution.value
@@ -320,9 +367,11 @@ async def caisse_projections(
         currency=assoc.currency,
         interest_distribution=idist,
         total_principal_active=total_principal,
-        total_upcoming_interest=total_upcoming,
+        total_interest_collected=total_collected,
+        total_interest_upcoming=total_upcoming,
         total_apport=total_apport,
         loans=loan_projs,
+        timeline=timeline,
         contributors=contributors,
         my=my_proj,
         is_admin_view=is_admin,
