@@ -14,9 +14,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/common/page-header";
 import { MemberActivityView } from "@/components/members/member-activity-view";
+import { MemberRolesEditor } from "@/components/members/member-roles-editor";
 import { membersApi } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
-import { canDoBureauActions } from "@/lib/roles";
+import { canDoBureauActions, canConfigureAssociation } from "@/lib/roles";
 import { useFormatters } from "@/lib/format";
 import type { Membership } from "@/lib/types";
 
@@ -30,6 +31,7 @@ export default function MemberDetailPage() {
   const tActivity = useTranslations("memberActivity");
   const { user } = useAuthStore();
   const isBureau = canDoBureauActions(user);
+  const canConfigure = canConfigureAssociation(user);
   const fmt = useFormatters();
 
   const [activationUrl, setActivationUrl] = useState<string | null>(null);
@@ -160,6 +162,11 @@ export default function MemberDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Rôles / fonctions — attribuer le trésorier, etc. (admin uniquement) */}
+      {canConfigure && (
+        <MemberRolesEditor membershipId={m.id} currentCodes={m.roles.map((r) => r.code)} />
+      )}
 
       {/* Activité du membre (cotisations / demandes / revenus) — vue globale bureau */}
       <div className="space-y-3">

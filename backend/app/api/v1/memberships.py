@@ -72,6 +72,10 @@ async def _load_membership(db: AsyncSession, membership_id: UUID) -> Membership:
             selectinload(Membership.membership_roles).selectinload(MembershipRole.role),
         )
         .where(Membership.id == membership_id)
+        # Force le rafraîchissement de l'objet déjà en session (relations
+        # `membership_roles` incluses) après une mise à jour des rôles — sinon
+        # la réponse renvoie l'ancienne liste (expire_on_commit=False).
+        .execution_options(populate_existing=True)
     )
     m = result.scalar_one_or_none()
     if not m:
@@ -528,8 +532,20 @@ async def update_membership(
     if payload.notes is not None:
         m.notes = payload.notes
 
-    # Update roles if provided
+    # Update roles if provided — RÉSERVÉ aux administrateurs (attribuer le rôle
+    # trésorier/admin change qui peut valider l'argent : décision d'admin).
     if payload.role_codes is not None:
+        from app.api.deps import _user_is_association_admin
+
+        is_admin = (
+            current_user.user_type in (UserType.SUPER_ADMIN, UserType.GROUPEMENT_ADMIN)
+            or await _user_is_association_admin(db, current_user, assoc.id)
+        )
+        if not is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Seul un administrateur peut modifier les rôles d'un membre.",
+            )
         # Remove existing roles
         for mr in list(m.membership_roles):
             await db.delete(mr)

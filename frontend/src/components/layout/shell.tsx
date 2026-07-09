@@ -104,6 +104,7 @@ const GROUPEMENT_NAV: NavSection[] = [
     label: "finance",
     items: [
       { href: "/dashboard/finance", icon: Wallet, key: "finance" },
+      { href: "/dashboard/caisses", icon: PiggyBank, key: "caissesGains" },
       { href: "/dashboard/loans", icon: Banknote, key: "loans" },
       { href: "/dashboard/tontines", icon: Repeat, key: "tontines" },
     ],
@@ -179,6 +180,7 @@ const MEMBER_NAV: NavSection[] = [
     items: [
       { href: "/dashboard/finance", icon: Wallet, key: "myContributions" },
       { href: "/dashboard/my-activity", icon: ActivityIcon, key: "myActivity" },
+      { href: "/dashboard/caisses", icon: PiggyBank, key: "caissesGains" },
       { href: "/dashboard/loans", icon: Banknote, key: "myLoans" },
       { href: "/dashboard/documents", icon: FileText, key: "documents" },
       { href: "/dashboard/settings", icon: Settings, key: "settings" },
