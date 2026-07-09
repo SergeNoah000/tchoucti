@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.session import AsyncSessionLocal
+from app.db.session import AsyncSessionLocal, engine
 from app.models.association import Association
 from app.models.meeting import Meeting, MeetingReminder, MeetingStatus
 from app.models.role import Membership, MembershipStatus
@@ -138,11 +138,24 @@ async def _dispatch() -> dict:
     return stats
 
 
+async def _run_and_dispose() -> dict:
+    """Exécute le dispatch puis LIBÈRE le pool du moteur. Indispensable sous
+    Celery : chaque tâche tourne dans un NOUVEAU event loop (asyncio.run), or le
+    pool de connexions asyncpg reste attaché au loop précédent → « Future
+    attached to a different loop » au 2e appel. Disposer le moteur en fin de
+    tâche garantit des connexions fraîches, liées au loop courant, à chaque run.
+    """
+    try:
+        return await _dispatch()
+    finally:
+        await engine.dispose()
+
+
 @celery_app.task(name="app.tasks.reminders.dispatch_meeting_reminders", ignore_result=False)
 def dispatch_meeting_reminders() -> dict:
     """Celery entry — wraps the async dispatcher in a fresh event loop."""
     try:
-        result = asyncio.run(_dispatch())
+        result = asyncio.run(_run_and_dispose())
         logger.info("Reminder dispatch finished: %s", result)
         return result
     except Exception:
