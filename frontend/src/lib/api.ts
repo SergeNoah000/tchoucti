@@ -389,6 +389,9 @@ export const caissesApi = {
   /** Lot 5 — pronostics : rentabilité des prêts + part projetée au prorata. */
   projections: async (caisseId: string): Promise<CaisseProjection> =>
     (await api.get(`/caisses/${caisseId}/projections`)).data,
+  /** « Mes Finances » : apport + rendement par caisse, mes versements, notifs. */
+  myFinances: async (associationId: string): Promise<MyFinances> =>
+    (await api.get("/caisses/my-finances", { params: { association_id: associationId } })).data,
   withdraw: async (
     caisseId: string,
     payload: { membership_id: string; amount: number; note?: string },
@@ -434,6 +437,34 @@ export interface CaisseProjection {
   contributors: ContributorProjection[];
   my?: ContributorProjection | null;
   is_admin_view: boolean;
+}
+
+// ── « Mes Finances » (membre) ─────────────────────────────────────────────
+export interface MyFinanceCard {
+  caisse_id: string;
+  caisse_name: string;
+  category: string;
+  my_apport: number;
+  my_rendement: number;
+}
+export interface MyVersement {
+  caisse_id: string;
+  caisse_name: string;
+  date: string;
+  amount: number;
+  rendement: number;
+}
+export interface MyFinanceNotification {
+  kind: string;
+  message: string;
+}
+export interface MyFinances {
+  currency?: string | null;
+  cards: MyFinanceCard[];
+  total_invested: number;
+  total_rendement: number;
+  versements: MyVersement[];
+  notifications: MyFinanceNotification[];
 }
 
 export const meetingsApi = {

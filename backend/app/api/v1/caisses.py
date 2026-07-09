@@ -38,7 +38,7 @@ from app.models.caisse import (
     MemberCaisseBalance,
     WithdrawalMode,
 )
-from app.models.finance import MovementDirection
+from app.models.finance import LedgerEntry, MovementDirection, TreasuryMovement
 from app.services.finance import Allocation, get_or_create_treasury, post_movement
 from app.models.finance import Fund, FundKind, Treasury
 from app.models.loan import (
@@ -60,6 +60,10 @@ from app.schemas.caisse import (
     ContributorProjection,
     LoanProjection,
     MemberBalanceOut,
+    MyFinanceCard,
+    MyFinanceNotification,
+    MyFinances,
+    MyVersement,
     ProjectionTimelineEntry,
     CaisseUpdate,
     CaisseWithdrawRequest,
@@ -172,6 +176,191 @@ async def my_shares(
         )
         for bal, caisse in rows
     ]
+
+
+@router.get("/my-finances", response_model=MyFinances)
+async def my_finances(
+    association_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """« Mes Finances » du membre courant : apport + rendement par caisse,
+    historique de mes versements avec le RENDEMENT attribué à chacun (modèle de
+    Fred : rentabilité par unité d'argent disponible × mon montant présent lors
+    de chaque prêt), et notifications (ex. assurance en dessous du minimum).
+
+    NOTE : déclaré AVANT GET /{caisse_id} (sinon « my-finances » lu comme UUID)."""
+    assoc = await _check_access(db, current_user, association_id)
+    membership = (
+        await db.execute(
+            select(Membership).where(
+                Membership.user_id == current_user.id,
+                Membership.association_id == association_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if membership is None:
+        return MyFinances(currency=assoc.currency)
+    my_mid = membership.id
+
+    # Caisses non-système de l'association (fonds → caisse).
+    caisses = (
+        await db.execute(
+            select(Caisse).where(
+                Caisse.association_id == association_id,
+                Caisse.is_system.is_(False),
+            )
+        )
+    ).scalars().all()
+    if not caisses:
+        return MyFinances(currency=assoc.currency)
+    fund_to_caisse = {c.fund_id: c for c in caisses if c.fund_id}
+    caisse_ids = [c.id for c in caisses]
+
+    # Versements (crédits) de TOUS les membres vers les fonds de caisse, datés.
+    contrib_rows = (
+        await db.execute(
+            select(
+                LedgerEntry.fund_id,
+                TreasuryMovement.related_membership_id,
+                LedgerEntry.amount,
+                TreasuryMovement.occurred_on,
+            )
+            .join(TreasuryMovement, TreasuryMovement.id == LedgerEntry.movement_id)
+            .join(Treasury, Treasury.id == TreasuryMovement.treasury_id)
+            .where(
+                Treasury.association_id == association_id,
+                LedgerEntry.fund_id.in_(list(fund_to_caisse.keys())),
+                LedgerEntry.is_credit.is_(True),
+                TreasuryMovement.direction == MovementDirection.IN,
+                TreasuryMovement.is_voided.is_(False),
+            )
+        )
+    ).all()
+
+    # Regroupe les contributions par caisse (toutes) et prépare l'apport cumulé
+    # dans le temps (pour connaître « l'argent disponible » à chaque date).
+    from collections import defaultdict
+
+    per_caisse_contribs: dict = defaultdict(list)  # caisse_id → [(date, amount, membership_id)]
+    for fund_id, mid, amount, occ in contrib_rows:
+        c = fund_to_caisse.get(fund_id)
+        if c is None or occ is None or not amount:
+            continue
+        per_caisse_contribs[c.id].append((occ, int(amount), mid))
+
+    # Prêts financés par chaque caisse (décaissés), avec date + intérêt total.
+    loans = (
+        await db.execute(
+            select(Loan).where(
+                Loan.source_caisse_id.in_(caisse_ids),
+                Loan.status.in_(
+                    [LoanStatus.DISBURSED, LoanStatus.REPAYING, LoanStatus.PAID]
+                ),
+                Loan.disbursed_on.isnot(None),
+            )
+        )
+    ).scalars().all()
+    per_caisse_loans: dict = defaultdict(list)  # caisse_id → [(disbursed_on, total_interest)]
+    for l in loans:
+        per_caisse_loans[l.source_caisse_id].append((l.disbursed_on, l.total_interest))
+
+    # Pour chaque caisse : taux de chaque prêt = intérêt ÷ apport disponible à sa date.
+    # apport_at(D) = Σ des contributions (tous membres) de date ≤ D.
+    per_caisse_loan_rates: dict = {}  # caisse_id → [(disbursed_on, rate)]
+    for cid in caisse_ids:
+        contribs = sorted(per_caisse_contribs.get(cid, []), key=lambda x: x[0])
+        rates = []
+        for d_on, interest in sorted(per_caisse_loans.get(cid, []), key=lambda x: x[0]):
+            avail = sum(a for (dt, a, _m) in contribs if dt <= d_on)
+            if avail > 0 and interest:
+                rates.append((d_on, interest / avail))
+        per_caisse_loan_rates[cid] = rates
+
+    # Mes versements + leur rendement (Fred) ; cartes par caisse.
+    caisse_by_id = {c.id: c for c in caisses}
+    versements: list[MyVersement] = []
+    rendement_by_caisse: dict = defaultdict(int)
+    for cid in caisse_ids:
+        rates = per_caisse_loan_rates.get(cid, [])
+        for (dt, amount, mid) in sorted(per_caisse_contribs.get(cid, []), key=lambda x: x[0]):
+            if mid != my_mid:
+                continue
+            # Rendement = montant × Σ(taux des prêts décaissés APRÈS ce versement).
+            rperunit = sum(rate for (d_on, rate) in rates if d_on >= dt)
+            rendement = int(round(amount * rperunit))
+            rendement_by_caisse[cid] += rendement
+            versements.append(
+                MyVersement(
+                    caisse_id=cid,
+                    caisse_name=caisse_by_id[cid].name,
+                    date=dt,
+                    amount=amount,
+                    rendement=rendement,
+                )
+            )
+    versements.sort(key=lambda v: v.date)
+
+    # Cartes : mon apport par caisse (CaisseContributorBalance) + rendement.
+    my_balances = {
+        b.caisse_id: b
+        for b in (
+            await db.execute(
+                select(CaisseContributorBalance).where(
+                    CaisseContributorBalance.caisse_id.in_(caisse_ids),
+                    CaisseContributorBalance.membership_id == my_mid,
+                )
+            )
+        ).scalars().all()
+    }
+    cards: list[MyFinanceCard] = []
+    total_invested = 0
+    total_rendement = 0
+    for c in caisses:
+        bal = my_balances.get(c.id)
+        apport = bal.apport_cum if bal else 0
+        rendement = rendement_by_caisse.get(c.id, 0)
+        # N'affiche que les caisses où j'ai un apport ou un rendement.
+        if apport <= 0 and rendement <= 0:
+            continue
+        total_invested += apport
+        total_rendement += rendement
+        cards.append(
+            MyFinanceCard(
+                caisse_id=c.id,
+                caisse_name=c.name,
+                category=c.category.value if hasattr(c.category, "value") else str(c.category),
+                my_apport=apport,
+                my_rendement=rendement,
+            )
+        )
+
+    # Notifications : caisse à cotisation minimale où mon apport est insuffisant.
+    notifications: list[MyFinanceNotification] = []
+    for c in caisses:
+        minimum = getattr(c, "member_required_amount", 0) or 0
+        if getattr(c, "is_member_required", False) and minimum > 0:
+            bal = my_balances.get(c.id)
+            apport = bal.apport_cum if bal else 0
+            if apport < minimum:
+                notifications.append(
+                    MyFinanceNotification(
+                        kind="warning",
+                        message=(
+                            f"Votre cotisation « {c.name} » n'est pas au complet "
+                            f"({apport}/{minimum} {assoc.currency}). Pensez à la régulariser."
+                        ),
+                    )
+                )
+
+    return MyFinances(
+        currency=assoc.currency,
+        cards=cards,
+        total_invested=total_invested,
+        total_rendement=total_rendement,
+        versements=versements,
+        notifications=notifications,
+    )
 
 
 @router.get("/{caisse_id}", response_model=CaisseOut)

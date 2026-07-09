@@ -1656,7 +1656,9 @@
     "total": "Gesamt",
     "gainsHint": "Erträge sind die bereits verteilten Zinsen (Periodenabschlüsse). Siehe Prognose-Tab für künftige Zinsen.",
     "noDistributions": "Keine Verteilung",
-    "noDistributionsDesc": "Es wurde noch keine Zinsperiode abgeschlossen."
+    "noDistributionsDesc": "Es wurde noch keine Zinsperiode abgeschlossen.",
+    "tabMyFinances": "Meine Finanzen",
+    "tabCaisses": "Kassen"
   },
   "caissePronostics": {
     "tab": "Prognose",
@@ -1759,5 +1761,17 @@
     "category_honorary": "Ehrenmitglied",
     "category_founder": "Gründungsmitglied",
     "category_suspended": "Gesperrtes Mitglied"
+  },
+  "myFinances": {
+    "totalInvested": "Investierter Betrag",
+    "totalRendement": "Kumulierte Rendite",
+    "versementsTitle": "Meine Einzahlungen",
+    "noVersements": "Keine Einzahlung",
+    "noVersementsDesc": "Sie haben noch keine Einzahlung in eine Kasse getätigt.",
+    "colCaisse": "Kasse",
+    "colDate": "Datum",
+    "colAmount": "Betrag",
+    "colRendement": "Rendite",
+    "notificationsTitle": "Benachrichtigungen"
   }
 }

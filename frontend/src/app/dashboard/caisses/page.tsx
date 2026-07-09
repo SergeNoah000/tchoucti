@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { PiggyBank, ChevronRight } from "lucide-react";
+import { PiggyBank, ChevronRight, Wallet } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
+import { MyFinancesView } from "@/components/caisses/my-finances";
 import { associationsApi, caissesApi } from "@/lib/api";
 import type { Association, Caisse } from "@/lib/types";
 
@@ -33,47 +35,72 @@ export default function CaissesPage() {
     <div className="space-y-6">
       <PageHeader title={t("title")} description={t("subtitle")} />
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2].map((i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
-        </div>
-      ) : visible.length === 0 ? (
-        <Card>
-          <CardContent className="p-0">
-            <EmptyState icon={PiggyBank} title={t("emptyTitle")} description={t("emptyDesc")} />
-          </CardContent>
-        </Card>
-      ) : (
-        <ul className="space-y-2">
-          {visible.map((c) => (
-            <li key={c.id}>
-              <Link
-                href={`/dashboard/caisses/${c.id}`}
-                className="group flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <PiggyBank className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate font-semibold leading-tight">{c.name}</p>
-                      <Badge variant="outline" className="text-[10px]">{t(`cat_${c.category}`)}</Badge>
-                      {c.interest_distribution === "shared_pro_rata" && (
-                        <Badge variant="secondary" className="text-[10px]">{t("sharesInterest")}</Badge>
-                      )}
+      <Tabs defaultValue="finances">
+        <TabsList>
+          <TabsTrigger value="finances" className="gap-1.5">
+            <Wallet className="h-3.5 w-3.5" />
+            {t("tabMyFinances")}
+          </TabsTrigger>
+          <TabsTrigger value="caisses" className="gap-1.5">
+            <PiggyBank className="h-3.5 w-3.5" />
+            {t("tabCaisses")}
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Onglet principal : Mes Finances */}
+        <TabsContent value="finances" className="mt-4">
+          {association ? (
+            <MyFinancesView associationId={association.id} currency={association.currency} />
+          ) : (
+            <Skeleton className="h-64 w-full rounded-xl" />
+          )}
+        </TabsContent>
+
+        {/* Onglet : liste des caisses (→ détail : gains / pronostics) */}
+        <TabsContent value="caisses" className="mt-4">
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1, 2].map((i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
+            </div>
+          ) : visible.length === 0 ? (
+            <Card>
+              <CardContent className="p-0">
+                <EmptyState icon={PiggyBank} title={t("emptyTitle")} description={t("emptyDesc")} />
+              </CardContent>
+            </Card>
+          ) : (
+            <ul className="space-y-2">
+              {visible.map((c) => (
+                <li key={c.id}>
+                  <Link
+                    href={`/dashboard/caisses/${c.id}`}
+                    className="group flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/40 hover:shadow-sm"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <PiggyBank className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate font-semibold leading-tight">{c.name}</p>
+                          <Badge variant="outline" className="text-[10px]">{t(`cat_${c.category}`)}</Badge>
+                          {c.interest_distribution === "shared_pro_rata" && (
+                            <Badge variant="secondary" className="text-[10px]">{t("sharesInterest")}</Badge>
+                          )}
+                        </div>
+                        {c.description && (
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">{c.description}</p>
+                        )}
+                      </div>
                     </div>
-                    {c.description && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{c.description}</p>
-                    )}
-                  </div>
-                </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

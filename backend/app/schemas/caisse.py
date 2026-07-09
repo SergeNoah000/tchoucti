@@ -234,6 +234,38 @@ class CaisseProjection(BaseModel):
     is_admin_view: bool = False
 
 
+class MyFinanceCard(BaseModel):
+    caisse_id: UUID
+    caisse_name: str
+    category: str
+    my_apport: int
+    my_rendement: int   # rendement cumulé (attribué à mes versements)
+
+
+class MyVersement(BaseModel):
+    caisse_id: UUID
+    caisse_name: str
+    date: date
+    amount: int
+    # Rendement attribué à ce versement = montant × Σ(rentabilité par unité des
+    # prêts financés après ce versement) — modèle de Fred.
+    rendement: int
+
+
+class MyFinanceNotification(BaseModel):
+    kind: str            # warning | info
+    message: str
+
+
+class MyFinances(BaseModel):
+    currency: Optional[str] = None
+    cards: List[MyFinanceCard] = []
+    total_invested: int = 0
+    total_rendement: int = 0
+    versements: List[MyVersement] = []
+    notifications: List[MyFinanceNotification] = []
+
+
 class CaisseWithdrawResponse(BaseModel):
     # movement_id est None tant que la sortie attend la validation du trésorier.
     movement_id: Optional[UUID] = None

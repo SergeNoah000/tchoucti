@@ -1656,7 +1656,9 @@
     "total": "Total",
     "gainsHint": "Les gains sont les intérêts déjà distribués (clôtures de période). Voir l'onglet Pronostics pour les intérêts à venir.",
     "noDistributions": "Aucune distribution",
-    "noDistributionsDesc": "Aucune période d'intérêts n'a encore été clôturée."
+    "noDistributionsDesc": "Aucune période d'intérêts n'a encore été clôturée.",
+    "tabMyFinances": "Mes Finances",
+    "tabCaisses": "Caisses"
   },
   "caissePronostics": {
     "tab": "Pronostics",
@@ -1759,5 +1761,17 @@
     "category_honorary": "Membre d'honneur",
     "category_founder": "Membre fondateur",
     "category_suspended": "Membre suspendu"
+  },
+  "myFinances": {
+    "totalInvested": "Montant investi",
+    "totalRendement": "Rendement cumulé",
+    "versementsTitle": "Mes versements",
+    "noVersements": "Aucun versement",
+    "noVersementsDesc": "Vous n'avez encore effectué aucun versement dans une caisse.",
+    "colCaisse": "Caisse",
+    "colDate": "Date",
+    "colAmount": "Somme",
+    "colRendement": "Rendement",
+    "notificationsTitle": "Notifications"
   }
 }

@@ -1656,7 +1656,9 @@
     "total": "Total",
     "gainsHint": "Earnings are the interest already distributed (period closings). See the Forecast tab for upcoming interest.",
     "noDistributions": "No distribution",
-    "noDistributionsDesc": "No interest period has been closed yet."
+    "noDistributionsDesc": "No interest period has been closed yet.",
+    "tabMyFinances": "My Finances",
+    "tabCaisses": "Funds"
   },
   "caissePronostics": {
     "tab": "Forecast",
@@ -1759,5 +1761,17 @@
     "category_honorary": "Honorary member",
     "category_founder": "Founding member",
     "category_suspended": "Suspended member"
+  },
+  "myFinances": {
+    "totalInvested": "Amount invested",
+    "totalRendement": "Cumulative return",
+    "versementsTitle": "My deposits",
+    "noVersements": "No deposit",
+    "noVersementsDesc": "You have not made any deposit into a fund yet.",
+    "colCaisse": "Fund",
+    "colDate": "Date",
+    "colAmount": "Amount",
+    "colRendement": "Return",
+    "notificationsTitle": "Notifications"
   }
 }
