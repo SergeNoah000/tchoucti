@@ -11,6 +11,7 @@ import {
   Users,
   Calendar,
   Wallet,
+  PiggyBank,
   Banknote,
   Repeat,
   HeartHandshake,
@@ -139,6 +140,7 @@ const ASSOCIATION_NAV: NavSection[] = [
     items: [
       { href: "/dashboard/finance", icon: Wallet, key: "finance" },
       { href: "/dashboard/finance/validations", icon: ShieldCheck, key: "payoutValidations" },
+      { href: "/dashboard/caisses", icon: PiggyBank, key: "caissesGains" },
       { href: "/dashboard/loans", icon: Banknote, key: "loans" },
       { href: "/dashboard/tontines", icon: Repeat, key: "tontines" },
       { href: "/dashboard/social-aid", icon: HeartHandshake, key: "socialAid" },
@@ -199,29 +201,28 @@ function navForRole(role: AppRole): NavSection[] {
 
 /** Un trésorier (ou secrétaire/manager) est routé comme rôle « member » dans la
  *  nav (is_association_admin est strict). On lui ajoute alors dynamiquement
- *  l'accès à la file de validation des sorties d'argent. Les admins l'ont déjà
- *  en statique ; les simples membres ne le voient pas. */
+ *  l'accès bureau : validation des sorties + détail des caisses (gains des
+ *  cotisants). Les admins l'ont déjà en statique ; les simples membres non. */
 function navWithBureauExtras(sections: NavSection[], isBureau: boolean): NavSection[] {
   if (!isBureau) return sections;
-  const already = sections.some((s) =>
-    s.items.some((i) => i.href === "/dashboard/finance/validations"),
+  const extras: NavItem[] = [
+    { href: "/dashboard/finance/validations", icon: ShieldCheck, key: "payoutValidations" },
+    { href: "/dashboard/caisses", icon: PiggyBank, key: "caissesGains" },
+  ];
+  const missing = extras.filter(
+    (ex) => !sections.some((s) => s.items.some((i) => i.href === ex.href)),
   );
-  if (already) return sections;
-  const item: NavItem = {
-    href: "/dashboard/finance/validations",
-    icon: ShieldCheck,
-    key: "payoutValidations",
-  };
+  if (missing.length === 0) return sections;
   const financeIdx = sections.findIndex((s) => s.label === "finance" || s.label === "personal");
   if (financeIdx >= 0) {
     const next = [...sections];
     next[financeIdx] = {
       ...next[financeIdx],
-      items: [...next[financeIdx].items, item],
+      items: [...next[financeIdx].items, ...missing],
     };
     return next;
   }
-  return [...sections, { label: "finance", items: [item] }];
+  return [...sections, { label: "finance", items: missing }];
 }
 
 interface ShellProps {
