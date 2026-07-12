@@ -10,7 +10,8 @@ import {
   ChevronRight,
   CheckCircle2,
   Clock,
-  Percent,
+  Coins,
+  TrendingUp,
   Users,
   CalendarClock,
 } from "lucide-react";
@@ -44,9 +45,13 @@ export function CaissePronostics({
 
   const kept = data.interest_distribution === "kept";
   const hasMine = data.my_apport > 0 || data.my_expected_return > 0;
+  const cur = data.currency ?? currency ?? "";
 
   return (
     <div className="space-y-4">
+      {/* Texte d'intro explicatif */}
+      <p className="text-sm text-muted-foreground">{t("intro")}</p>
+
       {/* Mode de distribution */}
       <div
         className={cn(
@@ -63,11 +68,13 @@ export function CaissePronostics({
       {/* Mon résumé */}
       {hasMine && (
         <Card className="border-primary/30">
-          <CardContent className="grid gap-3 p-4 sm:grid-cols-4">
-            <Mini label={t("myApport")} value={fmt.currency(data.my_apport)} />
-            <Mini label={t("myCollected")} value={fmt.currency(data.my_collected)} accent="emerald" />
-            <Mini label={t("myUpcoming")} value={fmt.currency(data.my_upcoming)} accent="sky" />
-            <Mini label={t("myAtCassation")} value={fmt.currency(data.my_expected_at_cassation)} accent strong />
+          <CardContent className="space-y-2 p-4">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <Mini label={t("myApport")} value={fmt.currency(data.my_apport)} help={t("myApportHelp")} />
+              <Mini label={t("myCollected")} value={fmt.currency(data.my_collected)} accent="emerald" help={t("myCollectedHelp")} />
+              <Mini label={t("myUpcoming")} value={fmt.currency(data.my_upcoming)} accent="sky" help={t("myUpcomingHelp")} />
+              <Mini label={t("myAtCassation")} value={fmt.currency(data.my_expected_at_cassation)} accent strong help={t("myAtCassationHelp")} />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -93,6 +100,7 @@ export function CaissePronostics({
                 open={openLoan === l.loan_id}
                 onToggle={() => setOpenLoan(openLoan === l.loan_id ? null : l.loan_id)}
                 isAdmin={data.is_admin_view}
+                cur={cur}
                 fmt={fmt}
                 t={t}
               />
@@ -109,6 +117,7 @@ function LoanRow({
   open,
   onToggle,
   isAdmin,
+  cur,
   fmt,
   t,
 }: {
@@ -116,9 +125,15 @@ function LoanRow({
   open: boolean;
   onToggle: () => void;
   isAdmin: boolean;
+  cur: string;
   fmt: ReturnType<typeof useFormatters>;
   t: ReturnType<typeof useTranslations>;
 }) {
+  // Montants « par unité » (fractions) → 2 décimales, indépendamment de la devise.
+  const perUnit = (v: number) =>
+    `${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}${cur ? " " + cur : ""}`;
+  const interestPerLent = l.principal > 0 ? l.total_interest / l.principal : 0;
+
   return (
     <Card>
       <CardContent className="p-0">
@@ -130,32 +145,61 @@ function LoanRow({
           {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
           <span className="font-mono text-xs">{l.reference}</span>
           <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{l.borrower_name || "—"}</span>
-          <span className="text-xs text-muted-foreground">{t("colPrincipal")}: {fmt.currency(l.principal)}</span>
-          <Badge variant="secondary" className="text-[10px]">{t("rentab")} {l.rentability_pct}%</Badge>
+          <span className="text-xs text-muted-foreground">{t("lentAmount")}: {fmt.currency(l.principal)}</span>
           {l.my_amount_at_loan > 0 && (
-            <span className="text-xs text-primary">
-              {t("myPart")}: {l.my_share_pct}% → {fmt.currency(l.my_expected_return)}
+            <span className="text-xs font-medium text-primary">
+              {t("myPart")}: {fmt.currency(l.my_expected_return)}
             </span>
           )}
         </button>
 
         {open && (
           <div className="space-y-3 border-t px-4 py-3">
-            {/* Infos globales du prêt */}
-            <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-              <Info2 icon={Banknote} label={t("lentAmount")} value={fmt.currency(l.principal)} />
-              <Info2 icon={CalendarClock} label={t("monthsLeft")} value={String(l.remaining_installments)} />
-              <Info2 icon={Percent} label={t("revPerUnit")} value={`${(l.revenue_per_unit_invested * 100).toFixed(1)}%`} />
-              <Info2 icon={Banknote} label={t("availableAtLoan")} value={fmt.currency(l.total_at_loan)} />
+            {/* Faits du prêt, en langage simple */}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <PlainFact
+                icon={Banknote}
+                title={t("factLentTitle")}
+                value={fmt.currency(l.principal)}
+                help={t("factLentHelp")}
+              />
+              <PlainFact
+                icon={CalendarClock}
+                title={t("factMonthsTitle")}
+                value={t("factMonthsValue", { n: l.remaining_installments })}
+                help={t("factMonthsHelp")}
+              />
+              <PlainFact
+                icon={TrendingUp}
+                title={t("factRapportTitle")}
+                value={t("factRapportValue", { amount: perUnit(interestPerLent) })}
+                help={t("factRapportHelp", { pct: l.rentability_pct })}
+              />
+              <PlainFact
+                icon={Coins}
+                title={t("factRevenueTitle")}
+                value={t("factRevenueValue", { amount: perUnit(l.revenue_per_unit_invested) })}
+                help={t("factRevenueHelp")}
+                accent
+              />
             </div>
 
             {/* Ma part sur ce prêt */}
             {l.my_amount_at_loan > 0 && (
               <div className="rounded-lg bg-primary/5 px-3 py-2 text-sm">
-                <span className="font-medium">{t("myPartOnLoan")}</span> —{" "}
-                {t("myAmountAtLoan")}: <b>{fmt.currency(l.my_amount_at_loan)}</b> ({l.my_share_pct}%) ·{" "}
-                {t("colUpcoming")}: <b className="text-sky-600 dark:text-sky-400">{fmt.currency(l.my_upcoming)}</b> ·{" "}
-                {t("colCollected")}: <b className="text-emerald-600 dark:text-emerald-400">{fmt.currency(l.my_collected)}</b>
+                <p className="font-medium">{t("myPartOnLoan")}</p>
+                <p className="mt-0.5 text-muted-foreground">
+                  {t("myPartExplain", {
+                    amount: fmt.currency(l.my_amount_at_loan),
+                    pct: l.my_share_pct,
+                    total: fmt.currency(l.total_at_loan),
+                  })}
+                </p>
+                <p className="mt-1">
+                  {t("colUpcoming")}: <b className="text-sky-600 dark:text-sky-400">{fmt.currency(l.my_upcoming)}</b>
+                  {" · "}
+                  {t("colCollected")}: <b className="text-emerald-600 dark:text-emerald-400">{fmt.currency(l.my_collected)}</b>
+                </p>
               </div>
             )}
 
@@ -234,19 +278,32 @@ function LoanRow({
   );
 }
 
-function Info2({ icon: Icon, label, value }: { icon: typeof Banknote; label: string; value: string }) {
+function PlainFact({
+  icon: Icon,
+  title,
+  value,
+  help,
+  accent,
+}: {
+  icon: typeof Banknote;
+  title: string;
+  value: string;
+  help: string;
+  accent?: boolean;
+}) {
   return (
-    <div className="flex items-center gap-2 rounded-md border border-border/50 px-2.5 py-1.5">
-      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+    <div className="flex gap-2.5 rounded-lg border border-border/50 px-3 py-2">
+      <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", accent ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")} />
       <div className="min-w-0">
-        <p className="truncate text-[11px] text-muted-foreground">{label}</p>
-        <p className="text-sm font-medium tabular-nums">{value}</p>
+        <p className="text-xs font-medium text-muted-foreground">{title}</p>
+        <p className={cn("font-semibold", accent && "text-emerald-700 dark:text-emerald-400")}>{value}</p>
+        <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{help}</p>
       </div>
     </div>
   );
 }
 
-function Mini({ label, value, accent, strong }: { label: string; value: string; accent?: "emerald" | "sky" | boolean; strong?: boolean }) {
+function Mini({ label, value, accent, strong, help }: { label: string; value: string; accent?: "emerald" | "sky" | boolean; strong?: boolean; help?: string }) {
   const cls =
     accent === "emerald" ? "text-emerald-600 dark:text-emerald-400"
       : accent === "sky" ? "text-sky-600 dark:text-sky-400"
@@ -255,6 +312,7 @@ function Mini({ label, value, accent, strong }: { label: string; value: string; 
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn("font-semibold tabular-nums", strong ? "text-lg" : "text-base", cls)}>{value}</p>
+      {help && <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{help}</p>}
     </div>
   );
 }
