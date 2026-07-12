@@ -398,30 +398,40 @@ export const caissesApi = {
   ) => (await api.post(`/caisses/${caisseId}/withdraw`, payload)).data,
 };
 
-// ── Pronostics caisse (Lot 5) ─────────────────────────────────────────────
-export interface ProjectionTimelineEntry {
+// ── Pronostics caisse — granularité par prêt × membre (modèle de Fred) ─────
+export interface LoanScheduleEntry {
   due_on: string;
-  interest: number;
-  collected: boolean; // true = déjà encaissé, false = à venir
+  interest_total: number; // intérêt de l'échéance (tout le prêt)
+  my_share: number;       // ma part sur cette échéance
+  collected: boolean;     // true = encaissé, false = à venir
 }
-export interface LoanProjection {
+export interface LoanContributorShare {
+  membership_id: string;
+  member_name?: string | null;
+  amount_at_loan: number;
+  share_pct: number;
+  expected_return: number;
+  collected: number;
+  upcoming: number;
+}
+export interface LoanDetailProjection {
   loan_id: string;
   reference: string;
   borrower_name?: string | null;
   principal: number;
   total_interest: number;
-  rentability_pct: number;
-  interest_collected: number;
-  interest_upcoming: number;
-  schedule: ProjectionTimelineEntry[];
-}
-export interface ContributorProjection {
-  membership_id: string;
-  member_name?: string | null;
-  apport_cum: number;
-  weight_pct: number;
-  interest_collected_share: number;
-  interest_upcoming_share: number;
+  rentability_pct: number;            // intérêt ÷ capital (par unité prêtée)
+  revenue_per_unit_invested: number;  // intérêt ÷ argent disponible au prêt
+  disbursed_on?: string | null;
+  remaining_installments: number;
+  total_at_loan: number;
+  my_amount_at_loan: number;
+  my_share_pct: number;
+  my_expected_return: number;
+  my_collected: number;
+  my_upcoming: number;
+  my_schedule: LoanScheduleEntry[];
+  contributors: LoanContributorShare[];
 }
 export interface CaisseProjection {
   caisse_id: string;
@@ -432,10 +442,13 @@ export interface CaisseProjection {
   total_interest_collected: number;
   total_interest_upcoming: number;
   total_apport: number;
-  loans: LoanProjection[];
-  timeline: ProjectionTimelineEntry[];
-  contributors: ContributorProjection[];
-  my?: ContributorProjection | null;
+  my_membership_id?: string | null;
+  my_apport: number;
+  my_collected: number;
+  my_upcoming: number;
+  my_expected_return: number;
+  my_expected_at_cassation: number;
+  loans: LoanDetailProjection[];
   is_admin_view: boolean;
 }
 
@@ -446,6 +459,8 @@ export interface MyFinanceCard {
   category: string;
   my_apport: number;
   my_rendement: number;
+  expected_at_cassation: number;
+  is_loanable: boolean;
 }
 export interface MyVersement {
   caisse_id: string;

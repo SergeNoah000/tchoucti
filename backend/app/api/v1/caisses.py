@@ -47,6 +47,7 @@ from app.models.loan import (
     LoanInstallmentStatus,
     LoanRepayment,
     LoanStatus,
+    LoanType,
 )
 from app.models.role import Membership, MembershipStatus
 from app.models.user import User
@@ -57,14 +58,14 @@ from app.schemas.caisse import (
     CaisseDistributionShareOut,
     CaisseOut,
     CaisseProjection,
-    ContributorProjection,
-    LoanProjection,
+    LoanContributorShare,
+    LoanDetailProjection,
+    LoanScheduleEntry,
     MemberBalanceOut,
     MyFinanceCard,
     MyFinanceNotification,
     MyFinances,
     MyVersement,
-    ProjectionTimelineEntry,
     CaisseUpdate,
     CaisseWithdrawRequest,
     CaisseWithdrawResponse,
@@ -313,6 +314,26 @@ async def my_finances(
             )
         ).scalars().all()
     }
+    # Caisses « prêtables » : source d'un type de prêt OU ayant au moins un prêt.
+    loanable: set = set()
+    for cid in (
+        await db.execute(
+            select(LoanType.source_caisse_id).where(
+                LoanType.association_id == association_id,
+                LoanType.source_caisse_id.isnot(None),
+            )
+        )
+    ).scalars().all():
+        loanable.add(cid)
+    for cid in (
+        await db.execute(
+            select(Loan.source_caisse_id)
+            .where(Loan.source_caisse_id.in_(caisse_ids))
+            .distinct()
+        )
+    ).scalars().all():
+        loanable.add(cid)
+
     cards: list[MyFinanceCard] = []
     total_invested = 0
     total_rendement = 0
@@ -320,8 +341,9 @@ async def my_finances(
         bal = my_balances.get(c.id)
         apport = bal.apport_cum if bal else 0
         rendement = rendement_by_caisse.get(c.id, 0)
-        # N'affiche que les caisses où j'ai un apport ou un rendement.
-        if apport <= 0 and rendement <= 0:
+        is_loanable = c.id in loanable
+        # Affiche les caisses où j'ai un apport/rendement OU qui sont prêtables.
+        if apport <= 0 and rendement <= 0 and not is_loanable:
             continue
         total_invested += apport
         total_rendement += rendement
@@ -332,6 +354,8 @@ async def my_finances(
                 category=c.category.value if hasattr(c.category, "value") else str(c.category),
                 my_apport=apport,
                 my_rendement=rendement,
+                expected_at_cassation=apport + rendement,
+                is_loanable=is_loanable,
             )
         )
 
@@ -403,7 +427,72 @@ async def caisse_projections(
         or await _user_is_association_admin(db, current_user, caisse.association_id)
     )
 
-    # ── Prêts financés par cette caisse, DÉCAISSÉS (en activité) ──
+    from collections import defaultdict
+
+    def _lr_split(total: int, weights: list[int]) -> list[int]:
+        """Répartit `total` au prorata de `weights` — méthode du plus grand
+        reste (Σ des parts == total, pas de perte d'arrondi)."""
+        S = sum(weights)
+        if S <= 0 or total <= 0:
+            return [0] * len(weights)
+        raw = [total * w / S for w in weights]
+        floors = [int(x) for x in raw]
+        rem = total - sum(floors)
+        order = sorted(range(len(weights)), key=lambda i: raw[i] - floors[i], reverse=True)
+        for k in range(rem):
+            floors[order[k % len(order)]] += 1
+        return floors
+
+    # ── Contributions DATÉES (tous membres) vers le fonds de la caisse ──
+    contrib_rows = (
+        await db.execute(
+            select(
+                TreasuryMovement.related_membership_id,
+                LedgerEntry.amount,
+                TreasuryMovement.occurred_on,
+            )
+            .join(TreasuryMovement, TreasuryMovement.id == LedgerEntry.movement_id)
+            .join(Treasury, Treasury.id == TreasuryMovement.treasury_id)
+            .where(
+                Treasury.association_id == caisse.association_id,
+                LedgerEntry.fund_id == caisse.fund_id,
+                LedgerEntry.is_credit.is_(True),
+                TreasuryMovement.direction == MovementDirection.IN,
+                TreasuryMovement.is_voided.is_(False),
+            )
+        )
+    ).all()
+    contribs = [(occ, int(amt), mid) for (mid, amt, occ) in contrib_rows if occ and amt and mid]
+
+    # Apports cumulés + noms (pour l'apport global du membre et les libellés).
+    balances = (
+        await db.execute(
+            select(CaisseContributorBalance)
+            .options(
+                selectinload(CaisseContributorBalance.membership).selectinload(Membership.user)
+            )
+            .where(CaisseContributorBalance.caisse_id == caisse_id)
+        )
+    ).scalars().all()
+    total_apport = sum(b.apport_cum for b in balances)
+    apport_by_mid = {b.membership_id: b.apport_cum for b in balances}
+    name_by_mid = {
+        b.membership_id: getattr(getattr(b, "membership", None), "user", None)
+        and b.membership.user.full_name
+        for b in balances
+    }
+
+    my_membership = (
+        await db.execute(
+            select(Membership).where(
+                Membership.user_id == current_user.id,
+                Membership.association_id == caisse.association_id,
+            )
+        )
+    ).scalar_one_or_none()
+    my_mid = my_membership.id if my_membership else None
+
+    # ── Prêts financés par cette caisse, DÉCAISSÉS (en activité + soldés) ──
     loans = (
         await db.execute(
             select(Loan)
@@ -415,32 +504,46 @@ async def caisse_projections(
             .where(
                 Loan.source_caisse_id == caisse_id,
                 Loan.status.in_([LoanStatus.DISBURSED, LoanStatus.REPAYING, LoanStatus.PAID]),
+                Loan.disbursed_on.isnot(None),
             )
-            .order_by(Loan.created_at.desc())
+            .order_by(Loan.disbursed_on)
         )
     ).scalars().all()
 
-    loan_projs: list[LoanProjection] = []
+    loan_projs: list[LoanDetailProjection] = []
     total_collected = 0
     total_upcoming = 0
     total_principal = 0
-    # Échéancier consolidé de la caisse : (date, collected) → intérêt cumulé.
-    timeline_agg: dict[tuple, int] = {}
+    my_collected_tot = 0
+    my_upcoming_tot = 0
 
     for loan in loans:
-        sched: list[ProjectionTimelineEntry] = []
-        # 1) Intérêts DÉJÀ ENCAISSÉS — par date de remboursement.
-        collected = 0
+        d_on = loan.disbursed_on
+        # Argent disponible + apport de chaque membre AU DÉCAISSEMENT (Fred).
+        total_at_loan = sum(a for (dt, a, _m) in contribs if dt <= d_on)
+        amt_at_loan: dict = defaultdict(int)
+        for (dt, a, mid) in contribs:
+            if dt <= d_on:
+                amt_at_loan[mid] += a
+        # Repli si aucune contribution datée : prorata sur l'apport cumulé.
+        if total_at_loan <= 0 and total_apport > 0:
+            total_at_loan = total_apport
+            amt_at_loan = dict(apport_by_mid)
+
+        collected_full = loan.paid_interest
+        upcoming_full = max(0, loan.total_interest - loan.paid_interest)
+        total_collected += collected_full
+        total_upcoming += upcoming_full
+        if loan.status != LoanStatus.PAID:
+            total_principal += loan.principal
+
+        # Échéancier (intérêt total par date) : encaissé (remboursements) + à venir.
+        entries: list[tuple] = []  # (due_on, interest_total, collected_bool)
         for rp in sorted(loan.repayments, key=lambda r: r.paid_on):
-            interest = getattr(rp, "interest", 0) or 0
-            if interest > 0:
-                collected += interest
-                sched.append(ProjectionTimelineEntry(due_on=rp.paid_on, interest=interest, collected=True))
-                timeline_agg[(rp.paid_on, True)] = timeline_agg.get((rp.paid_on, True), 0) + interest
-        # 2) Intérêts À VENIR — échéances non payées, bornés au reste théorique
-        #    (évite les artefacts d'arrondi : Σ = total_interest − déjà payé).
-        remaining = max(0, loan.total_interest - loan.paid_interest)
-        upcoming = 0
+            it = getattr(rp, "interest", 0) or 0
+            if it > 0:
+                entries.append((rp.paid_on, it, True))
+        remaining = upcoming_full
         for inst in sorted(loan.installments, key=lambda i: i.number):
             if remaining <= 0:
                 break
@@ -450,101 +553,92 @@ async def caisse_projections(
             part = max(0, min(part, remaining))
             if part <= 0:
                 continue
-            upcoming += part
             remaining -= part
-            sched.append(ProjectionTimelineEntry(due_on=inst.due_on, interest=part, collected=False))
-            timeline_agg[(inst.due_on, False)] = timeline_agg.get((inst.due_on, False), 0) + part
+            entries.append((inst.due_on, part, False))
 
+        remaining_installments = sum(
+            1
+            for inst in loan.installments
+            if inst.status not in (LoanInstallmentStatus.PAID, LoanInstallmentStatus.WAIVED)
+        )
         rentability = (loan.total_interest / loan.principal * 100.0) if loan.principal else 0.0
+        rev_per_unit = (loan.total_interest / total_at_loan) if total_at_loan else 0.0
+
+        # Parts figées au décaissement : contributeurs présents à la date.
+        present = [(mid, amt_at_loan.get(mid, 0)) for mid in amt_at_loan if amt_at_loan.get(mid, 0) > 0]
+        weights = [a for (_m, a) in present]
+        coll_split = _lr_split(collected_full, weights)
+        up_split = _lr_split(upcoming_full, weights)
+
+        my_amount_at_loan = 0
+        my_share_pct = 0.0
+        my_collected = 0
+        my_upcoming = 0
+        contributors: list[LoanContributorShare] = []
+        for idx, (mid, amount) in enumerate(present):
+            share = (amount / total_at_loan) if total_at_loan else 0.0
+            c_coll = coll_split[idx]
+            c_up = up_split[idx]
+            contributors.append(
+                LoanContributorShare(
+                    membership_id=mid,
+                    member_name=name_by_mid.get(mid),
+                    amount_at_loan=amount,
+                    share_pct=round(share * 100.0, 2),
+                    expected_return=c_coll + c_up,
+                    collected=c_coll,
+                    upcoming=c_up,
+                )
+            )
+            if mid == my_mid:
+                my_amount_at_loan = amount
+                my_share_pct = round(share * 100.0, 2)
+                my_collected = c_coll
+                my_upcoming = c_up
+
+        my_collected_tot += my_collected
+        my_upcoming_tot += my_upcoming
+        # Répartit MA part (encaissée / à venir) sur les échéances correspondantes,
+        # au prorata de l'intérêt de chaque échéance (Σ == ma part → visible).
+        coll_entries = [(d, it) for (d, it, c) in entries if c]
+        up_entries = [(d, it) for (d, it, c) in entries if not c]
+        my_coll_per = _lr_split(my_collected, [it for (_d, it) in coll_entries])
+        my_up_per = _lr_split(my_upcoming, [it for (_d, it) in up_entries])
+        my_schedule = [
+            LoanScheduleEntry(due_on=d, interest_total=it, my_share=my_coll_per[i], collected=True)
+            for i, (d, it) in enumerate(coll_entries)
+        ] + [
+            LoanScheduleEntry(due_on=d, interest_total=it, my_share=my_up_per[i], collected=False)
+            for i, (d, it) in enumerate(up_entries)
+        ]
+        my_schedule.sort(key=lambda e: (e.due_on, e.collected))
+
         borrower = getattr(loan, "borrower", None)
         buser = getattr(borrower, "user", None) if borrower else None
         loan_projs.append(
-            LoanProjection(
+            LoanDetailProjection(
                 loan_id=loan.id,
                 reference=loan.reference,
                 borrower_name=getattr(buser, "full_name", None),
                 principal=loan.principal,
                 total_interest=loan.total_interest,
                 rentability_pct=round(rentability, 2),
-                interest_collected=collected,
-                interest_upcoming=upcoming,
-                schedule=sched,
-            )
-        )
-        total_collected += collected
-        total_upcoming += upcoming
-        if loan.status != LoanStatus.PAID:
-            total_principal += loan.principal
-
-    timeline = [
-        ProjectionTimelineEntry(due_on=d, interest=amt, collected=coll)
-        for (d, coll), amt in sorted(timeline_agg.items(), key=lambda kv: (kv[0][0], kv[0][1]))
-    ]
-
-    # ── Contributeurs : quote-part au prorata de l'apport (TOUJOURS calculée,
-    #    quel que soit le mode ; visible par tous). ──
-    balances = (
-        await db.execute(
-            select(CaisseContributorBalance)
-            .options(
-                selectinload(CaisseContributorBalance.membership).selectinload(
-                    Membership.user
-                )
-            )
-            .where(CaisseContributorBalance.caisse_id == caisse_id)
-            .order_by(CaisseContributorBalance.created_at)
-        )
-    ).scalars().all()
-    total_apport = sum(b.apport_cum for b in balances)
-    apports = [b.apport_cum for b in balances]
-
-    def _split(total: int) -> list[int]:
-        """Répartit `total` au prorata des apports, méthode du plus grand reste
-        (les parts somment EXACTEMENT au total, pas de perte d'arrondi)."""
-        S = sum(apports)
-        if S <= 0 or total <= 0:
-            return [0] * len(apports)
-        raw = [total * a / S for a in apports]
-        floors = [int(x) for x in raw]
-        rem = total - sum(floors)
-        order = sorted(range(len(apports)), key=lambda i: raw[i] - floors[i], reverse=True)
-        for k in range(rem):
-            floors[order[k]] += 1
-        return floors
-
-    coll_shares = _split(total_collected)
-    up_shares = _split(total_upcoming)
-
-    contributors: list[ContributorProjection] = []
-    for i, bal in enumerate(balances):
-        weight = (bal.apport_cum / total_apport) if total_apport else 0.0
-        mem = getattr(bal, "membership", None)
-        muser = getattr(mem, "user", None) if mem else None
-        contributors.append(
-            ContributorProjection(
-                membership_id=bal.membership_id,
-                member_name=getattr(muser, "full_name", None),
-                apport_cum=bal.apport_cum,
-                weight_pct=round(weight * 100.0, 2),
-                interest_collected_share=coll_shares[i],
-                interest_upcoming_share=up_shares[i],
+                revenue_per_unit_invested=round(rev_per_unit, 4),
+                disbursed_on=d_on,
+                remaining_installments=remaining_installments,
+                total_at_loan=total_at_loan,
+                my_amount_at_loan=my_amount_at_loan,
+                my_share_pct=my_share_pct,
+                my_expected_return=my_collected + my_upcoming,
+                my_collected=my_collected,
+                my_upcoming=my_upcoming,
+                my_schedule=my_schedule,
+                contributors=sorted(contributors, key=lambda c: c.amount_at_loan, reverse=True),
             )
         )
 
-    my_membership = (
-        await db.execute(
-            select(Membership).where(
-                Membership.user_id == current_user.id,
-                Membership.association_id == caisse.association_id,
-            )
-        )
-    ).scalar_one_or_none()
-    my_proj = None
-    if my_membership is not None:
-        my_proj = next(
-            (c for c in contributors if c.membership_id == my_membership.id), None
-        )
-
+    my_apport = apport_by_mid.get(my_mid, 0) if my_mid else 0
+    my_expected_return = my_collected_tot + my_upcoming_tot
     idist = (
         caisse.interest_distribution.value
         if hasattr(caisse.interest_distribution, "value")
@@ -559,10 +653,13 @@ async def caisse_projections(
         total_interest_collected=total_collected,
         total_interest_upcoming=total_upcoming,
         total_apport=total_apport,
+        my_membership_id=my_mid,
+        my_apport=my_apport,
+        my_collected=my_collected_tot,
+        my_upcoming=my_upcoming_tot,
+        my_expected_return=my_expected_return,
+        my_expected_at_cassation=my_apport + my_expected_return,
         loans=loan_projs,
-        timeline=timeline,
-        contributors=contributors,
-        my=my_proj,
         is_admin_view=is_admin,
     )
 

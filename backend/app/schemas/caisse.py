@@ -183,36 +183,47 @@ class CaisseWithdrawRequest(BaseModel):
     note: Optional[str] = Field(None, max_length=500)
 
 
-class ProjectionTimelineEntry(BaseModel):
+class LoanScheduleEntry(BaseModel):
     due_on: date
-    interest: int
-    # True = intérêt déjà encaissé ; False = intérêt à venir (prévu).
-    collected: bool
+    interest_total: int   # intérêt de l'échéance (pour tout le prêt)
+    my_share: int         # part du membre courant sur cette échéance
+    collected: bool       # True = déjà encaissé, False = à venir
 
 
-class LoanProjection(BaseModel):
+class LoanContributorShare(BaseModel):
+    membership_id: UUID
+    member_name: Optional[str] = None
+    amount_at_loan: int   # apport du contributeur présent au décaissement
+    share_pct: float      # % de sa part LORS du prêt (figée au décaissement)
+    expected_return: int  # sa part d'intérêts (encaissé + à venir)
+    collected: int
+    upcoming: int
+
+
+class LoanDetailProjection(BaseModel):
     loan_id: UUID
     reference: str
     borrower_name: Optional[str] = None
     principal: int
     total_interest: int
-    # Rentabilité « par unité prêtée » = intérêt total ÷ capital (en %).
+    # Rentabilité du prêt = intérêt ÷ capital prêté (par unité prêtée), en %.
     rentability_pct: float
-    interest_collected: int   # intérêts déjà encaissés sur ce prêt
-    interest_upcoming: int    # intérêts restant à venir sur ce prêt
-    # Échéancier des intérêts (encaissés + à venir), par date.
-    schedule: List[ProjectionTimelineEntry] = []
+    # Revenu par unité d'argent INVESTI (intérêt ÷ argent disponible au prêt).
+    revenue_per_unit_invested: float
+    disbursed_on: Optional[date] = None
+    remaining_installments: int   # échéances restantes (mois si mensuel)
+    total_at_loan: int            # argent disponible dans la caisse au décaissement
 
+    # ── Membre courant sur ce prêt ──
+    my_amount_at_loan: int
+    my_share_pct: float
+    my_expected_return: int
+    my_collected: int
+    my_upcoming: int
+    my_schedule: List[LoanScheduleEntry] = []
 
-class ContributorProjection(BaseModel):
-    membership_id: UUID
-    member_name: Optional[str] = None
-    apport_cum: int
-    # Poids au prorata de l'apport dans la caisse (en %).
-    weight_pct: float
-    # Quote-part des intérêts, au prorata de l'apport.
-    interest_collected_share: int   # sa part déjà encaissée
-    interest_upcoming_share: int    # sa part à venir
+    # ── Admin : tous les contributeurs sur ce prêt ──
+    contributors: List[LoanContributorShare] = []
 
 
 class CaisseProjection(BaseModel):
@@ -224,13 +235,16 @@ class CaisseProjection(BaseModel):
     total_interest_collected: int   # intérêts déjà encaissés (tous prêts)
     total_interest_upcoming: int    # intérêts à venir (tous prêts)
     total_apport: int
-    loans: List[LoanProjection] = []
-    # Échéancier consolidé de la caisse (tous prêts), groupé par date.
-    timeline: List[ProjectionTimelineEntry] = []
-    # Répartition par contributeur — VISIBLE PAR TOUS les membres.
-    contributors: List[ContributorProjection] = []
-    # Part du membre courant (None s'il n'a pas d'apport).
-    my: Optional[ContributorProjection] = None
+
+    # ── Résumé du membre courant ──
+    my_membership_id: Optional[UUID] = None
+    my_apport: int = 0
+    my_collected: int = 0
+    my_upcoming: int = 0
+    my_expected_return: int = 0        # encaissé + à venir
+    my_expected_at_cassation: int = 0  # apport (capital) + rendement attendu
+
+    loans: List[LoanDetailProjection] = []
     is_admin_view: bool = False
 
 
@@ -239,7 +253,9 @@ class MyFinanceCard(BaseModel):
     caisse_name: str
     category: str
     my_apport: int
-    my_rendement: int   # rendement cumulé (attribué à mes versements)
+    my_rendement: int          # rendement attendu (attribué à mes versements)
+    expected_at_cassation: int  # capital + rendement (ce que je touche à la dissolution)
+    is_loanable: bool = False   # caisse pouvant financer des prêts
 
 
 class MyVersement(BaseModel):
